@@ -274,7 +274,7 @@ impl App {
                 continue;
             }
             let spec = it.spec(self.target);
-            let out = unique_output(&it.path, spec.ext);
+            let out = unique_output_in(&it.path, spec.ext, &self.cfg);
             let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
             // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
             let args = fc_core::args_for(spec, &self.cfg.opts);
@@ -420,8 +420,17 @@ impl App {
                     }
                 }
                 Msg::Done(i, path, size) => {
+                    // 转换成功且用户选了「删除源文件」——在标记成功之后删，
+                    // 删失败也不影响结果（比如源文件正被别的程序占用）
+                    let src = self.items.get(i).map(|it| it.path.clone());
                     if let Some(it) = self.items.get_mut(i) {
                         it.state = State::Done(path, size);
+                    }
+                    if self.cfg.delete_source {
+                        if let Some(src) = src {
+                            // 删不掉就算了（源文件可能正被占用），不打断整批
+                            let _ = std::fs::remove_file(&src);
+                        }
                     }
                     self.batch_done += 1;
                 }
@@ -551,6 +560,7 @@ impl eframe::App for App {
             )
             .show(ctx, |ui| animating |= self.sidebar(ui));
 
+        let mut do_start = false;
         egui::SidePanel::right("output")
             .exact_width(OUT_W)
             .resizable(false)
@@ -560,12 +570,41 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
             )
             .show(ctx, |ui| {
+                // 开始转换钉在最下面——这一列的终点就是它
+                egui::TopBottomPanel::bottom("out_start")
+                    .frame(
+                        egui::Frame::none()
+                            .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
+                    )
+                    .show_inside(ui, |ui| {
+                        if self.running {
+                            ui.add(
+                                egui::ProgressBar::new(self.overall())
+                                    .desired_width(ui.available_width())
+                                    .fill(ACCENT),
+                            );
+                            ui.add_space(6.0);
+                        }
+                        let can = !self.running
+                            && self.tools.is_some()
+                            && self
+                                .items
+                                .iter()
+                                .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
+                        if start_button(ui, can, self.running) {
+                            do_start = true;
+                        }
+                    });
+
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         animating |= self.output_panel(ui);
                     });
             });
+        if do_start {
+            self.start_batch(ctx);
+        }
 
         egui::SidePanel::right("detail")
             .exact_width(RIGHT_W)
@@ -634,13 +673,36 @@ fn spawn_media_load(
     });
 }
 
-fn unique_output(input: &Path, ext: &str) -> PathBuf {
+/// 目标目录：源文件同目录，或用户指定的目录
+fn output_dir_for(input: &Path, cfg: &settings::Settings) -> PathBuf {
+    match cfg.output_mode {
+        settings::OutputMode::Custom => {
+            let d = cfg.output_dir.trim();
+            if d.is_empty() {
+                input.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+            } else {
+                PathBuf::from(d)
+            }
+        }
+        settings::OutputMode::Source => input
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default(),
+    }
+}
+
+fn unique_output_in(input: &Path, ext: &str, cfg: &settings::Settings) -> PathBuf {
     let stem = input
         .file_stem()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let dir = input.parent().unwrap_or(Path::new("."));
+    let dir_buf = output_dir_for(input, cfg);
+    let dir = if dir_buf.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir_buf.as_path()
+    };
     let mut cand = dir.join(format!("{stem}.{ext}"));
     let mut n = 1;
     while cand.exists() {
@@ -648,6 +710,24 @@ fn unique_output(input: &Path, ext: &str) -> PathBuf {
         n += 1;
     }
     cand
+}
+
+/// 开始转换按钮（放在第四列最下面——它是这一列的终点）
+fn start_button(ui: &mut egui::Ui, can: bool, running: bool) -> bool {
+    let b = egui::Button::new(
+        RichText::new(if running { "转换中…" } else { "开始转换" })
+            .size(13.0)
+            .color(if can {
+                Color32::from_rgb(10, 26, 24)
+            } else {
+                DIM
+            }),
+    )
+    .fill(if can { ACCENT } else { tint(Color32::WHITE, 10) })
+    .stroke(Stroke::NONE)
+    .rounding(Rounding::same(10.0))
+    .min_size(egui::vec2(ui.available_width(), 36.0));
+    ui.add_enabled(can, b).clicked()
 }
 
 fn fmt_duration(s: f64) -> String {
@@ -788,14 +868,15 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 // 紧凑排布：全部格式一屏放下，不做折叠
-                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.spacing_mut().item_spacing.y = 1.0;
                 // 按钮默认内边距 7px 会把 24px 的行撑到 28px，侧栏挤不下
                 ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
 
                 for group in Group::all() {
-                    let specs: Vec<&'static FormatSpec> = fc_core::browsable()
-                        .filter(|f| f.group == group)
-                        .collect();
+                    // 列出该组全部格式：能编码的可以选为输出，
+                    // 只读的也列出来——用户需要知道"手上这个是什么、为什么不能输出成它"
+                    let specs: Vec<&'static FormatSpec> =
+                        fc_core::all().filter(|f| f.group == group).collect();
                     if specs.is_empty() {
                         continue;
                     }
@@ -821,7 +902,8 @@ impl App {
         dt: f32,
     ) -> bool {
         let mut animating = false;
-        let selected = spec.id == self.target.id;
+        let selectable = spec.can_encode;
+        let selected = selectable && spec.id == self.target.id;
 
         let cur = {
             match self.fmt_sel.iter_mut().find(|(id, _)| *id == spec.id) {
@@ -835,16 +917,29 @@ impl App {
 
         let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
         let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
-        let text_c = blend(TEXT, ACCENT, cur);
+        let base = if selectable { TEXT } else { MUTED };
+        let text_c = blend(base, ACCENT, cur);
 
-        let row = egui::Button::new(RichText::new(spec.name).size(11.5).color(text_c))
+        let mut row = egui::Button::new(RichText::new(spec.name).size(11.5).color(text_c))
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke_c))
             .rounding(Rounding::same(8.0))
-            .min_size(egui::vec2(ui.available_width(), 24.0));
+            .min_size(egui::vec2(ui.available_width(), 22.0));
+        if !selectable {
+            row = row
+                .fill(Color32::TRANSPARENT)
+                .stroke(Stroke::NONE);
+        }
 
-        if ui.add(row).clicked() {
-            self.target = spec;
+        let mut resp = ui.add(row);
+        if !selectable {
+            resp = resp.on_hover_text("只读格式：能解码，不能作为输出目标");
+        }
+        if resp.clicked() {
+            // 只读格式不改输出目标，只展开解释
+            if selectable {
+                self.target = spec;
+            }
             self.expanded = if self.expanded == Some(spec.id) {
                 None
             } else {
@@ -1067,33 +1162,6 @@ impl App {
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let can = !self.running
-                && self.tools.is_some()
-                && self
-                    .items
-                    .iter()
-                    .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
-            let btn = egui::Button::new(
-                RichText::new(if self.running { "转换中…" } else { "开始转换" })
-                    .size(13.0)
-                    .color(if can {
-                        Color32::from_rgb(10, 26, 24)
-                    } else {
-                        DIM
-                    }),
-            )
-            .fill(if can { ACCENT } else { tint(Color32::WHITE, 10) })
-            .stroke(if can {
-                Stroke::NONE
-            } else {
-                line(Color32::WHITE, 18)
-            })
-            .rounding(Rounding::same(9.0))
-            .min_size(egui::vec2(112.0, 34.0));
-
-            if ui.add_enabled(can, btn).clicked() {
-                self.start_batch(ctx);
-            }
 
             if ui
                 .add_enabled(
@@ -1776,6 +1844,83 @@ impl App {
         }
         for k in knobs {
             changed |= self.knob_row(ui, *k);
+        }
+
+        ui.add_space(14.0);
+        ui.label(RichText::new("输出到").size(9.0).color(DIM));
+        ui.add_space(4.0);
+        if ui
+            .radio_value(
+                &mut self.cfg.output_mode,
+                settings::OutputMode::Source,
+                RichText::new("源文件同目录").size(10.0).color(MUTED),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+        if ui
+            .radio_value(
+                &mut self.cfg.output_mode,
+                settings::OutputMode::Custom,
+                RichText::new("指定目录").size(10.0).color(MUTED),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+        if self.cfg.output_mode == settings::OutputMode::Custom {
+            ui.horizontal(|ui| {
+                let w = (ui.available_width() - 56.0).max(56.0);
+                let mut dir = self.cfg.output_dir.clone();
+                if ui
+                    .add_sized(
+                        [w, 22.0],
+                        egui::TextEdit::singleline(&mut dir).hint_text("选一个目录"),
+                    )
+                    .changed()
+                {
+                    self.cfg.output_dir = dir;
+                    changed = true;
+                }
+                if ui
+                    .add_sized([50.0, 22.0], egui::Button::new(RichText::new("选…").size(10.0)))
+                    .clicked()
+                {
+                    if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                        self.cfg.output_dir = p.to_string_lossy().to_string();
+                        changed = true;
+                    }
+                }
+            });
+        }
+
+        ui.add_space(12.0);
+        ui.label(RichText::new("转换后").size(9.0).color(DIM));
+        ui.add_space(4.0);
+        if ui
+            .radio_value(
+                &mut self.cfg.delete_source,
+                false,
+                RichText::new("保留源文件").size(10.0).color(MUTED),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+        if ui
+            .radio_value(
+                &mut self.cfg.delete_source,
+                true,
+                RichText::new("删除源文件").size(10.0).color(MUTED),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+        if self.cfg.delete_source {
+            ui.add_space(2.0);
+            para(ui, "删了就找不回来了，谨慎。", 8.5, DANGER);
         }
 
         ui.add_space(8.0);

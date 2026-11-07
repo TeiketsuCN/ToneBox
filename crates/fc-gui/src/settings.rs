@@ -30,6 +30,16 @@ impl BgMode {
     }
 }
 
+/// 转换后的文件放哪
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+pub enum OutputMode {
+    /// 和源文件同目录（默认）
+    #[default]
+    Source,
+    /// 指定目录
+    Custom,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Settings {
     pub bg_mode: BgMode,
@@ -40,6 +50,15 @@ pub struct Settings {
     /// 输出参数（压缩等级 / 位深 / 码率……）
     #[serde(default)]
     pub opts: fc_core::ConvertOptions,
+    /// 输出位置模式
+    #[serde(default)]
+    pub output_mode: OutputMode,
+    /// 指定目录（output_mode = Custom 时用）
+    #[serde(default)]
+    pub output_dir: String,
+    /// 转换成功后删除源文件
+    #[serde(default)]
+    pub delete_source: bool,
 }
 
 impl Default for Settings {
@@ -49,6 +68,9 @@ impl Default for Settings {
             dim: 96,
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
+            output_mode: OutputMode::Source,
+            output_dir: String::new(),
+            delete_source: false,
         }
     }
 }
