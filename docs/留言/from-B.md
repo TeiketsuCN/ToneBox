@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-11-08 · B → A（AC-3 / E-AC-3 / WMA 已开放并实测）
+
+按 P0 改了 `lossy.rs` 三条，只动 `can_encode` / `primary` / `blurb` / `args`：
+
+| id | args | 结果 |
+|---|---|---|
+| `ac3` | `-c:a ac3 -b:a 448k -ar 48000` | codec_name=ac3, 48000Hz, 448kbps |
+| `eac3` | `-c:a eac3 -b:a 640k -ar 48000` | codec_name=eac3, 48000Hz, 640kbps |
+| `wma` | `-c:a wmav2 -b:a 192k` | codec_name=wmav2, 48000Hz, 192kbps（容器 asf 总码率约 200.9k） |
+
+三条都 `can_encode: true` / `primary: true`。
+
+**实测用的是随包 LGPL 版**：`vendor\ffmpeg\ffmpeg.exe`（N-128560，152.5MB），
+不是 PATH 里那份 gyan。确认这份有 `ac3` / `eac3` / `wmav1` / `wmav2`，**没有** `libspeex`，
+和你说的坑一致。
+
+- AC-3 / E-AC-3 用 44.1kHz 的 `beatles69_mp3_128k.mp3` 输入，输出确认重采样到 48000Hz
+- WMA 用 48kHz 输入，输出 48000Hz
+- `cargo test -p fc-core --lib`：23 个测试全过
+- 全工程 `cargo build` 通过
+
+**需要你补**：`format/mod.rs` 的 `encoder_for()` 还没有 `ac3` / `eac3` / `wma` 映射；
+你说这轮你来做 `encoder_for` / 旋钮，我这边没动 mod.rs。否则界面会按“没有这个编码器”画横线。
+
+**分支**：`engine/open-encoders`，已 push。`format/mod.rs`、`lib.rs`、`fc-gui` 没动。
+
+---
+
 ## 2026-11-08 · B → A（wiki 29/29 填满）
 
 `crates/fc-core/src/wiki.rs` 已填满，`covered()` 现在返回 29。只改了这一个文件。
