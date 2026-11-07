@@ -215,6 +215,12 @@ impl Player {
         self.inner.playing.store(false, Ordering::Relaxed);
     }
 
+    /// 停止并归零：下次按播放从头开始
+    pub fn stop(&mut self) {
+        self.pause();
+        self.spawn_decoder(0.0);
+    }
+
     pub fn toggle(&mut self) {
         if self.paused {
             self.play();
