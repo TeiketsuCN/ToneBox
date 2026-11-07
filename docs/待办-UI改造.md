@@ -208,9 +208,9 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 1 | 格式表拆分 + 无损扩列 | ✅ 完成（提交 55586e7 / 7d9c484） |
 | 2 | 字体 Noto Sans SC + 子集化 | ✅ 完成（8.1 MB → 169 KB） |
 | 3 | 试听交互改造 | ✅ 完成 |
-| 4 | 自绘标题栏 L2（44px） | ⏳ 待做 |
-| 5 | 置顶开关 | ⏳ 待做（依赖 4） |
-| 6 | 设置页 | ⏳ 待做（依赖 4） |
+| 4 | 自绘标题栏 L2（44px） | ✅ 完成（提交 05b266e） |
+| 5 | 置顶开关 | ✅ 完成 |
+| 6 | 设置页 | ⏳ 待做 |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -219,6 +219,11 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
   改成自己用时间差判定：同一行两次点击间隔 < 0.45s 即算双击。
 - **按钮内边距会把行高撑大**：`min_size(24px)` 实际渲染 28px，要同时设 `button_padding`。
 - **字体换宽之后**，队列行右侧预留宽度要从 168 加到 186，否则「待转换」被切。
+- **`SetWindowSubclass` 在 windows-sys 里没有**（comctl32 那套没导出）。
+  改用 `SetWindowLongPtrW(GWLP_WNDPROC)` 手动子类化，转发时用 `CallWindowProcW`。
+- **`GetClientRect` 在 WindowsAndMessaging，`ScreenToClient` 在 Graphics::Gdi**，别搞混。
+- **无边框 + WS_THICKFRAME 最大化会大 8px**（窗口跑到 -8,-8）。
+  `WM_GETMINMAXINFO` 里改 `ptMaxSize` 无效（被 DWM 覆盖），最后是在 UI 层补 8px 外边距。
 
 ---
 
