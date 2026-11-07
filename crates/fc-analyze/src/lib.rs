@@ -1,23 +1,35 @@
 //! fc-analyze —— 频谱质量评估。
 //!
-//! 状态：**未实现**，契约已定，等机器 B 接手。
+//! 实现照 `tools/analyze.py`：
+//!   1. ffmpeg 解码成单声道 f32le，保持原始采样率
+//!   2. 4096 点 Hann 窗、50% 重叠，跨帧平均功率谱
+//!   3. 以 1~4kHz 中频段为参考电平归一化到 dB
+//!   4. ±300Hz 窗口内最陡负斜率作为低通边沿
+//!   5. 按编码族查表，并给出置信度和误判说明
 //!
-//! 参考实现已经在本机跑通（Python 版，见 `tools/analyze.py`），
-//! 本次在 44 个对照样本 + 15 个真实 ATRAC 文件上做过标定，结论：
-//!
-//! 1. **同一张阈值表不能通用**：ATRAC3 66k 的低通边沿在 15.2kHz，
-//!    而 MP3 64k 在 11.5kHz。混用会把 ATRAC 系统性判低两档。
-//! 2. **Opus 在 64k 仍保留全带宽**（噪声整形），截止法对它完全失效，
-//!    必须换判据（谱平坦度 / 噪声底电平）。
-//! 3. 判据用"最陡跌落"而不是"跌破 -80dB"：真实编码器边沿 ≥40dB/kHz，
-//!    母带衰减和噪底要缓得多。
-//!
-//! 移植时请照抄 `tools/analyze.py` 的 `find_edge()` 与 `TABLES`，
-//! 系数都是实测标定出来的，不要凭直觉改。
+//! 阈值表按 `docs/样本清单.md` 的实测数据重排。这里只输出推测，
+//! 不把“截止频率 → 码率”当成确定结论；母带带宽受限时给区间而不是硬猜。
 
-use std::path::Path;
+use std::cmp::Ordering;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use fc_core::MediaInfo;
+use anyhow::{anyhow, bail, Context, Result};
+use fc_core::{locate, MediaInfo};
+use rustfft::num_complex::Complex;
+use rustfft::FftPlanner;
+
+const NFFT: usize = 4096;
+const HOP: usize = 2048;
+const MAX_FRAMES: usize = 4000;
+const REF_BAND_LO: f64 = 1000.0;
+const REF_BAND_HI: f64 = 4000.0;
+const SLOPE_WIN_HZ: f64 = 300.0;
+const SLOPE_MIN: f64 = 40.0;
+const KNEE_MIN_HZ: f64 = 4000.0;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone)]
 pub struct QualityReport {
@@ -33,14 +45,497 @@ pub struct QualityReport {
     pub caveats: Vec<String>,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum Family {
+    Mp3,
+    Aac,
+    Atrac3,
+    Atrac3p,
+    Atrac1,
+    Opus,
+    Vorbis,
+    Generic,
+}
+
+impl Family {
+    fn of(codec: &str) -> Self {
+        let c = codec.to_ascii_lowercase();
+        if c.starts_with("atrac3plus") || c == "atrac3p" {
+            Family::Atrac3p
+        } else if c.starts_with("atrac3") {
+            Family::Atrac3
+        } else if c.starts_with("atrac1") {
+            Family::Atrac1
+        } else if c.contains("mp3") {
+            Family::Mp3
+        } else if c == "aac" || c == "aac_latm" {
+            Family::Aac
+        } else if c == "opus" {
+            Family::Opus
+        } else if c.contains("vorbis") {
+            Family::Vorbis
+        } else {
+            Family::Generic
+        }
+    }
+}
+
+struct Guess {
+    estimate: &'static str,
+    /// 乘到边沿陡度置信度上的系数。区间/重叠档位要压低。
+    confidence_scale: f64,
+    caveat: Option<&'static str>,
+}
+
+impl Guess {
+    fn exact(estimate: &'static str) -> Self {
+        Self {
+            estimate,
+            confidence_scale: 1.0,
+            caveat: None,
+        }
+    }
+
+    fn unsure(estimate: &'static str, scale: f64, caveat: &'static str) -> Self {
+        Self {
+            estimate,
+            confidence_scale: scale,
+            caveat: Some(caveat),
+        }
+    }
+}
+
 /// 分析一个文件的频谱质量。
-///
-/// 实现要点（照 `tools/analyze.py`）：
-///   1. ffmpeg 解码成单声道 f32le，**保持原始采样率**，不要重采样
-///   2. 4096 点 Hann 窗、50% 重叠、跨帧平均功率谱
-///   3. 以 1~4kHz 中频段为参考电平归一化到 dB
-///   4. 找 ±300Hz 窗口内的最陡负斜率作为边沿
-///   5. 按编码族查表（mp3 / aac / atrac3 / atrac3p / opus 各一张）
-pub fn analyze(_path: &Path, _info: &MediaInfo) -> anyhow::Result<QualityReport> {
-    anyhow::bail!("频谱分析尚未实现（契约见本文件头注释，参考实现见 tools/analyze.py）")
+pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
+    if info.sample_rate == 0 {
+        bail!("采样率未知，无法做频谱分析");
+    }
+    let tools = locate().ok_or_else(|| {
+        anyhow!("找不到 ffmpeg / ffprobe。请安装 FFmpeg，或把 ffmpeg.exe、ffprobe.exe 放到 PATH / C:\\ffmpeg\\bin。")
+    })?;
+
+    let sr = info.sample_rate as f64;
+    let samples = decode_mono(&tools.ffmpeg, path, info.sample_rate)?;
+    let (freqs, db) = mean_spectrum(&samples, sr);
+    let sm = smooth(&db, 9);
+    let ref_db = median(&sm, &freqs, REF_BAND_LO, REF_BAND_HI);
+
+    let nyquist = sr / 2.0;
+    let (edge, slope) = find_edge(&freqs, &sm, nyquist);
+    let cutoff = edge.unwrap_or(nyquist);
+
+    let family = Family::of(&info.codec);
+    let lossless = is_lossless_codec(&info.codec);
+    let mut caveats: Vec<String> = Vec::new();
+
+    let (estimate, base_conf) = if lossless {
+        caveats.push(
+            "编码本身是无损格式；频谱只能说明文件没有被再次有损压缩，不能证明母带质量。"
+                .to_string(),
+        );
+        ("无损/CD".to_string(), 0.92)
+    } else if family == Family::Opus {
+        caveats.push(
+            "Opus 在低码率也保留全带宽（噪声整形/带宽扩展），频谱截止无法反推码率，需换判据（谱平坦度/噪声底电平）。"
+                .to_string(),
+        );
+        ("不可判定".to_string(), 0.10)
+    } else if edge.is_none() {
+        let (est, conf, why) = no_edge_guess(family);
+        caveats.push(why.to_string());
+        (est.to_string(), conf)
+    } else {
+        let guess = classify(family, cutoff, slope);
+        let sigmoid = 1.0 / (1.0 + (-(slope.abs() - 45.0) / 8.0).exp());
+        let mut conf = sigmoid * guess.confidence_scale;
+        if let Some(note) = guess.caveat {
+            caveats.push(note.to_string());
+        }
+
+        // 边沿上方残留能量高 → 噪底填充，推测可能偏高。
+        let above: Vec<f64> = freqs
+            .iter()
+            .zip(sm.iter())
+            .filter(|(f, _)| **f > cutoff + 1000.0)
+            .map(|(_, v)| *v)
+            .collect();
+        if !above.is_empty() && median_of_slice(&above) - ref_db > -55.0 {
+            caveats.push(
+                "边沿上方仍有明显能量，疑似噪底填充（黑胶/模拟噪声），推测可能偏高。".to_string(),
+            );
+            conf *= 0.75;
+        }
+
+        // 边沿下方能量偏低 → 音源本身高频就少。
+        let below: Vec<f64> = freqs
+            .iter()
+            .zip(sm.iter())
+            .filter(|(f, _)| **f > cutoff - 2000.0 && **f < cutoff - 400.0)
+            .map(|(_, v)| *v)
+            .collect();
+        if !below.is_empty() && mean_of_slice(&below) - ref_db < -25.0 {
+            caveats.push(
+                "边沿下方能量已偏低，音源本身高频可能就少（电子乐/老录音），推测可能偏低。"
+                    .to_string(),
+            );
+            conf *= 0.8;
+        }
+
+        (guess.estimate.to_string(), conf)
+    };
+
+    let confidence = (round2(base_conf.clamp(0.05, 0.97))).clamp(0.05, 0.97);
+    Ok(QualityReport {
+        cutoff_hz: cutoff,
+        slope_db_per_khz: slope,
+        estimate,
+        confidence,
+        caveats,
+    })
+}
+
+fn is_lossless_codec(codec: &str) -> bool {
+    let c = codec.to_ascii_lowercase();
+    c.starts_with("pcm_")
+        || matches!(
+            c.as_str(),
+            "flac" | "alac" | "wavpack" | "ape" | "tta" | "truehd" | "mlp" | "shorten"
+        )
+}
+
+fn no_edge_guess(family: Family) -> (&'static str, f64, &'static str) {
+    match family {
+        Family::Aac => (
+            "256",
+            0.55,
+            "未找到陡峭边沿。AAC 在高码率会把带宽保留到 Nyquist，按 256k 档处理；无法排除无损或母带带宽受限。",
+        ),
+        Family::Mp3 => (
+            "256~320",
+            0.45,
+            "未找到陡峭边沿。MP3 高码率或母带带宽受限时都可能是这样，只能给区间。",
+        ),
+        Family::Atrac3p => (
+            "256~352",
+            0.40,
+            "未找到陡峭边沿。ATRAC3+ 高码率与母带带宽受限无法仅凭截止频率区分。",
+        ),
+        Family::Atrac3 => (
+            "132~292",
+            0.35,
+            "未找到陡峭边沿。ATRAC3 高码率与母带带宽受限无法仅凭截止频率区分。",
+        ),
+        Family::Atrac1 => (
+            "292",
+            0.40,
+            "未找到陡峭边沿。ATRAC1 只有 292k 一档，按该档处理。",
+        ),
+        Family::Vorbis => (
+            "320",
+            0.45,
+            "未找到陡峭边沿。Vorbis 高码率或母带带宽受限时都可能是这样。",
+        ),
+        Family::Opus => ("不可判定", 0.10, "截止法对 Opus 无效。"),
+        Family::Generic => (
+            "无损/CD",
+            0.35,
+            "未找到陡峭边沿：可能本来是无损，或高频被母带/话筒带宽限制。",
+        ),
+    }
+}
+
+fn classify(family: Family, cutoff: f64, slope: f64) -> Guess {
+    // 表按 44.1/48kHz 实测数据标定，单位 Hz。
+    // 同一档位在不同母带上可能重叠，所以允许区间。
+    match family {
+        Family::Mp3 => {
+            if cutoff >= 20000.0 {
+                Guess::exact("320")
+            } else if cutoff >= 19500.0 {
+                Guess::unsure("256", 0.70, "256k MP3 样本不足，该档位边界是插值估计。")
+            } else if cutoff >= 17500.0 {
+                Guess::exact("192")
+            } else if cutoff >= 16000.0 {
+                // 128/192/320 在母带带宽受限时截止频率会撞在一起。
+                // 编码器切出来的边沿很陡；母带自身滚降的边沿更缓。
+                let steep = slope.abs();
+                if steep < 80.0 {
+                    Guess::unsure(
+                        "320",
+                        0.45,
+                        "截止频率与 128/192 档重叠；边沿较缓，更像母带带宽受限的高码率文件，推测可能高估。",
+                    )
+                } else if steep < 100.0 {
+                    Guess::unsure(
+                        "192",
+                        0.50,
+                        "截止频率与 128/320 档重叠，已结合边沿陡度判断，仍可能相差一档。",
+                    )
+                } else {
+                    Guess::unsure(
+                        "128",
+                        0.55,
+                        "截止频率与 192/320 档重叠，已结合边沿陡度判断，仍可能相差一档。",
+                    )
+                }
+            } else if cutoff >= 15800.0 {
+                Guess::exact("128")
+            } else if cutoff >= 12500.0 {
+                Guess::exact("96")
+            } else {
+                Guess::exact("64")
+            }
+        }
+        Family::Aac => {
+            if cutoff >= 20500.0 {
+                Guess::exact("256")
+            } else if cutoff >= 18500.0 {
+                Guess::exact("192")
+            } else if cutoff >= 14000.0 {
+                Guess::unsure(
+                    "128~256",
+                    0.50,
+                    "128k 与 256k 在母带带宽受限时截止频率重叠，只能给出区间。",
+                )
+            } else {
+                Guess::exact("64")
+            }
+        }
+        Family::Atrac3 => {
+            if cutoff >= 18000.0 {
+                Guess::exact("132")
+            } else if cutoff >= 16000.0 {
+                Guess::unsure(
+                    "66~132",
+                    0.50,
+                    "ATRAC3 66k 与 132k 的截止频率重叠（同族样本差异大于档位差异），只能给区间。",
+                )
+            } else if cutoff >= 14500.0 {
+                Guess::unsure(
+                    "66~105",
+                    0.50,
+                    "ATRAC3 66k 与 105k 的截止频率重叠（同族样本差异大于档位差异），只能给区间。",
+                )
+            } else {
+                Guess::exact("66")
+            }
+        }
+        Family::Atrac3p => {
+            if cutoff >= 19300.0 {
+                Guess::exact("256")
+            } else if cutoff >= 18500.0 {
+                Guess::exact("48")
+            } else if cutoff >= 16000.0 {
+                Guess::exact("128")
+            } else if cutoff >= 14500.0 {
+                Guess::unsure(
+                    "65~128",
+                    0.50,
+                    "ATRAC3+ 65k 与 128k 的截止频率几乎重合，只能给区间。",
+                )
+            } else {
+                Guess::exact("49")
+            }
+        }
+        Family::Atrac1 => Guess::exact("292"),
+        Family::Opus => Guess::unsure("不可判定", 0.10, "截止法对 Opus 无效。"),
+        Family::Vorbis => {
+            if cutoff >= 19500.0 {
+                Guess::exact("320")
+            } else if cutoff >= 17500.0 {
+                Guess::exact("192")
+            } else if cutoff >= 15000.0 {
+                Guess::exact("128")
+            } else if cutoff >= 12000.0 {
+                Guess::exact("96")
+            } else {
+                Guess::exact("64")
+            }
+        }
+        Family::Generic => {
+            if cutoff >= 19500.0 {
+                Guess::exact("320")
+            } else if cutoff >= 17000.0 {
+                Guess::exact("192")
+            } else if cutoff >= 15000.0 {
+                Guess::exact("128")
+            } else if cutoff >= 12500.0 {
+                Guess::exact("96")
+            } else if cutoff >= 10000.0 {
+                Guess::exact("64")
+            } else {
+                Guess::exact("32~48")
+            }
+        }
+    }
+}
+
+fn decode_mono(ffmpeg: &PathBuf, path: &Path, sample_rate: u32) -> Result<Vec<f32>> {
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"])
+        .arg(path)
+        .args(["-map", "0:a:0", "-ac", "1", "-ar"])
+        .arg(sample_rate.to_string())
+        .args(["-f", "f32le", "-"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let out = cmd.output().context("启动 ffmpeg 解码失败")?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let tail: String = err
+            .chars()
+            .rev()
+            .take(400)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        bail!("ffmpeg 解码失败：\n{}", tail.trim());
+    }
+    if out.stdout.len() < NFFT * 4 {
+        bail!("样本太短，无法分析（少于 4096 个采样点）");
+    }
+    Ok(out
+        .stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect())
+}
+
+fn mean_spectrum(x: &[f32], sample_rate: f64) -> (Vec<f64>, Vec<f64>) {
+    let n_frames = 1 + x.len().saturating_sub(NFFT) / HOP;
+    let frame_indices: Vec<usize> = if n_frames <= MAX_FRAMES {
+        (0..n_frames).collect()
+    } else {
+        (0..MAX_FRAMES)
+            .map(|k| {
+                let t = k as f64 * (n_frames - 1) as f64 / (MAX_FRAMES - 1) as f64;
+                (t as usize).min(n_frames - 1)
+            })
+            .collect()
+    };
+
+    let win: Vec<f64> = (0..NFFT)
+        .map(|i| {
+            let t = 2.0 * std::f64::consts::PI * i as f64 / (NFFT - 1) as f64;
+            0.5 - 0.5 * t.cos()
+        })
+        .collect();
+    let win_norm: f64 = win.iter().map(|v| v * v).sum();
+
+    let mut planner = FftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(NFFT);
+    let mut buf = vec![Complex::new(0.0, 0.0); NFFT];
+    let mut acc = vec![0.0f64; NFFT / 2 + 1];
+    let mut used = 0usize;
+
+    for &idx in &frame_indices {
+        let start = idx * HOP;
+        if start + NFFT > x.len() {
+            break;
+        }
+        for j in 0..NFFT {
+            buf[j] = Complex::new(x[start + j] as f64 * win[j], 0.0);
+        }
+        fft.process(&mut buf);
+        for (k, slot) in acc.iter_mut().enumerate() {
+            *slot += buf[k].norm_sqr() / win_norm;
+        }
+        used += 1;
+    }
+
+    let used = used.max(1) as f64;
+    let db: Vec<f64> = acc
+        .iter()
+        .map(|v| 10.0 * (v / used + 1e-30).log10())
+        .collect();
+    let freqs: Vec<f64> = (0..=NFFT / 2)
+        .map(|k| k as f64 * sample_rate / NFFT as f64)
+        .collect();
+    (freqs, db)
+}
+
+/// 9 点滑动平均，边界补零（等价于 np.convolve(..., mode="same")）。
+fn smooth(a: &[f64], w: usize) -> Vec<f64> {
+    let mut out = vec![0.0; a.len()];
+    let half = (w / 2) as isize;
+    for (i, slot) in out.iter_mut().enumerate() {
+        let mut sum = 0.0;
+        for j in 0..w {
+            let idx = i as isize + j as isize - half;
+            if idx >= 0 && (idx as usize) < a.len() {
+                sum += a[idx as usize];
+            }
+        }
+        *slot = sum / w as f64;
+    }
+    out
+}
+
+fn find_edge(freqs: &[f64], sm: &[f64], nyquist: f64) -> (Option<f64>, f64) {
+    let df = freqs[1] - freqs[0];
+    let w = ((SLOPE_WIN_HZ / df) as usize).max(1);
+    let lo = (KNEE_MIN_HZ / df) as usize;
+    let hi = ((nyquist - 400.0).max(0.0) / df) as usize;
+    let start = w.max(lo);
+    let end = hi.min(sm.len().saturating_sub(w + 1));
+
+    let mut best_f = None;
+    let mut best_slope = 0.0f64;
+    for i in start..end {
+        let slope = (sm[i + w] - sm[i - w]) / (2.0 * w as f64 * df) * 1000.0;
+        if slope < best_slope {
+            best_slope = slope;
+            best_f = Some(freqs[i]);
+        }
+    }
+
+    if best_f.is_some() && best_slope <= -SLOPE_MIN {
+        (best_f, best_slope)
+    } else {
+        (None, best_slope)
+    }
+}
+
+fn values_in_band(sm: &[f64], freqs: &[f64], lo: f64, hi: f64) -> Vec<f64> {
+    freqs
+        .iter()
+        .zip(sm.iter())
+        .filter(|(f, _)| **f >= lo && **f <= hi)
+        .map(|(_, v)| *v)
+        .collect()
+}
+
+fn median(sm: &[f64], freqs: &[f64], lo: f64, hi: f64) -> f64 {
+    median_of_slice(&values_in_band(sm, freqs, lo, hi))
+}
+
+fn median_of_slice(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut v = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    let n = v.len();
+    if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        (v[n / 2 - 1] + v[n / 2]) / 2.0
+    }
+}
+
+fn mean_of_slice(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        0.0
+    } else {
+        values.iter().sum::<f64>() / values.len() as f64
+    }
+}
+
+fn round2(v: f64) -> f64 {
+    (v * 100.0).round() / 100.0
 }

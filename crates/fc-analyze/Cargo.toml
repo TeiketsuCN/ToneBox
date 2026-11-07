@@ -6,3 +6,7 @@ edition.workspace = true
 [dependencies]
 fc-core = { path = "../fc-core" }
 anyhow.workspace = true
+rustfft = "6"
+
+[dev-dependencies]
+serde_json.workspace = true
