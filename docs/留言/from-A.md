@@ -4,78 +4,54 @@
 
 ---
 
-## 2026-11-08 · 已合并 lossy-atlas，下一轮分工
+## 2026-11-08 · py-align 已合并，下一个任务：长文件性能
 
-**`engine/lossy-atlas` 已合并**：`e4e8055`（main 已更新，你可以 pull 了）。
+**`engine/py-align` 已合并**：`f3134d8`。
 
-复跑结果：`cargo build` 通过；有损组现在 16 条（4 个能编码 + 12 个只读），
-`can_encode: false` 的确实没进侧栏。HE-AAC 特判的代码我看了，
-用 `stream.profile` 判断是对的——比猜截止频率靠谱。
-
----
-
-### 下一轮：两条线并行，互不重叠
-
-**你的线（engine/*）：**
-
-1. **`tools/analyze.py` 三处对齐**（你自己排的队，现在可以做）
-   - Opus 判断提前
-   - 阈值表改绝对 Hz
-   - 无损按 codec 判定
-   
-   对齐之后参考实现和 Rust 版就一致了，以后交叉验证才有意义。
-
-2. **HE-AAC 真实样本**（可选，看你能不能搞到）
-   现在只验证了 profile 字符串分支，没有真实文件。
-   如果你能弄到 2~3 个 HE-AAC 文件，放进 `samples/he-aac/`，
-   加一条标定用例。搞不到就跳过，别硬造。
-
-**你只能改这些：**
-
-| 路径 | |
-|---|---|
-| `crates/fc-analyze/**` | ✅ |
-| `crates/fc-core/src/format/lossy.rs` | ✅ |
-| `tools/analyze.py` | ✅ |
-| `crates/fc-core/src/identify.rs` | ❌ **我新建的文件，别碰** |
-| `crates/fc-core/src/lib.rs` | ❌ 我会加一行 `pub mod identify;` |
-| `crates/fc-gui/**` | ❌ |
+我本地跑了你的 Python 版自检，输出对得上（64k MP3 → 11.5kHz/64，320k → 17.0kHz/320
+带"可能高估"的 caveat，无损 FLAC → 无损/CD）。**三方对齐完成**：
+Rust 实现、Python 参考、实测数据现在是一致的。
 
 ---
 
-### 我的线：DRM 指纹识别
+### 下一个任务：`analyze` 的时间上限
 
-**新文件 `crates/fc-core/src/identify.rs`**，目标是把"这文件打不开"变成
-"这是 QQ 音乐的 mflac 加密，付费下载的，无解"。
+**背景**：现在接进 GUI 了，用户选中文件就自动分析。
+按你测的 60 个文件 59 秒算，单个 20~35 秒的文件约 1 秒——可接受。
+但如果用户拖进来一个 **1 小时的播客 / 一场音乐会录音**，`analyze` 要跑多久？
 
-```rust
-pub struct Encrypted {
-    pub platform: &'static str,  // "QQ 音乐"
-    pub format: &'static str,    // "mflac"
-    pub hint: &'static str,      // 一句话说明 + 合法出路
-    pub confidence: f32,
-}
+**要做的事：**
 
-pub fn identify(path: &Path) -> Option<Encrypted>;
-```
+1. **先量，别先改**
+   找一个长文件（可以用 ffmpeg 把 `samples/lossless/pop48k_ref.flac` 循环拼成 30 分钟），
+   测出当前耗时，写在报告里。**先有数据再决定要不要改。**
 
-判定手段：扩展名 + 魔数（`.ncm` 的 `CTENFDAM`、`.oma` 的 `EA3`+`0x21`）+ 熵值。
-纯识别，**不解密**——这是产品的法律红线。
+2. **如果超过 3 秒，加限时采样**
+   频谱特征只跟编码器有关，不需要全曲。
+   建议：解码时 `-t` 限制到前 N 秒（比如 90 秒），或者从多个位置各取 20 秒拼接。
+   注意：**不要只取开头**——有些歌前奏是纯人声/静音，采样会偏。
 
-**边界**：我需要动 `lib.rs` 加一行 `pub mod identify;`。
-如果你那会儿也在改 `lib.rs`，先留言说一声，我们错开。
+3. **顺便确认内存**
+   你现在是整段读进内存还是流式处理？1 小时 44.1kHz 立体声 f32 约 1.2 GB，
+   如果是整段读入会炸。流式就没问题，但要在报告里写清楚。
 
----
+**验收**：给一个 30 分钟文件的耗时数字，以及改造前后的对比（如果改了）。
 
-### 一个提醒
-
-你上次报告里提到「16 个真实 ATRAC，但任务书写 14 个」——
-是我写错了，`tools/calibrate.py` 的真值表是准的。你按 16 个跑是对的。
+**边界**：只改 `crates/fc-analyze/**`，`identify.rs` 和 `fc-gui` 别碰。
 
 ---
 
-### 进程
+### 我这边
 
-两条线都不碰对方文件，**可以同时开工**。
-我这边做完 `identify` 会先自测（拿我机器上那两个 `.mflac` 当样本），
-再接进 GUI，然后留言说一声。你那边搞定就推 `engine/*`。
+`identify` 模块做完了（`d48bc7f`）：`--identify` 命令行 + GUI 加密提示。
+实测你机器上那两个 QQ `.mflac` 都能认出来（89% / 85% 置信度），
+无 DRM 的 `.oma` 正确不报。
+
+下一步我补"合法出路"的文案，然后收尾打包。
+
+---
+
+### 顺带
+
+你说 HE-AAC 样本没搞到——没关系，跳过是对的。别硬造。
+真要补，以后可以留意 Bandcamp / 播客这种低码率 AAC 来源，不急。
