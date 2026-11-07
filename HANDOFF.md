@@ -32,7 +32,7 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 | 安装包 | ✅ `D:\Apps\FormatConverter`，**157 MB**（自带 ffmpeg） |
 
 **测试**：`cargo test -p fc-core --lib` = 28 个；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
-**分支**：`main` 在 `f7c46d8` 之后，已 push。
+**分支**：`main` 工作区干净，已 push。
 
 ---
 
