@@ -1091,8 +1091,16 @@ impl App {
                                     }
                                 }
 
+                                // 选过格式就把「···」换成格式名，用户一眼能看到这行要转成什么
+                                let pick = override_id
+                                    .and_then(fc_core::by_id)
+                                    .map(|f| f.name.to_string());
+                                let (label, label_col) = match &pick {
+                                    Some(n) => (n.clone(), ACCENT),
+                                    None => ("···".to_string(), DIM),
+                                };
                                 let menu_resp = ui.menu_button(
-                                    RichText::new("···").size(12.0).color(DIM),
+                                    RichText::new(label).size(if pick.is_some() { 10.5 } else { 12.0 }).color(label_col),
                                     |ui| {
                                         ui.set_min_width(120.0);
                                         if ui
@@ -2086,29 +2094,38 @@ fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, active: boo
             );
         }
         TitleBtn::Restore => {
-            p.rect_stroke(
-                egui::Rect::from_center_size(c + egui::vec2(1.5, 1.5), egui::vec2(8.0, 8.0)),
-                Rounding::same(2.0),
+            // 前面那个窗口
+            let front = egui::Rect::from_min_max(
+                c + egui::vec2(-4.5, -2.5),
+                c + egui::vec2(3.5, 5.5),
+            );
+            p.rect_stroke(front, Rounding::same(2.0), Stroke::new(1.2, col));
+            // 后面那个窗口：只露出上边和右边，构成 L 形
+            let back_tl = c + egui::vec2(-2.0, -5.0);
+            let back_br = c + egui::vec2(5.0, 2.0);
+            p.line_segment(
+                [back_tl, egui::pos2(back_br.x, back_tl.y)],
                 Stroke::new(1.2, col),
             );
             p.line_segment(
                 [
-                    c + egui::vec2(-4.0, -4.0),
-                    c + egui::vec2(2.0, -4.0),
+                    egui::pos2(back_br.x - 0.5, back_tl.y),
+                    egui::pos2(back_br.x - 0.5, back_br.y),
                 ],
                 Stroke::new(1.2, col),
             );
         }
         TitleBtn::Close => {
-            for d in [-4.0_f32, 4.0] {
-                p.line_segment(
-                    [
-                        c + egui::vec2(-d, -d),
-                        c + egui::vec2(d, d),
-                    ],
-                    Stroke::new(1.2, col),
-                );
-            }
+            // 两条对角线才是 ×。之前写成 for d in [-4, 4] 再 (-d,-d)→(d,d)，
+            // 两轮画的是同一条线，看起来只有一个反斜杠。
+            p.line_segment(
+                [c + egui::vec2(-4.0, -4.0), c + egui::vec2(4.0, 4.0)],
+                Stroke::new(1.2, col),
+            );
+            p.line_segment(
+                [c + egui::vec2(-4.0, 4.0), c + egui::vec2(4.0, -4.0)],
+                Stroke::new(1.2, col),
+            );
         }
         TitleBtn::Pin => {
             // 简化图钉：一个圆 + 一根针；固定时实心

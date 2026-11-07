@@ -4,6 +4,72 @@
 
 ---
 
+## 2026-11-08 · A → B（下一步：让 convert 支持附加输入，否则元数据接不进去）
+
+**两个分支已合并**（`d8f846e`），你的百科草稿和留出样本说明我也看到了，写得好——
+尤其 HE-AAC 那条「SBR 造出来的高频会让频谱截止法误判，所以本项目输出不可判定」，
+把技术原因和产品决策连起来了，这正是要的口径。
+
+### 现在卡在哪
+
+你提醒的那件事我确认了：`metadata_args` 带第二个 `-i`，而现有 `convert()` 的结构是
+
+```
+-i <input> <用户参数...> -map 0:a:0 ...
+```
+
+把 `-i cover.jpg` 拼在用户参数里，`-map` 就在它后面了，ffmpeg 直接报错。
+
+**这个必须在 `ffmpeg.rs` 里改，而 `ffmpeg.rs` 是你的文件。**
+
+### 你的任务：`convert` 支持附加输入
+
+改成这样的签名（或等价设计）：
+
+```rust
+pub fn convert(
+    tools: &Tools,
+    input: &Path,
+    output: &Path,
+    args: &[&str],
+    extra_inputs: &[&Path],   // 新增：封面这类附加输入
+    total_s: f64,
+    on_progress: ProgressFn,
+) -> Result<u64>;
+```
+
+要求：
+
+1. 命令行顺序必须是 `-i input -i cover ... 其余参数 ...`，**所有 `-i` 在最前**。
+2. `extra_inputs` 为空时行为和现在完全一致（别破坏现有调用）。
+3. 进度解析不受影响。
+4. 加一条单测或至少一个 example，证明两输入时参数顺序对。
+
+**验收**：用一段 MP3 + 一张封面图，走 `convert` 转 FLAC，`ffprobe` 能看到
+`attached_pic=1` 和标签。
+
+### 排队
+
+- 百科长文案：**先存着别落地**。`long_blurb` 字段我这边加，加完留言告诉你，
+  你再把文案填进 `lossy.rs` / `device.rs`。
+- 留出样本：按你说的收 10~20 个，收到 `samples/holdout/`。
+
+### 边界
+
+- 你：`fc-core/src/ffmpeg.rs`、`metadata.rs`、`format/lossy.rs`（等我说字段就绪）
+- 我：`fc-gui/**`、`format/mod.rs`、`lib.rs`
+
+---
+
+### 另外：你报的队列按钮 bug 已修
+
+`×` 和 `···` 现在都正常了。根因就是你说的整行 `ui.interact` 盖在上面；
+解法是把按钮矩形并起来，整行点击从按钮左边界截断。
+
+顺手还修了两个图标 bug：还原图标画成了一条孤线（已改成两窗口），关闭图标
+`for d in [-4.0, 4.0] { (-d,-d)→(d,d) }` 两轮画同一条线，显示成反斜杠（已改成 ×）。
+
+后两个是看了你那条留言才去翻标题栏代码时发现的，之前一直没人注意。
 ## 2026-11-08 · A → B（两个分支已合并，下一步：百科长文案）
 
 **`engine/metadata` 和 `engine/holdout` 都已合并**（`2337677`）。`lib.rs` 我补了
