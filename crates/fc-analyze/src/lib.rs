@@ -159,7 +159,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
         caveats.push(why.to_string());
         (est.to_string(), conf)
     } else {
-        let guess = classify(family, cutoff, slope);
+        let guess = classify(family, cutoff);
         let sigmoid = 1.0 / (1.0 + (-(slope.abs() - 45.0) / 8.0).exp());
         let mut conf = sigmoid * guess.confidence_scale;
         if let Some(note) = guess.caveat {
@@ -258,7 +258,7 @@ fn no_edge_guess(family: Family) -> (&'static str, f64, &'static str) {
     }
 }
 
-fn classify(family: Family, cutoff: f64, slope: f64) -> Guess {
+fn classify(family: Family, cutoff: f64) -> Guess {
     // 表按 44.1/48kHz 实测数据标定，单位 Hz。
     // 同一档位在不同母带上可能重叠，所以允许区间。
     match family {
@@ -270,28 +270,13 @@ fn classify(family: Family, cutoff: f64, slope: f64) -> Guess {
             } else if cutoff >= 17500.0 {
                 Guess::exact("192")
             } else if cutoff >= 16000.0 {
-                // 128/192/320 在母带带宽受限时截止频率会撞在一起。
-                // 编码器切出来的边沿很陡；母带自身滚降的边沿更缓。
-                let steep = slope.abs();
-                if steep < 80.0 {
-                    Guess::unsure(
-                        "320",
-                        0.45,
-                        "截止频率与 128/192 档重叠；边沿较缓，更像母带带宽受限的高码率文件，推测可能高估。",
-                    )
-                } else if steep < 100.0 {
-                    Guess::unsure(
-                        "192",
-                        0.50,
-                        "截止频率与 128/320 档重叠，已结合边沿陡度判断，仍可能相差一档。",
-                    )
-                } else {
-                    Guess::unsure(
-                        "128",
-                        0.55,
-                        "截止频率与 192/320 档重叠，已结合边沿陡度判断，仍可能相差一档。",
-                    )
-                }
+                // 源带宽受限时，128/192/320 的截止频率在 16~17.5kHz 撞在一起。
+                // 不再用边沿陡度硬猜单档：留出集验证显示这个规则只被 pop48k 一张母版支撑。
+                Guess::unsure(
+                    "128/192/320",
+                    0.35,
+                    "截止频率落在 128/192/320 的重叠区；母带带宽受限时无法单值区分，只能给区间。",
+                )
             } else if cutoff >= 15800.0 {
                 Guess::exact("128")
             } else if cutoff >= 12500.0 {
@@ -636,7 +621,7 @@ fn round2(v: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{profile_is_he_aac, sample_windows};
+    use super::{classify, profile_is_he_aac, sample_windows, Family};
 
     #[test]
     fn detects_he_aac_profiles() {
@@ -646,6 +631,13 @@ mod tests {
         assert!(profile_is_he_aac("he_aac"));
         assert!(!profile_is_he_aac("LC"));
         assert!(!profile_is_he_aac(""));
+    }
+
+    #[test]
+    fn mp3_overlap_is_an_interval_not_a_guess() {
+        let guess = classify(Family::Mp3, 16969.0);
+        assert_eq!(guess.estimate, "128/192/320");
+        assert!(guess.confidence_scale < 0.5);
     }
 
     #[test]

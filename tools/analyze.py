@@ -142,7 +142,7 @@ def profile_is_he_aac(profile):
     )
 
 
-def classify(family, cutoff, slope):
+def classify(family, cutoff):
     """返回 (estimate, confidence_scale, caveat)。阈值单位 Hz，按 44.1/48kHz 实测标定。"""
     if family == "mp3":
         if cutoff >= 20000:
@@ -152,17 +152,10 @@ def classify(family, cutoff, slope):
         if cutoff >= 17500:
             return "192", 1.0, None
         if cutoff >= 16000:
-            # 128/192/320 在母带带宽受限时截止频率会撞在一起。
-            # 编码器切出来的边沿很陡；母带自身滚降的边沿更缓。
-            steep = abs(slope)
-            if steep < 80:
-                return ("320", 0.45,
-                        "截止频率与 128/192 档重叠；边沿较缓，更像母带带宽受限的高码率文件，推测可能高估。")
-            if steep < 100:
-                return ("192", 0.50,
-                        "截止频率与 128/320 档重叠，已结合边沿陡度判断，仍可能相差一档。")
-            return ("128", 0.55,
-                    "截止频率与 192/320 档重叠，已结合边沿陡度判断，仍可能相差一档。")
+            # 源带宽受限时，128/192/320 的截止频率在 16~17.5kHz 撞在一起。
+            # 不再用边沿陡度硬猜单档：留出集验证显示这个规则只被 pop48k 一张母版支撑。
+            return ("128/192/320", 0.35,
+                    "截止频率落在 128/192/320 的重叠区；母带带宽受限时无法单值区分，只能给区间。")
         if cutoff >= 15800:
             return "128", 1.0, None
         if cutoff >= 12500:
@@ -300,7 +293,7 @@ def analyze(path):
         est, conf, why = no_edge_guess(fam)
         caveats.append(why)
     else:
-        est, scale, note = classify(fam, cutoff, slope)
+        est, scale, note = classify(fam, cutoff)
         # 边沿陡度 → 置信度：真的是编码器切的边沿通常 >50dB/kHz
         conf = 1.0 / (1.0 + math.exp(-(abs(slope) - 45.0) / 8.0)) * scale
         if note:
