@@ -954,10 +954,10 @@ impl App {
             // 否则文字会被自己的裁剪矩形切掉右边（长文案换行后就露出来了）
             let avail_w = (ui.available_width() - 4.0).max(60.0);
             let text_w = (avail_w - 6.0).max(50.0);
-            // 有长文案就用长文案（wiki.rs 里写的），没有就退回三行小字
-            let text = fc_core::long_blurb(spec.id).unwrap_or(spec.blurb);
+            // 侧栏用小字说明（三行以内）。`wiki.rs` 的长文案留给以后的百科页，
+            // 塞进侧栏会把列表撑得没法看。
             let galley = ui.painter().layout(
-                text.to_string(),
+                spec.blurb.to_string(),
                 egui::FontId::proportional(9.5),
                 MUTED,
                 text_w,
