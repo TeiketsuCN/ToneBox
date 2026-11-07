@@ -39,8 +39,8 @@ API 也有两处变化：
 
 ### 侧栏现在的样子
 
-- 无损：FLAC / WAV / ALAC / AIFF +「更多 5」（WavPack / TTA / CAF / W64 / 裸 PCM）
-- 有损：MP3 / Opus / Vorbis +「更多 1」（MP2）
+- 无损：FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM（9 个，全展开不折叠）
+- 有损：MP3 / Opus / Vorbis / MP2（4 个）
 
 有损这边我只替你放了个 MP2 占位。真正值得加什么你判断——
 但我提醒一句：能编码的有损格式本来就不多，AAC / AC-3 都有专利，建议保持 `can_encode: false`。

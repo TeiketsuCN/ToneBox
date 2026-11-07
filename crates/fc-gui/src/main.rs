@@ -139,8 +139,6 @@ struct App {
     blurb_id: Option<&'static str>,
     detail_t: f32,
     detail_for: usize,
-    /// 每个格式分组是否展开了「更多」
-    more_open: [bool; 3],
 }
 
 impl App {
@@ -177,7 +175,6 @@ impl App {
             blurb_id: Some(target.id),
             detail_t: 1.0,
             detail_for: 0,
-            more_open: [false; 3],
         }
     }
 
@@ -498,7 +495,7 @@ impl App {
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(
-                    RichText::new("只处理未加密文件\n不支持任何 DRM")
+                    RichText::new("只处理未加密文件 · 不支持任何 DRM")
                         .size(9.5)
                         .color(DIM),
                 );
@@ -508,35 +505,25 @@ impl App {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                for (gi, group) in Group::all().iter().enumerate() {
-                    let (main, more) = fc_core::split_group(*group);
-                    if main.is_empty() {
+                // 紧凑排布：全部格式一屏放下，不做折叠
+                ui.spacing_mut().item_spacing.y = 2.0;
+                // 按钮默认内边距 7px 会把 24px 的行撑到 28px，侧栏挤不下
+                ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
+
+                for group in Group::all() {
+                    let specs: Vec<&'static FormatSpec> = fc_core::browsable()
+                        .filter(|f| f.group == group)
+                        .collect();
+                    if specs.is_empty() {
                         continue;
                     }
 
-                    ui.add_space(8.0);
-                    ui.label(RichText::new(group.title()).size(10.0).color(DIM));
-                    ui.add_space(2.0);
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(group.title()).size(9.5).color(DIM));
+                    ui.add_space(1.0);
 
-                    for spec in main {
+                    for spec in specs {
                         animating |= self.format_row(ui, spec, dt);
-                    }
-
-                    if !more.is_empty() {
-                        let open = self.more_open[gi];
-                        let label = if open {
-                            "收起".to_string()
-                        } else {
-                            format!("更多 {}", more.len())
-                        };
-                        if more_toggle(ui, &label, open) {
-                            self.more_open[gi] = !open;
-                        }
-                        if open {
-                            for spec in more {
-                                animating |= self.format_row(ui, spec, dt);
-                            }
-                        }
                     }
                 }
             });
@@ -568,11 +555,11 @@ impl App {
         let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
         let text_c = blend(TEXT, ACCENT, cur);
 
-        let row = egui::Button::new(RichText::new(spec.name).size(13.0).color(text_c))
+        let row = egui::Button::new(RichText::new(spec.name).size(11.5).color(text_c))
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke_c))
-            .rounding(Rounding::same(9.0))
-            .min_size(egui::vec2(ui.available_width(), 30.0));
+            .rounding(Rounding::same(8.0))
+            .min_size(egui::vec2(ui.available_width(), 24.0));
 
         if ui.add(row).clicked() {
             self.target = spec;
@@ -589,11 +576,11 @@ impl App {
             let wrap_w = (ui.available_width() - 12.0).max(60.0);
             let galley = ui.painter().layout(
                 spec.blurb.to_string(),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(9.5),
                 MUTED,
                 wrap_w,
             );
-            let full_h = galley.size().y + 4.0;
+            let full_h = galley.size().y + 3.0;
             let h = full_h * self.blurb_t;
             let (rect, _) =
                 ui.allocate_exact_size(egui::vec2(wrap_w, h), egui::Sense::hover());
@@ -1119,43 +1106,6 @@ fn card(ui: &mut egui::Ui, color: Color32, add: impl FnOnce(&mut egui::Ui)) {
         .rounding(Rounding::same(12.0))
         .inner_margin(egui::Margin::same(13.0))
         .show(ui, add);
-}
-
-/// 「更多 / 收起」折叠行。
-/// 箭头不用字符（字体里没有 ▾▲，会渲染成方块），直接用 painter 画三角形。
-fn more_toggle(ui: &mut egui::Ui, label: &str, open: bool) -> bool {
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
-    let p = ui.painter();
-    if resp.hovered() {
-        p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 10));
-    }
-    p.text(
-        rect.left_center() + egui::vec2(6.0, 0.0),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(10.0),
-        DIM,
-    );
-    let c = rect.right_center() - egui::vec2(12.0, 0.0);
-    let tri = if open {
-        vec![
-            c + egui::vec2(-4.0, 2.0),
-            c + egui::vec2(4.0, 2.0),
-            c + egui::vec2(0.0, -3.0),
-        ]
-    } else {
-        vec![
-            c + egui::vec2(-4.0, -2.0),
-            c + egui::vec2(4.0, -2.0),
-            c + egui::vec2(0.0, 3.0),
-        ]
-    };
-    p.add(egui::Shape::convex_polygon(tri, DIM, Stroke::NONE));
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp.clicked()
 }
 
 fn chip(ui: &mut egui::Ui, text: &str, color: Color32) {
