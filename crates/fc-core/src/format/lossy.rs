@@ -70,9 +70,12 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Lossy,
         patent: Patent::Expiring,
-        can_encode: false,
-        primary: false,
-        blurb: "比 MP3 更高效，同码率通常更好听。\n部分专利仍在有效期，本项目不做编码。",
+        // 专利：核心专利大多过期，HE-AAC 部分仍在保护期。
+        // 开放依据是"跟随行业惯例"（Shutter Encoder / HandBrake 等都直接打包 AAC 编码），
+        // 不是"零风险"——这一点不要美化。
+        can_encode: true,
+        primary: true,
+        blurb: "比 MP3 更高效，同码率通常更好听。\n车载和手机兼容性比 Opus 好。",
         args: &["-c:a", "aac"],
         size_ratio: 0.1,
     },
@@ -148,12 +151,13 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Lossy,
         patent: Patent::Free,
-        // 专利免费且 ffmpeg 有编码器（libspeex），所以作为输出开放。
-        // 但它是语音编码器，编音乐会很难听——这层判断写进 long_blurb，不藏在代码里。
-        can_encode: true,
-        primary: true,
-        blurb: "2002 年的开源语音编码，专利免费。\n专为人声设计，频率上限只有 8 kHz；编音乐金属感很重。",
-        args: &["-c:a", "libspeex", "-ar", "32000"],
+        // 专利免费，但**随包的 LGPL 构建没有 libspeex 编码器**，
+        // 只有开发机上那份 gyan 全量版才有。开放了就是给用户挖坑，所以关掉。
+        // 教训：验证编码能力要用"随包的那份 ffmpeg"，不是开发机碰巧装的那份。
+        can_encode: false,
+        primary: false,
+        blurb: "2002 年的开源语音编码，专利免费。\n专为人声设计，频率上限只有 8 kHz，已被 Opus 取代。",
+        args: &[],
         size_ratio: 0.02,
     },
     FormatSpec {

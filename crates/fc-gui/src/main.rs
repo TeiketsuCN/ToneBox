@@ -183,6 +183,9 @@ struct App {
     settings_t: f32,
     /// 元数据区是否展开（默认收起，第四列放不下那么多控件）
     meta_open: bool,
+    /// 捐赠收款码（放在程序目录，runtime 读取，改名即可换）
+    donate_wechat: Option<egui::TextureHandle>,
+    donate_alipay: Option<egui::TextureHandle>,
 }
 
 impl App {
@@ -231,6 +234,8 @@ impl App {
             settings_open: false,
             settings_t: 0.0,
             meta_open: false,
+            donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
+            donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
         }
     }
 
@@ -1471,6 +1476,43 @@ impl App {
                                 row(ui, "频谱分析", "fc-analyze（自研）");
                                 row(ui, "许可", "开源，详见仓库");
                             });
+
+                        ui.add_space(18.0);
+                        section(ui, "支持开发");
+                        para(
+                            ui,
+                            "这个工具免费、开源、不卖授权。如果它帮你把旧 MD 里的东西救出来了，欢迎请我喝杯咖啡。",
+                            9.5,
+                            MUTED,
+                        );
+                        ui.add_space(10.0);
+                        let has_qr = self.donate_wechat.is_some() || self.donate_alipay.is_some();
+                        if has_qr {
+                            ui.horizontal(|ui| {
+                                if let Some(t) = &self.donate_wechat {
+                                    ui.vertical(|ui| {
+                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
+                                        ui.add_space(3.0);
+                                        ui.label(RichText::new("微信").size(9.0).color(DIM));
+                                    });
+                                }
+                                ui.add_space(16.0);
+                                if let Some(t) = &self.donate_alipay {
+                                    ui.vertical(|ui| {
+                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
+                                        ui.add_space(3.0);
+                                        ui.label(RichText::new("支付宝").size(9.0).color(DIM));
+                                    });
+                                }
+                            });
+                        } else {
+                            para(
+                                ui,
+                                "（把收款码放到程序目录，命名 donate-wechat.png / donate-alipay.png 即可显示）",
+                                8.5,
+                                DIM,
+                            );
+                        }
                     });
             });
 
@@ -1835,6 +1877,7 @@ impl App {
             Some(Knob::Mp3Bitrate) => format!("{}k", self.cfg.opts.mp3_bitrate),
             Some(Knob::OpusBitrate) => format!("{}k", self.cfg.opts.opus_bitrate),
             Some(Knob::VorbisQuality) => format!("q{}", self.cfg.opts.vorbis_q),
+            Some(Knob::AacBitrate) => format!("{}k", self.cfg.opts.aac_bitrate),
             _ => "默认".into(),
         }
     }
@@ -2262,6 +2305,18 @@ impl App {
                     }
                 });
             }
+            Knob::AacBitrate => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
+                    for v in [128u32, 192, 256, 320] {
+                        let on = self.cfg.opts.aac_bitrate == v;
+                        if seg_button(ui, &format!("{v}"), on) {
+                            self.cfg.opts.aac_bitrate = v;
+                            changed = true;
+                        }
+                    }
+                });
+            }
         }
         changed
     }
@@ -2435,6 +2490,27 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// 读一张收款码图片（放程序目录，用户自己换）。没有就返回 None。
+fn load_qr(ctx: &egui::Context, name: &str) -> Option<egui::TextureHandle> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let path = dir.join(name);
+    if !path.is_file() {
+        return None;
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+    let color = egui::ColorImage {
+        size: [w, h],
+        pixels: rgba
+            .pixels()
+            .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+            .collect(),
+    };
+    Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
 }
 
 /// 队列行左边的封面缩略图。没有封面就给一个占位方块。
@@ -2628,6 +2704,18 @@ fn main() -> eframe::Result<()> {
             std::process::exit(1);
         }
         println!("完成: {output}");
+        return Ok(());
+    }
+
+    // 命令行：打印当前用到的 ffmpeg/ffprobe 路径
+    if args.first().map(|s| s.as_str()) == Some("--tools") {
+        match fc_core::locate() {
+            Some(t) => {
+                println!("ffmpeg : {}", t.ffmpeg.display());
+                println!("ffprobe: {}", t.ffprobe.display());
+            }
+            None => println!("没找到 ffmpeg（需要 ffmpeg.exe + ffprobe.exe）"),
+        }
         return Ok(());
     }
 

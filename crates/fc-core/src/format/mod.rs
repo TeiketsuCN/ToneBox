@@ -219,6 +219,13 @@ pub struct ConvertOptions {
     pub opus_bitrate: u32,
     /// Vorbis 质量 0~10
     pub vorbis_q: u8,
+    /// AAC 码率 kbps
+    #[serde(default = "default_aac_bitrate")]
+    pub aac_bitrate: u32,
+}
+
+fn default_aac_bitrate() -> u32 {
+    256
 }
 
 impl Default for ConvertOptions {
@@ -229,6 +236,7 @@ impl Default for ConvertOptions {
             mp3_bitrate: 320,
             opus_bitrate: 96,
             vorbis_q: 6,
+            aac_bitrate: 256,
         }
     }
 }
@@ -241,6 +249,7 @@ pub enum Knob {
     Mp3Bitrate,
     OpusBitrate,
     VorbisQuality,
+    AacBitrate,
 }
 
 /// 这个格式能调什么。空数组表示"没得调，用默认值"。
@@ -253,6 +262,7 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "mp3" => &[Knob::Mp3Bitrate],
         "opus" => &[Knob::OpusBitrate],
         "vorbis" => &[Knob::VorbisQuality],
+        "aac" => &[Knob::AacBitrate],
         _ => &[],
     }
 }
@@ -294,6 +304,12 @@ pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
             s("libvorbis"),
             s("-q:a"),
             o.vorbis_q.min(10).to_string(),
+        ],
+        "aac" => vec![
+            s("-c:a"),
+            s("aac"),
+            s("-b:a"),
+            format!("{}k", o.aac_bitrate),
         ],
         // 没列的格式用表里的默认参数
         _ => spec.args.iter().map(|a| a.to_string()).collect(),
@@ -394,6 +410,8 @@ mod tests {
         assert!(args_for(spec("opus"), &o).contains(&"192k".to_string()));
         o.vorbis_q = 9;
         assert!(args_for(spec("vorbis"), &o).contains(&"9".to_string()));
+        o.aac_bitrate = 192;
+        assert!(args_for(spec("aac"), &o).contains(&"192k".to_string()));
     }
 
     #[test]

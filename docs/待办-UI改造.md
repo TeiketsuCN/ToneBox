@@ -217,6 +217,9 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 10 | 元数据与封面（标签 + 内嵌封面进队列） | ✅ 完成（`fc-core/src/tags.rs`） |
 | 11 | 四列布局（输出独立成列，窗口 1270） | ✅ 完成 |
 | 12 | 元数据编辑（读写标签 + 封面） | ✅ 完成（第四列折叠区 + `metadata_args`） |
+| 13 | 随包 ffmpeg（LGPL 共享版） | ✅ 完成（`tools/fetch-ffmpeg.ps1`，152 MB） |
+| 14 | 开放 AAC 编码 | ✅ 完成（128/192/256/320 可选） |
+| 15 | 捐赠收款码 | ✅ 完成（放程序目录 `donate-wechat.png` / `donate-alipay.png`） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -230,6 +233,10 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 - **`GetClientRect` 在 WindowsAndMessaging，`ScreenToClient` 在 Graphics::Gdi**，别搞混。
 - **winresource 的 `compile()` 会失败也不该中断构建**：用 `let _ =` 吞掉错误，
   没图标总比编译不过强（机器 B 的环境未必有 windres）。
+- **验证编码能力要用"随包的那份 ffmpeg"**：开发机装的是 gyan 全量版（有 `libspeex`），
+  随包的是 LGPL 共享版（**没有** `libspeex`）。我按开发机验证开放了 Speex，
+  用户装了包会转失败。凡是要暴露成输出格式，必须用 `D:\Apps\FormatConverter\ffmpeg\ffmpeg.exe`
+  再验一遍。
 - **PowerShell 5.1 的 `Get-Content` 会把 UTF-8 当 GBK 读**：用它读 `config.json`
   再 `ConvertTo-Json` 写回，中文会变成 `娴嬭瘯鑹轰汉` 这种乱码。改配置要用
   `[System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)`。

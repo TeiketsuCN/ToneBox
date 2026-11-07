@@ -32,6 +32,17 @@ Get-Process -Name 'format-converter','格式转换器' -ErrorAction SilentlyCont
 Start-Sleep -Milliseconds 500
 
 Copy-Item -LiteralPath $built -Destination "$AppDir\$ExeName" -Force
+
+# 随包 ffmpeg（LGPL 共享版，由 tools\fetch-ffmpeg.ps1 下载）
+$ffSrc = "D:\FormatConverter\vendor\ffmpeg"
+if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
+    Get-ChildItem -LiteralPath $ffSrc -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination "$AppDir\ffmpeg\$($_.Name)" -Force
+    }
+    Write-Host "已随包 ffmpeg"
+} else {
+    Write-Host "警告：没有 vendor\ffmpeg，安装后需另外装 ffmpeg（跑 tools\fetch-ffmpeg.ps1）"
+}
 @"
 格式转换器 $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
