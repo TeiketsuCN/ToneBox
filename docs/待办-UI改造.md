@@ -216,6 +216,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 9 | 打包收尾（图标 + 版本资源） | ✅ 完成（`build.rs` + winresource） |
 | 10 | 元数据与封面（标签 + 内嵌封面进队列） | ✅ 完成（`fc-core/src/tags.rs`） |
 | 11 | 四列布局（输出独立成列，窗口 1270） | ✅ 完成 |
+| 12 | 元数据编辑（读写标签 + 封面） | ✅ 完成（第四列折叠区 + `metadata_args`） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -229,6 +230,9 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 - **`GetClientRect` 在 WindowsAndMessaging，`ScreenToClient` 在 Graphics::Gdi**，别搞混。
 - **winresource 的 `compile()` 会失败也不该中断构建**：用 `let _ =` 吞掉错误，
   没图标总比编译不过强（机器 B 的环境未必有 windres）。
+- **PowerShell 5.1 的 `Get-Content` 会把 UTF-8 当 GBK 读**：用它读 `config.json`
+  再 `ConvertTo-Json` 写回，中文会变成 `娴嬭瘯鑹轰汉` 这种乱码。改配置要用
+  `[System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)`。
 - **整行点击会吃掉行内按钮**：`ui.interact(整行矩形)` 注册在按钮之后，
   交互层盖在上面，`×` / `···` 永远收不到点击（用户反馈两次）。
   解法：把按钮矩形并起来，整行点击的矩形从按钮左边界截断。

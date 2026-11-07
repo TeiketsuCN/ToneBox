@@ -59,6 +59,22 @@ pub struct Settings {
     /// 转换成功后删除源文件
     #[serde(default)]
     pub delete_source: bool,
+    /// 批量元数据：艺术家（空 = 沿用源文件标签）
+    #[serde(default)]
+    pub meta_artist: String,
+    /// 批量元数据：专辑
+    #[serde(default)]
+    pub meta_album: String,
+    /// 封面图路径（空 = 沿用源文件内嵌封面）
+    #[serde(default)]
+    pub meta_cover: String,
+    /// 是否写标签（默认开：源文件有标签就带过去）
+    #[serde(default = "default_true")]
+    pub write_tags: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -71,6 +87,10 @@ impl Default for Settings {
             output_mode: OutputMode::Source,
             output_dir: String::new(),
             delete_source: false,
+            meta_artist: String::new(),
+            meta_album: String::new(),
+            meta_cover: String::new(),
+            write_tags: true,
         }
     }
 }

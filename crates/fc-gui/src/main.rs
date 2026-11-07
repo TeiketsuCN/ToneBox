@@ -49,7 +49,7 @@ const BG: Color32 = Color32::from_rgb(14, 16, 22);
 const TITLEBAR_H: f32 = 44.0;
 const LEFT_W: f32 = 216.0;
 const RIGHT_W: f32 = 300.0;
-const OUT_W: f32 = 240.0;
+const OUT_W: f32 = 272.0;
 
 fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
@@ -112,6 +112,10 @@ struct Item {
     analysis: Analysis,
     tags: fc_core::Tags,
     cover: Option<egui::TextureHandle>,
+    /// 单文件标题覆盖（空 = 沿用源标签）
+    title_ov: Option<String>,
+    /// 单文件音轨号覆盖
+    track_ov: Option<String>,
 }
 
 impl Item {
@@ -177,6 +181,8 @@ struct App {
     cfg: settings::Settings,
     settings_open: bool,
     settings_t: f32,
+    /// 元数据区是否展开（默认收起，第四列放不下那么多控件）
+    meta_open: bool,
 }
 
 impl App {
@@ -224,6 +230,7 @@ impl App {
             cfg: settings::Settings::load(),
             settings_open: false,
             settings_t: 0.0,
+            meta_open: false,
         }
     }
 
@@ -259,6 +266,8 @@ impl App {
                 analysis: Analysis::Idle,
                 tags: fc_core::Tags::default(),
                 cover: None,
+                title_ov: None,
+                track_ov: None,
             });
         }
         if !self.items.is_empty() && self.selected >= self.items.len() {
@@ -277,7 +286,40 @@ impl App {
             let out = unique_output_in(&it.path, spec.ext, &self.cfg);
             let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
             // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
-            let args = fc_core::args_for(spec, &self.cfg.opts);
+            let mut args = fc_core::args_for(spec, &self.cfg.opts);
+
+            // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢
+            if self.cfg.write_tags {
+                let mut tags = it.tags.clone();
+                if let Some(v) = it.title_ov.as_ref().filter(|v| !v.trim().is_empty()) {
+                    tags.title = Some(v.trim().to_string());
+                }
+                if let Some(v) = it.track_ov.as_ref().filter(|v| !v.trim().is_empty()) {
+                    tags.track = Some(v.trim().to_string());
+                }
+                if !self.cfg.meta_artist.trim().is_empty() {
+                    tags.artist = Some(self.cfg.meta_artist.trim().to_string());
+                }
+                if !self.cfg.meta_album.trim().is_empty() {
+                    tags.album = Some(self.cfg.meta_album.trim().to_string());
+                }
+
+                // 封面只有支持 attached_pic 的容器才传（B 的提醒：WAV/AIFF 不吃）
+                let cover_ok = matches!(spec.id, "flac" | "mp3" | "m4a" | "alac");
+                let cover_path = self.cfg.meta_cover.trim();
+                let cover = if cover_ok && !cover_path.is_empty() {
+                    Some(std::path::PathBuf::from(cover_path))
+                } else {
+                    None
+                };
+
+                let mw = fc_core::MetaWrite {
+                    tags: &tags,
+                    cover: cover.as_deref(),
+                };
+                args.extend(fc_core::metadata_args(&mw));
+            }
+
             jobs.push((i, it.path.clone(), out, args, dur));
             it.state = State::Running(0.0);
         }
@@ -297,11 +339,12 @@ impl App {
                 let tx_p = tx.clone();
                 let ctx_p = ctx2.clone();
                 let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
-                let res = fc_core::convert(
+                let res = fc_core::ffmpeg::convert_with_inputs(
                     &tools,
                     &input,
                     &out,
                     &arg_refs,
+                    &[],
                     dur,
                     Box::new(move |p| {
                         let _ = tx_p.send(Msg::Progress(idx, p));
@@ -309,8 +352,8 @@ impl App {
                     }),
                 );
                 match res {
-                    Ok(()) => {
-                        let size = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
+                    Ok(size) => {
+                        // convert_with_inputs 直接返回输出字节数
                         let _ = tx.send(Msg::Done(idx, out, size));
                     }
                     Err(e) => {
@@ -1940,6 +1983,196 @@ impl App {
             para(ui, "删了就找不回来了，谨慎。", 8.5, DANGER);
         }
 
+        ui.add_space(14.0);
+        // 折叠头：整行可点，右侧画三角
+        let (hrect, hresp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 24.0),
+            egui::Sense::click(),
+        );
+        let hp = ui.painter();
+        if hresp.hovered() {
+            hp.rect_filled(hrect, Rounding::same(6.0), tint(Color32::WHITE, 10));
+        }
+        hp.text(
+            hrect.left_center() + egui::vec2(2.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            "元数据",
+            egui::FontId::proportional(9.5),
+            DIM,
+        );
+        // 收起时显示已填了几项，不用展开也知道有没有设过
+        let filled = [
+            self.cfg.meta_artist.trim(),
+            self.cfg.meta_album.trim(),
+            self.cfg.meta_cover.trim(),
+            self.items
+                .get(self.selected)
+                .and_then(|i| i.title_ov.as_deref())
+                .unwrap_or(""),
+        ]
+        .iter()
+        .filter(|v| !v.is_empty())
+        .count();
+        if filled > 0 {
+            hp.text(
+                hrect.left_center() + egui::vec2(44.0, 0.0),
+                egui::Align2::LEFT_CENTER,
+                format!("{} 项已填", filled),
+                egui::FontId::proportional(9.0),
+                ACCENT,
+            );
+        }
+        let tc = hrect.right_center() - egui::vec2(9.0, 0.0);
+        let tri = if self.meta_open {
+            vec![
+                tc + egui::vec2(-4.0, 2.0),
+                tc + egui::vec2(4.0, 2.0),
+                tc + egui::vec2(0.0, -3.0),
+            ]
+        } else {
+            vec![
+                tc + egui::vec2(-4.0, -2.0),
+                tc + egui::vec2(4.0, -2.0),
+                tc + egui::vec2(0.0, 3.0),
+            ]
+        };
+        hp.add(egui::Shape::convex_polygon(tri, DIM, Stroke::NONE));
+        if hresp.clicked() {
+            self.meta_open = !self.meta_open;
+        }
+        ui.add_space(2.0);
+
+        if self.meta_open {
+            if ui
+                .checkbox(
+                    &mut self.cfg.write_tags,
+                    RichText::new("写入标签").size(10.0).color(MUTED),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        }
+
+        if self.meta_open && self.cfg.write_tags {
+            let sel = self.selected;
+            let has_file = self.items.get(sel).is_some();
+
+            // ── 当前文件（只影响这一个）──
+            if has_file {
+                let mut title = self
+                    .items
+                    .get(sel)
+                    .and_then(|i| i.title_ov.clone())
+                    .unwrap_or_default();
+                ui.add_space(6.0);
+                ui.label(RichText::new("标题（当前文件）").size(9.0).color(DIM));
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut title)
+                            .hint_text("留空=用源文件标签")
+                            .margin(egui::vec2(6.0, 4.0)),
+                    )
+                    .changed()
+                {
+                    if let Some(it) = self.items.get_mut(sel) {
+                        it.title_ov = if title.trim().is_empty() {
+                            None
+                        } else {
+                            Some(title.clone())
+                        };
+                    }
+                    changed = true;
+                }
+
+                let mut track = self
+                    .items
+                    .get(sel)
+                    .and_then(|i| i.track_ov.clone())
+                    .unwrap_or_default();
+                ui.add_space(4.0);
+                ui.label(RichText::new("音轨号").size(9.0).color(DIM));
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut track)
+                            .hint_text("如 03")
+                            .margin(egui::vec2(6.0, 4.0)),
+                    )
+                    .changed()
+                {
+                    if let Some(it) = self.items.get_mut(sel) {
+                        it.track_ov = if track.trim().is_empty() {
+                            None
+                        } else {
+                            Some(track.clone())
+                        };
+                    }
+                    changed = true;
+                }
+            }
+
+            // ── 全批（影响所有文件）──
+            ui.add_space(8.0);
+            ui.label(RichText::new("艺术家（全部）").size(9.0).color(DIM));
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.cfg.meta_artist)
+                        .hint_text("留空=用源文件标签")
+                        .margin(egui::vec2(6.0, 4.0)),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            ui.add_space(4.0);
+            ui.label(RichText::new("专辑（全部）").size(9.0).color(DIM));
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.cfg.meta_album)
+                        .hint_text("留空=用源文件标签")
+                        .margin(egui::vec2(6.0, 4.0)),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+
+            ui.add_space(6.0);
+            ui.label(RichText::new("封面（全部）").size(9.0).color(DIM));
+            ui.horizontal(|ui| {
+                let name = std::path::Path::new(&self.cfg.meta_cover)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "沿用源文件".into());
+                ui.label(RichText::new(name).size(9.0).color(DIM));
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .add_sized(
+                        [(ui.available_width() - 46.0).max(50.0), 22.0],
+                        egui::Button::new(RichText::new("选图片…").size(9.5)),
+                    )
+                    .clicked()
+                {
+                    if let Some(p) = rfd::FileDialog::new()
+                        .add_filter("图片", &["jpg", "jpeg", "png", "webp"])
+                        .pick_file()
+                    {
+                        self.cfg.meta_cover = p.to_string_lossy().to_string();
+                        changed = true;
+                    }
+                }
+                if ui
+                    .add_sized([42.0, 22.0], egui::Button::new(RichText::new("清除").size(9.0)))
+                    .clicked()
+                {
+                    self.cfg.meta_cover.clear();
+                    changed = true;
+                }
+            });
+            para(ui, "封面只写进 FLAC/MP3/M4A。", 8.5, DIM);
+        }
+
         ui.add_space(8.0);
         let est = self
             .items
@@ -2489,8 +2722,8 @@ fn main() -> eframe::Result<()> {
     };
 
     let mut viewport = egui::ViewportBuilder::default()
-            .with_inner_size([1270.0, 680.0])
-            .with_min_inner_size([1180.0, 560.0])
+            .with_inner_size([1302.0, 700.0])
+            .with_min_inner_size([1212.0, 600.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_title("格式转换器");
