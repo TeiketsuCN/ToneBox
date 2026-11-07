@@ -5,8 +5,10 @@
 
 pub mod ffmpeg;
 pub mod format;
+pub mod identify;
 
 pub use ffmpeg::{convert, locate, probe, MediaInfo, ProgressFn, Tools};
+pub use identify::{identify, Encrypted};
 pub use format::{
     all, browsable, by_id, default_target, estimate_size, split_group, targets_for, Choice,
     FormatSpec, Group, Kind, Patent,

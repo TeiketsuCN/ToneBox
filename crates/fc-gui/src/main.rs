@@ -219,7 +219,18 @@ impl App {
             }
             let (info, error) = match fc_core::probe(&tools, &p) {
                 Ok(i) => (Some(i), None),
-                Err(e) => (None, Some(format!("{e:#}"))),
+                Err(e) => {
+                    // 读不出来时先问一句"是不是加密的"，能答就答得比报错清楚
+                    let msg = match fc_core::identify(&p) {
+                        Some(enc) => format!(
+                            "{}\n\n{}",
+                            enc.summary(),
+                            enc.hint
+                        ),
+                        None => format!("{e:#}"),
+                    };
+                    (None, Some(msg))
+                }
             };
             self.items.push(Item {
                 path: p,
@@ -1862,6 +1873,24 @@ fn main() -> eframe::Result<()> {
             std::process::exit(1);
         }
         println!("完成: {output}");
+        return Ok(());
+    }
+
+    // 命令行：只做加密识别，不开界面
+    if args.first().map(|s| s.as_str()) == Some("--identify") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter --identify <文件>");
+            std::process::exit(2);
+        };
+        let path = Path::new(input);
+        match fc_core::identify(path) {
+            Some(e) => {
+                println!("{}", e.summary());
+                println!();
+                println!("{}", e.hint);
+            }
+            None => println!("不是加密文件（或不在已知格式库里）"),
+        }
         return Ok(());
     }
 
