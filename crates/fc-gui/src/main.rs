@@ -22,7 +22,16 @@ use std::sync::mpsc::{channel, Receiver};
 use eframe::egui;
 use egui::{Align, Color32, Layout, RichText, Rounding, Stroke};
 
+use fc_analyze::QualityReport;
 use fc_core::{estimate_size, FormatSpec, Group, MediaInfo, Tools};
+
+/// 频谱分析的状态
+enum Analysis {
+    Idle,
+    Running,
+    Done(QualityReport),
+    Failed(String),
+}
 
 // ── 配色 ────────────────────────────────────────────────
 const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
@@ -98,6 +107,7 @@ struct Item {
     sel_t: f32,
     hovered: bool,
     progress_t: f32,
+    analysis: Analysis,
 }
 
 impl Item {
@@ -146,6 +156,9 @@ struct App {
     last_click: (usize, f64),
     /// 窗口是否置顶
     pinned: bool,
+    /// 频谱分析结果通道
+    analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>)>,
+    analysis_rx: Receiver<(usize, Result<QualityReport, String>)>,
 }
 
 impl App {
@@ -160,6 +173,7 @@ impl App {
         cc.egui_ctx.set_style(style);
 
         let target = fc_core::default_target();
+        let (atx, arx) = channel();
         App {
             tools: fc_core::locate(),
             items: Vec::new(),
@@ -184,6 +198,8 @@ impl App {
             detail_for: 0,
             last_click: (usize::MAX, -10.0),
             pinned: false,
+            analysis_tx: atx,
+            analysis_rx: arx,
         }
     }
 
@@ -207,6 +223,7 @@ impl App {
                 sel_t: 0.0,
                 hovered: false,
                 progress_t: 0.0,
+                analysis: Analysis::Idle,
             });
         }
         if !self.items.is_empty() && self.selected >= self.items.len() {
@@ -268,6 +285,29 @@ impl App {
         });
     }
 
+    /// 起一个后台线程做频谱分析（每个文件约 1 秒，不能卡界面）
+    fn start_analyze(&mut self, idx: usize, ctx: &egui::Context) {
+        let Some(it) = self.items.get_mut(idx) else {
+            return;
+        };
+        if !matches!(it.analysis, Analysis::Idle) {
+            return;
+        }
+        let Some(info) = it.info.clone() else {
+            return;
+        };
+        let path = it.path.clone();
+        it.analysis = Analysis::Running;
+
+        let tx = self.analysis_tx.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let res = fc_analyze::analyze(&path, &info).map_err(|e| format!("{e:#}"));
+            let _ = tx.send((idx, res));
+            ctx.request_repaint();
+        });
+    }
+
     fn start_play(&mut self, idx: usize) {
         self.player = None;
         self.play_error = None;
@@ -290,6 +330,17 @@ impl App {
             Err(e) => {
                 self.play_error = Some(format!("{e:#}"));
                 self.player_for = Some(idx);
+            }
+        }
+    }
+
+    fn poll_analysis(&mut self) {
+        while let Ok((idx, res)) = self.analysis_rx.try_recv() {
+            if let Some(it) = self.items.get_mut(idx) {
+                it.analysis = match res {
+                    Ok(r) => Analysis::Done(r),
+                    Err(e) => Analysis::Failed(e),
+                };
             }
         }
     }
@@ -354,6 +405,7 @@ impl eframe::App for App {
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         self.poll();
+        self.poll_analysis();
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -1166,6 +1218,76 @@ impl App {
                     }
                 });
 
+            // ── 质量评估（频谱分析）──
+            ui.add_space(14.0);
+            match &it.analysis {
+                Analysis::Idle | Analysis::Running => {
+                    para(ui, "正在分析频谱…", 9.5, DIM);
+                }
+                Analysis::Failed(e) => {
+                    card(ui, DANGER, |ui| {
+                        para(ui, "频谱分析失败", 11.0, DANGER);
+                        ui.add_space(4.0);
+                        para(ui, e, 9.0, MUTED);
+                    });
+                }
+                Analysis::Done(r) => {
+                    para(ui, "质量评估", 9.5, DIM);
+                    ui.add_space(6.0);
+                    egui::Grid::new("quality_grid")
+                        .num_columns(2)
+                        .spacing([12.0, 6.0])
+                        .show(ui, |ui| {
+                            row(
+                                ui,
+                                "截止频率",
+                                &format!("{:.1} kHz", r.cutoff_hz / 1000.0),
+                            );
+                            let est = if !r.estimate.is_empty()
+                                && r.estimate
+                                    .chars()
+                                    .all(|c| c.is_ascii_digit() || c == '~')
+                            {
+                                format!("{} kbps", r.estimate)
+                            } else {
+                                r.estimate.clone()
+                            };
+                            row(ui, "推测源质量", &est);
+
+                            ui.label(RichText::new("置信度").size(9.5).color(DIM));
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(118.0, 10.0),
+                                egui::Sense::hover(),
+                            );
+                            let p = ui.painter();
+                            p.rect_filled(rect, Rounding::same(5.0), tint(Color32::WHITE, 14));
+                            let mut f = rect;
+                            f.set_width(rect.width() * (r.confidence as f32).clamp(0.0, 1.0));
+                            p.rect_filled(
+                                f,
+                                Rounding::same(5.0),
+                                if r.confidence > 0.6 { ACCENT } else { WARN },
+                            );
+                            ui.label(
+                                RichText::new(format!("{:.0}%", r.confidence * 100.0))
+                                    .size(9.0)
+                                    .color(DIM),
+                            );
+                            ui.end_row();
+                        });
+
+                    if !r.caveats.is_empty() {
+                        ui.add_space(8.0);
+                        card(ui, WARN, |ui| {
+                            for c in &r.caveats {
+                                para(ui, &format!("· {c}"), 9.0, MUTED);
+                                ui.add_space(2.0);
+                            }
+                        });
+                    }
+                }
+            }
+
             let spec = it.spec(self.target);
             if m.is_lossy()
                 && matches!(
@@ -1229,6 +1351,16 @@ impl App {
                 });
             }
             _ => {}
+        }
+
+        // 选中即分析（结果进缓存，切回来不重跑）
+        if self
+            .items
+            .get(self.selected)
+            .map(|i| matches!(i.analysis, Analysis::Idle) && i.info.is_some())
+            .unwrap_or(false)
+        {
+            self.start_analyze(self.selected, ui.ctx());
         }
 
         animating
