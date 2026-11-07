@@ -1,0 +1,5 @@
+/target
+/out
+/samples
+*.log
+backdrop.log

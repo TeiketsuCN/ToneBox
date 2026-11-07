@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = ["crates/fc-core", "crates/fc-analyze", "crates/fc-gui"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

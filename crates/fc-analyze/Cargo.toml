@@ -1,0 +1,8 @@
+[package]
+name = "fc-analyze"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fc-core = { path = "../fc-core" }
+anyhow.workspace = true
