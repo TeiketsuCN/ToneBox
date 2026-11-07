@@ -1019,6 +1019,9 @@ impl App {
                         .rounding(Rounding::same(12.0))
                         .inner_margin(egui::Margin::symmetric(14.0, 10.0));
 
+                    // 右侧按钮占据的区域。整行点击必须避开它，
+                    // 否则整行 interact 会盖在按钮上面，把点击吃掉。
+                    let mut btn_zone: Option<egui::Rect> = None;
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let row_w = ui.available_width();
@@ -1088,7 +1091,7 @@ impl App {
                                     }
                                 }
 
-                                ui.menu_button(
+                                let menu_resp = ui.menu_button(
                                     RichText::new("···").size(12.0).color(DIM),
                                     |ui| {
                                         ui.set_min_width(120.0);
@@ -1109,12 +1112,12 @@ impl App {
                                     },
                                 );
 
-                                if ui
-                                    .small_button(RichText::new("×").size(11.0).color(DIM))
-                                    .clicked()
-                                {
+                                let del_resp =
+                                    ui.small_button(RichText::new("×").size(11.0).color(DIM));
+                                if del_resp.clicked() {
                                     remove = Some(i);
                                 }
+                                btn_zone = Some(menu_resp.response.rect.union(del_resp.rect));
                             });
                         });
                     });
@@ -1125,11 +1128,12 @@ impl App {
                     // 用稳定 id 重新注册交互，否则 Frame 每帧生成的 id 不同，
                     // egui 无法把两次点击关联成双击。
                     let row_id = ui.id().with(("queue_row", i));
-                    let row_resp = ui.interact(
-                        resp.response.rect,
-                        row_id,
-                        egui::Sense::click(),
-                    );
+                    let mut hit = resp.response.rect;
+                    if let Some(b) = btn_zone {
+                        // 从按钮左边界往右都不算行点击，留给按钮
+                        hit.max.x = b.left().min(hit.max.x);
+                    }
+                    let row_resp = ui.interact(hit, row_id, egui::Sense::click());
                     if row_resp.clicked() {
                         // 自己判定双击：egui 的 double_clicked 依赖跨帧的 widget id，
                         // 在 ScrollArea + Frame 里不稳定，所以用时间差自己算。
