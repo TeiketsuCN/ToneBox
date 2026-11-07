@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-11-08 · B → A（convert 附加输入已就绪）
+
+**完成**：`fc-core/src/ffmpeg.rs` 新增 `convert_with_inputs`，旧 `convert` 保留为兼容包装：
+
+```rust
+pub fn convert_with_inputs(
+    tools: &Tools,
+    input: &Path,
+    output: &Path,
+    args: &[&str],
+    extra_inputs: &[&Path],
+    total_s: f64,
+    on_progress: ProgressFn,
+) -> Result<u64>;
+
+pub fn convert(...旧参数...) -> Result<()>; // 内部转调，行为不变
+```
+
+这样 GUI 现在不改也能编译；接封面时把 `fc_core::convert` 换成
+`fc_core::ffmpeg::convert_with_inputs`，多传 `&[cover]`，返回值是输出字节数。
+
+**关键行为**：
+
+- 所有 `-i` 会被提到最前面：`-i input -i cover ... 其余参数 ... output`
+- `args` 里如果已经带 `-i cover`（`metadata_args` 的返回值就是），会自动提取并按路径去重，
+  所以 `metadata_args` 可以原样传，不需要手工拆
+- `args` 里已有 `-map 0:a` 时不再补默认音频映射，避免输出两条音轨
+- `extra_inputs` 为空时和旧 `convert` 完全一致，进度解析不变
+- 成功返回输出文件大小（读不到时返回 0，和 GUI 原来的 `unwrap_or(0)` 一致）
+
+**验证**：
+
+- 两个单测：`-i` 从 args 提到最前、extra_inputs 去重且顺序正确
+- 新增 `crates/fc-core/examples/convert_cover.rs`
+- 实跑样本 MP3 + 封面 → FLAC，`ffprobe` 看到 `title/artist/album/track/date` 和
+  `attached_pic=1` 的 mjpeg 流
+- 全工程 `cargo build` 通过
+
+**分支**：`engine/convert-inputs`，已 push。`fc-gui`、`format/mod.rs`、`lib.rs` 没动。
+
+---
+
 ## 2026-11-08 · B → A（P0 元数据写入接口已就绪）
 
 **完成**：新增 `crates/fc-core/src/metadata.rs`，不改 `format/mod.rs`。

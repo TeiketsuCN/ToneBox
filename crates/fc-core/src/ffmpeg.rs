@@ -57,11 +57,17 @@ pub fn locate() -> Option<Tools> {
         let f = d.join("ffmpeg.exe");
         let p = d.join("ffprobe.exe");
         if f.is_file() && p.is_file() {
-            return Some(Tools { ffmpeg: f, ffprobe: p });
+            return Some(Tools {
+                ffmpeg: f,
+                ffprobe: p,
+            });
         }
     }
     match (find_in_path("ffmpeg.exe"), find_in_path("ffprobe.exe")) {
-        (Some(f), Some(p)) => Some(Tools { ffmpeg: f, ffprobe: p }),
+        (Some(f), Some(p)) => Some(Tools {
+            ffmpeg: f,
+            ffprobe: p,
+        }),
         _ => None,
     }
 }
@@ -172,9 +178,7 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
 
     let out = cmd.output().context("启动 ffprobe 失败")?;
     if out.stdout.is_empty() {
-        return Err(anyhow!(
-            "读不出音频流。可能是 DRM 加密文件，或文件损坏。"
-        ));
+        return Err(anyhow!("读不出音频流。可能是 DRM 加密文件，或文件损坏。"));
     }
     let parsed: ProbeOut = serde_json::from_slice(&out.stdout).context("解析 ffprobe 输出失败")?;
 
@@ -223,19 +227,51 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
 /// 转换进度回调
 pub type ProgressFn = Box<dyn FnMut(f32) + Send>;
 
+/// 兼容旧调用：无附加输入，返回 `()`。
+///
+/// 需要封面等第二输入时用 [`convert_with_inputs`]。
 pub fn convert(
     tools: &Tools,
     input: &Path,
     output: &Path,
     args: &[&str],
     total_s: f64,
-    mut on_progress: ProgressFn,
+    on_progress: ProgressFn,
 ) -> Result<()> {
+    convert_with_inputs(tools, input, output, args, &[], total_s, on_progress).map(|_| ())
+}
+
+/// 支持附加输入的转换。
+///
+/// `extra_inputs` 里的文件（例如封面）会作为额外的 `-i`，**所有 `-i` 都在最前面**：
+///
+/// ```text
+/// ffmpeg -i input -i cover ... -map 0:a:0 -map 1:v:0 ... output
+/// ```
+///
+/// `args` 里如果已经带了 `-i cover`（例如 `metadata_args` 的返回值），这里会把它
+/// 提到输入区并按路径去重，调用方不用手动拆。成功时返回输出文件字节数。
+pub fn convert_with_inputs(
+    tools: &Tools,
+    input: &Path,
+    output: &Path,
+    args: &[&str],
+    extra_inputs: &[&Path],
+    total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let (inputs, rest) = prepare_inputs(input, args, extra_inputs);
+
     let mut cmd = Command::new(&tools.ffmpeg);
-    cmd.args(["-y", "-hide_banner", "-nostdin", "-i"])
-        .arg(input)
-        .args(["-map", "0:a:0"])
-        .args(args)
+    cmd.args(["-y", "-hide_banner", "-nostdin"]);
+    for p in &inputs {
+        cmd.arg("-i").arg(p);
+    }
+    // 如果 args 里已经有 -map 0:a，别再补一条，避免输出两条音轨。
+    if !has_audio_map(&rest) {
+        cmd.args(["-map", "0:a:0"]);
+    }
+    cmd.args(&rest)
         .arg(output)
         .args(["-progress", "pipe:1", "-nostats"])
         .stdout(Stdio::piped())
@@ -277,5 +313,82 @@ pub fn convert(
         return Err(anyhow!("ffmpeg 转换失败：\n{tail}"));
     }
     on_progress(1.0);
-    Ok(())
+    Ok(std::fs::metadata(output).map(|m| m.len()).unwrap_or(0))
+}
+
+/// 把 input、args 里的 `-i`、extra_inputs 合成输入列表，并返回去掉 `-i` 的其余参数。
+fn prepare_inputs(
+    input: &Path,
+    args: &[&str],
+    extra_inputs: &[&Path],
+) -> (Vec<PathBuf>, Vec<String>) {
+    let mut inputs = vec![input.to_path_buf()];
+    let mut rest = Vec::new();
+    let mut i = 0;
+
+    while i < args.len() {
+        if args[i] == "-i" && i + 1 < args.len() {
+            let p = PathBuf::from(args[i + 1]);
+            if !inputs.contains(&p) {
+                inputs.push(p);
+            }
+            i += 2;
+        } else {
+            rest.push(args[i].to_string());
+            i += 1;
+        }
+    }
+
+    for p in extra_inputs {
+        let p = p.to_path_buf();
+        if !inputs.contains(&p) {
+            inputs.push(p);
+        }
+    }
+    (inputs, rest)
+}
+
+fn has_audio_map(args: &[String]) -> bool {
+    args.windows(2)
+        .any(|w| w[0] == "-map" && (w[1] == "0:a" || w[1].starts_with("0:a:")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hoists_input_embedded_in_args_before_maps() {
+        let args = [
+            "-i",
+            "cover.jpg",
+            "-map",
+            "0:a:0",
+            "-map",
+            "1:v:0",
+            "-c:v",
+            "copy",
+        ];
+        let (inputs, rest) = prepare_inputs(Path::new("in.mp3"), &args, &[]);
+
+        assert_eq!(
+            inputs,
+            vec![PathBuf::from("in.mp3"), PathBuf::from("cover.jpg")]
+        );
+        let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
+        assert_eq!(rest, vec!["-map", "0:a:0", "-map", "1:v:0", "-c:v", "copy"]);
+    }
+
+    #[test]
+    fn extra_inputs_are_added_once_and_keep_order() {
+        let extra = [Path::new("cover.jpg")];
+        let args = ["-i", "cover.jpg", "-map", "0:a:0", "-map", "1:v:0"];
+        let (inputs, rest) = prepare_inputs(Path::new("in.mp3"), &args, &extra);
+
+        assert_eq!(
+            inputs,
+            vec![PathBuf::from("in.mp3"), PathBuf::from("cover.jpg")]
+        );
+        assert!(has_audio_map(&rest));
+    }
 }
