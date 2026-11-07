@@ -2,7 +2,7 @@
 
 一个"格式顾问"，不是格式转换工具。转换只是入口，**判断 + 解释**才是产品价值。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 三 crate。
+Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。
 
 ---
 
@@ -15,10 +15,14 @@ Rust + egui，FFmpeg 子进程，cargo workspace 三 crate。
 | 输出格式侧栏（点开显示该格式的解释） | ✅ |
 | ffprobe 读真实参数 | ✅ |
 | 有损源警告（转无损不会增加信息量） | ✅ |
-| 转 FLAC / WAV / ALAC / AIFF / MP3 / Opus / Vorbis | ✅ |
+| 转 FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM | ✅ |
+| 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
+| 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
+| 格式百科（29 条长文案，可从百科直接设为输出格式） | ✅ |
+| 元数据与内嵌封面 | ✅ |
 | 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
 | 加密文件识别 + 解释（不解密） | ✅ |
-| 频谱质量评估 | ⏳ 契约已定，`fc-analyze` 待实现 |
+| 频谱质量评估（标定集 60/60，ATRAC 结论偏保守） | ✅ |
 | 命令行 `--convert` | ✅ |
 
 ---
@@ -27,10 +31,10 @@ Rust + egui，FFmpeg 子进程，cargo workspace 三 crate。
 
 ```
 crates/
-├── fc-core/      格式表 + probe + convert      【引擎，机器 B 管】
-├── fc-analyze/   频谱分析（stub）               【引擎，机器 B 管】
-├── fc-player/    试听（ffmpeg + cpal）          【本机管】
-└── fc-gui/       三栏界面 + 队列状态机           【界面，本机管】
+├── fc-core/      格式表 + probe + convert + 标签/元数据/百科   【引擎】
+├── fc-analyze/   频谱分析（标定 60/60）                      【引擎】
+├── fc-player/    试听（ffmpeg + cpal）                       【本机管】
+└── fc-gui/       四栏界面 + 队列状态机                        【界面，本机管】
 docs/
 ├── 契约.md               并行开发的归属表与冻结 API
 ├── 机器B-接入指南.md      另一台机器怎么接进来
@@ -64,7 +68,8 @@ tools/           样本下载、标定、截图脚本
 5. **不要在 `Frame` 内部再 `set_width`**——会和 `inner_margin` 叠加，反向溢出。
 6. 详情面板用**键值栅格**而不是一排 chip，chip 多了必然溢出。
 
-窗口最小宽度 = 216 + 300 + 444 = **960**。
+窗口默认 1302×700，最小 1212×600（四栏：216 格式 + 中央队列 + 300 详情 + 272 输出）。
+`RIGHT_W` / `OUT_W` 等宽度都是 `main.rs` 顶部的常量，改布局先改那几个数。
 
 ---
 
