@@ -164,8 +164,8 @@ struct App {
     cfg: settings::Settings,
     settings_open: bool,
     settings_t: f32,
-    output_open: bool,
-    output_t: f32,
+    out_open: bool,
+    out_t: f32,
 }
 
 impl App {
@@ -210,8 +210,8 @@ impl App {
             cfg: settings::Settings::load(),
             settings_open: false,
             settings_t: 0.0,
-            output_open: false,
-            output_t: 0.0,
+            out_open: false,
+            out_t: 0.0,
         }
     }
 
@@ -547,15 +547,6 @@ impl eframe::App for App {
             self.dt,
             16.0,
         );
-        animating |= approach(
-            &mut self.output_t,
-            if self.output_open { 1.0 } else { 0.0 },
-            self.dt,
-            16.0,
-        );
-        if self.output_t > 0.001 {
-            self.output_page(ctx);
-        }
         if self.settings_t > 0.001 {
             self.settings_panel(ctx);
         }
@@ -699,25 +690,14 @@ impl App {
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    let w = (ui.available_width() - 6.0) / 2.0;
-                    let b1 = egui::Button::new(RichText::new("输出").size(10.5).color(ACCENT))
-                        .fill(tint(ACCENT, 18))
-                        .stroke(line(ACCENT, 40))
-                        .rounding(Rounding::same(8.0))
-                        .min_size(egui::vec2(w, 26.0));
-                    if ui.add(b1).clicked() {
-                        self.output_open = true;
-                    }
-                    let b2 = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
-                        .fill(tint(Color32::WHITE, 10))
-                        .stroke(line(Color32::WHITE, 18))
-                        .rounding(Rounding::same(8.0))
-                        .min_size(egui::vec2(w, 26.0));
-                    if ui.add(b2).clicked() {
-                        self.settings_open = true;
-                    }
-                });
+                let b = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
+                    .fill(tint(Color32::WHITE, 10))
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(8.0))
+                    .min_size(egui::vec2(ui.available_width(), 26.0));
+                if ui.add(b).clicked() {
+                    self.settings_open = true;
+                }
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new("只处理未加密文件 · 不支持任何 DRM")
@@ -1122,258 +1102,6 @@ impl App {
         }
     }
 
-    /// 输出页：预设在上、参数在下，改了立即生效
-    fn output_page(&mut self, ctx: &egui::Context) {
-        let t = self.output_t;
-        let screen = ctx.screen_rect();
-        let area = egui::Rect::from_min_max(
-            egui::pos2(screen.left(), screen.top() + TITLEBAR_H),
-            screen.max,
-        );
-
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.output_open = false;
-        }
-
-        let mut changed = false;
-
-        egui::Area::new(egui::Id::new("output_overlay"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(area.min)
-            .show(ctx, |ui| {
-                egui::Frame::none()
-                    .fill(tint(BG, 255))
-                    .inner_margin(egui::Margin::symmetric(28.0, 18.0))
-                    .show(ui, |ui| {
-                        ui.set_min_size(area.size());
-                        ui.set_max_width(area.width() - 56.0);
-                        ui.add_space(TITLEBAR_H + (1.0 - t) * 22.0);
-
-                        // 顶栏
-                        let back_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            egui::vec2(78.0, 30.0),
-                        );
-                        let back = ui.interact(
-                            back_rect,
-                            ui.id().with("output_back"),
-                            egui::Sense::click(),
-                        );
-                        ui.painter().rect_filled(
-                            back_rect,
-                            Rounding::same(8.0),
-                            if back.hovered() {
-                                tint(Color32::WHITE, 22)
-                            } else {
-                                tint(Color32::WHITE, 12)
-                            },
-                        );
-                        ui.painter().text(
-                            back_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "← 返回",
-                            egui::FontId::proportional(11.0),
-                            TEXT,
-                        );
-                        if back.clicked() {
-                            self.output_open = false;
-                        }
-                        ui.horizontal(|ui| {
-                            ui.add_space(88.0);
-                            ui.label(RichText::new("输出").size(15.0).color(TEXT).strong());
-                        });
-
-                        ui.add_space(16.0);
-
-                        // ── 格式 ──
-                        section(ui, "格式");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
-                            for f in fc_core::browsable() {
-                                let on = f.id == self.target.id;
-                                let b = egui::Button::new(
-                                    RichText::new(f.name).size(10.5).color(if on {
-                                        Color32::from_rgb(10, 26, 24)
-                                    } else {
-                                        MUTED
-                                    }),
-                                )
-                                .fill(if on { ACCENT } else { tint(Color32::WHITE, 8) })
-                                .stroke(if on {
-                                    Stroke::NONE
-                                } else {
-                                    line(Color32::WHITE, 18)
-                                })
-                                .rounding(Rounding::same(8.0));
-                                if ui.add(b).clicked() {
-                                    self.target = f;
-                                    changed = true;
-                                }
-                            }
-                        });
-
-                        ui.add_space(16.0);
-
-                        // ── 预设 ──
-                        section(ui, "预设");
-                        ui.horizontal_wrapped(|ui| {
-                            for p in fc_core::PRESETS {
-                                let on = self.target.id == p.format;
-                                let btn = egui::Button::new(
-                                    RichText::new(format!("{}\n{}", p.name, p.note))
-                                        .size(10.0)
-                                        .color(if on { ACCENT } else { MUTED }),
-                                )
-                                .fill(if on {
-                                    tint(ACCENT, 18)
-                                } else {
-                                    tint(Color32::WHITE, 8)
-                                })
-                                .stroke(if on {
-                                    line(ACCENT, 50)
-                                } else {
-                                    line(Color32::WHITE, 18)
-                                })
-                                .rounding(Rounding::same(10.0))
-                                .min_size(egui::vec2(150.0, 46.0));
-                                if ui.add(btn).clicked() {
-                                    if let Some(f) = fc_core::by_id(p.format) {
-                                        self.target = f;
-                                    }
-                                    (p.apply)(&mut self.cfg.opts);
-                                    changed = true;
-                                }
-                            }
-                        });
-
-                        ui.add_space(16.0);
-
-                        // ── 参数 ──
-                        section(ui, &format!("{} 的参数", self.target.name));
-                        let knobs = fc_core::knobs_for(self.target);
-                        if knobs.is_empty() {
-                            para(ui, "这个格式没有可调参数，用推荐默认值。", 9.5, DIM);
-                        }
-                        for k in knobs {
-                            changed |= self.knob_row(ui, *k);
-                            ui.add_space(8.0);
-                        }
-
-                        ui.add_space(12.0);
-                        let n = self.items.len();
-                        let pending = self.items.iter().filter(|i| i.info.is_some()).count();
-                        let est = self
-                            .items
-                            .iter()
-                            .filter_map(|i| i.info.as_ref())
-                            .map(|m| fc_core::estimate_size(m, self.target))
-                            .sum::<u64>();
-                        let est_txt = if est > 0 {
-                            format!("（预计输出 {}）", fmt_size(est))
-                        } else {
-                            String::new()
-                        };
-                        para(
-                            ui,
-                            &format!("队列 {n} 个文件，{pending} 个可转换{est_txt}"),
-                            9.5,
-                            DIM,
-                        );
-                    });
-            });
-
-        if changed {
-            self.cfg.save();
-        }
-    }
-
-    /// 一个参数控件
-    fn knob_row(&mut self, ui: &mut egui::Ui, k: fc_core::Knob) -> bool {
-        use fc_core::{BitDepth, Knob};
-        let mut changed = false;
-        match k {
-            Knob::FlacLevel => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("压缩等级").size(10.0).color(MUTED));
-                    ui.add_space(10.0);
-                    let mut v = self.cfg.opts.flac_level as i32;
-                    ui.spacing_mut().slider_width = 220.0;
-                    if ui
-                        .add(egui::Slider::new(&mut v, 0..=12).show_value(false))
-                        .changed()
-                    {
-                        self.cfg.opts.flac_level = v as u8;
-                        changed = true;
-                    }
-                    ui.label(RichText::new(format!("{v}")).size(9.5).color(DIM));
-                    ui.add_space(8.0);
-                    ui.label(RichText::new("0 最快 · 12 最小（不影响音质）").size(9.0).color(DIM));
-                });
-            }
-            Knob::VorbisQuality => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("质量").size(10.0).color(MUTED));
-                    ui.add_space(10.0);
-                    let mut v = self.cfg.opts.vorbis_q as i32;
-                    ui.spacing_mut().slider_width = 220.0;
-                    if ui
-                        .add(egui::Slider::new(&mut v, 0..=10).show_value(false))
-                        .changed()
-                    {
-                        self.cfg.opts.vorbis_q = v as u8;
-                        changed = true;
-                    }
-                    ui.label(RichText::new(format!("{v}")).size(9.5).color(DIM));
-                });
-            }
-            Knob::BitDepth => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("位深").size(10.0).color(MUTED));
-                    ui.add_space(10.0);
-                    for (d, label) in [
-                        (BitDepth::Int16, "16-bit"),
-                        (BitDepth::Int24, "24-bit"),
-                        (BitDepth::Int32f, "32-bit 浮点"),
-                    ] {
-                        let on = self.cfg.opts.bit_depth == d;
-                        if seg_button(ui, label, on) {
-                            self.cfg.opts.bit_depth = d;
-                            changed = true;
-                        }
-                    }
-                });
-            }
-            Knob::Mp3Bitrate => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("码率").size(10.0).color(MUTED));
-                    ui.add_space(10.0);
-                    for v in [128u32, 192, 256, 320] {
-                        let on = self.cfg.opts.mp3_bitrate == v;
-                        if seg_button(ui, &format!("{v}k"), on) {
-                            self.cfg.opts.mp3_bitrate = v;
-                            changed = true;
-                        }
-                    }
-                });
-            }
-            Knob::OpusBitrate => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("码率").size(10.0).color(MUTED));
-                    ui.add_space(10.0);
-                    for v in [64u32, 96, 128, 192, 256] {
-                        let on = self.cfg.opts.opus_bitrate == v;
-                        if seg_button(ui, &format!("{v}k"), on) {
-                            self.cfg.opts.opus_bitrate = v;
-                            changed = true;
-                        }
-                    }
-                });
-            }
-            Knob::VorbisQuality => {}
-        }
-        changed
-    }
-
     /// 设置页：从下往上滑入的覆盖层，不弹新窗口
     fn settings_panel(&mut self, ctx: &egui::Context) {
         let t = self.settings_t;
@@ -1622,8 +1350,42 @@ impl App {
 
     fn detail(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
+        let mut animating = false;
+
+        // 切换选中项时，内容从下方滑入
+        if self.detail_for != self.selected {
+            self.detail_for = self.selected;
+            self.detail_t = 0.0;
+        }
+        animating |= approach(&mut self.detail_t, 1.0, self.dt, 12.0);
+        let t = self.detail_t;
+
+        // 底部固定的「输出」区（不属于某个文件，是全局设置）
+        egui::TopBottomPanel::bottom("out_section")
+            .frame(
+                egui::Frame::none()
+                    .fill(tint(BG, 214))
+                    .inner_margin(egui::Margin::symmetric(0.0, 6.0)),
+            )
+            .show_inside(ui, |ui| {
+                ui.set_width(ui.available_width());
+                animating |= self.output_section(ui);
+            });
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                animating |= self.detail_body(ui, t);
+            });
+
+        animating
+    }
+
+    fn detail_body(&mut self, ui: &mut egui::Ui, t: f32) -> bool {
         let dt = self.dt;
         let mut animating = false;
+        ui.set_width(ui.available_width());
 
         // 切换选中项时，内容从下方滑入 + 淡入
         if self.detail_for != self.selected {
@@ -1838,6 +1600,215 @@ impl App {
         }
 
         animating
+    }
+
+
+    /// 当前参数的一句话摘要，折叠时显示
+    fn knob_summary(&self) -> String {
+        use fc_core::Knob;
+        match fc_core::knobs_for(self.target).first() {
+            Some(Knob::FlacLevel) => format!("{}", self.cfg.opts.flac_level),
+            Some(Knob::BitDepth) => self.cfg.opts.bit_depth.label().to_string(),
+            Some(Knob::Mp3Bitrate) => format!("{}k", self.cfg.opts.mp3_bitrate),
+            Some(Knob::OpusBitrate) => format!("{}k", self.cfg.opts.opus_bitrate),
+            Some(Knob::VorbisQuality) => format!("q{}", self.cfg.opts.vorbis_q),
+            _ => "默认".into(),
+        }
+    }
+
+    /// 右侧面板底部的「输出」区。
+    /// 折叠时只有一行，展开后是预设 + 参数——不弹新界面。
+    fn output_section(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 30.0),
+            egui::Sense::click(),
+        );
+        let p = ui.painter();
+        if resp.hovered() {
+            p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 10));
+        }
+        p.text(
+            rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            "输出",
+            egui::FontId::proportional(10.0),
+            DIM,
+        );
+        p.text(
+            rect.left_center() + egui::vec2(38.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            format!("{} · {}", self.target.name, self.knob_summary()),
+            egui::FontId::proportional(10.5),
+            ACCENT,
+        );
+        let c = rect.right_center() - egui::vec2(12.0, 0.0);
+        let tri = if self.out_open {
+            vec![
+                c + egui::vec2(-4.0, 2.0),
+                c + egui::vec2(4.0, 2.0),
+                c + egui::vec2(0.0, -3.0),
+            ]
+        } else {
+            vec![
+                c + egui::vec2(-4.0, -2.0),
+                c + egui::vec2(4.0, -2.0),
+                c + egui::vec2(0.0, 3.0),
+            ]
+        };
+        p.add(egui::Shape::convex_polygon(tri, DIM, Stroke::NONE));
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if resp.clicked() {
+            self.out_open = !self.out_open;
+        }
+
+        if !self.out_open {
+            return changed;
+        }
+
+        ui.add_space(6.0);
+
+        // 预设
+        ui.label(RichText::new("预设").size(9.0).color(DIM));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+            ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
+            for p in fc_core::PRESETS {
+                let on = self.target.id == p.format;
+                let b = egui::Button::new(
+                    RichText::new(p.name).size(9.5).color(if on {
+                        ACCENT
+                    } else {
+                        MUTED
+                    }),
+                )
+                .fill(if on {
+                    tint(ACCENT, 20)
+                } else {
+                    tint(Color32::WHITE, 8)
+                })
+                .stroke(if on {
+                    line(ACCENT, 45)
+                } else {
+                    line(Color32::WHITE, 16)
+                })
+                .rounding(Rounding::same(7.0));
+                if ui.add(b).on_hover_text(p.note).clicked() {
+                    if let Some(f) = fc_core::by_id(p.format) {
+                        self.target = f;
+                    }
+                    (p.apply)(&mut self.cfg.opts);
+                    changed = true;
+                }
+            }
+        });
+
+        ui.add_space(8.0);
+
+        // 参数
+        let knobs = fc_core::knobs_for(self.target);
+        if knobs.is_empty() {
+            para(ui, "这个格式没有可调参数。", 9.0, DIM);
+        }
+        for k in knobs {
+            changed |= self.knob_row(ui, *k);
+        }
+
+        ui.add_space(8.0);
+        let est = self
+            .items
+            .iter()
+            .filter_map(|i| i.info.as_ref())
+            .map(|m| fc_core::estimate_size(m, self.target))
+            .sum::<u64>();
+        if est > 0 {
+            para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
+        }
+
+        changed
+    }
+
+    /// 一个参数控件（紧凑版，300px 宽的面板里能用）
+    fn knob_row(&mut self, ui: &mut egui::Ui, k: fc_core::Knob) -> bool {
+        use fc_core::{BitDepth, Knob};
+        let mut changed = false;
+        match k {
+            Knob::FlacLevel => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("压缩等级").size(9.5).color(MUTED));
+                    let mut v = self.cfg.opts.flac_level as i32;
+                    ui.spacing_mut().slider_width = 110.0;
+                    if ui
+                        .add(egui::Slider::new(&mut v, 0..=12).show_value(false))
+                        .changed()
+                    {
+                        self.cfg.opts.flac_level = v as u8;
+                        changed = true;
+                    }
+                    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
+                });
+            }
+            Knob::VorbisQuality => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("质量").size(9.5).color(MUTED));
+                    let mut v = self.cfg.opts.vorbis_q as i32;
+                    ui.spacing_mut().slider_width = 140.0;
+                    if ui
+                        .add(egui::Slider::new(&mut v, 0..=10).show_value(false))
+                        .changed()
+                    {
+                        self.cfg.opts.vorbis_q = v as u8;
+                        changed = true;
+                    }
+                    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
+                });
+            }
+            Knob::BitDepth => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("位深").size(9.5).color(MUTED));
+                    for (d, label) in [
+                        (BitDepth::Int16, "16"),
+                        (BitDepth::Int24, "24"),
+                        (BitDepth::Int32f, "32f"),
+                    ] {
+                        let on = self.cfg.opts.bit_depth == d;
+                        if seg_button(ui, label, on) {
+                            self.cfg.opts.bit_depth = d;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::Mp3Bitrate => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
+                    for v in [128u32, 192, 256, 320] {
+                        let on = self.cfg.opts.mp3_bitrate == v;
+                        if seg_button(ui, &format!("{v}"), on) {
+                            self.cfg.opts.mp3_bitrate = v;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::OpusBitrate => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
+                    for v in [64u32, 96, 128, 192] {
+                        let on = self.cfg.opts.opus_bitrate == v;
+                        if seg_button(ui, &format!("{v}"), on) {
+                            self.cfg.opts.opus_bitrate = v;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+        }
+        changed
     }
 }
 
