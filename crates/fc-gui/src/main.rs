@@ -13,6 +13,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bg;
+#[cfg(windows)]
+mod frame;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -34,6 +36,7 @@ const BG: Color32 = Color32::from_rgb(14, 16, 22);
 // ── 布局规范 ────────────────────────────────────────────
 // 面板宽度必须是常量，内容宽度在面板内锁死。
 // 所有长文本一律显式 wrap，任何元素都不允许横向溢出把窗口边缘切掉。
+const TITLEBAR_H: f32 = 44.0;
 const LEFT_W: f32 = 216.0;
 const RIGHT_W: f32 = 300.0;
 
@@ -141,6 +144,8 @@ struct App {
     detail_for: usize,
     /// 上一次点击的行号和时刻，用来自己判定双击
     last_click: (usize, f64),
+    /// 窗口是否置顶
+    pinned: bool,
 }
 
 impl App {
@@ -178,6 +183,7 @@ impl App {
             detail_t: 1.0,
             detail_for: 0,
             last_click: (usize::MAX, -10.0),
+            pinned: false,
         }
     }
 
@@ -343,6 +349,8 @@ impl eframe::App for App {
         self.frames += 1;
         if !self.backdrop_done && self.frames > 3 {
             self.backdrop_done = apply_backdrop();
+            #[cfg(windows)]
+            frame::install("格式转换器");
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         self.poll();
@@ -369,15 +377,31 @@ impl eframe::App for App {
         // 背景画在最底层
         self.bg.paint(ctx);
 
+        // 最大化时系统会把窗口撑到工作区外 8px，UI 这边补回来
+        #[cfg(windows)]
+        let inset = if ctx.input(|i| i.viewport().maximized.unwrap_or(false)) {
+            frame::MAXIMIZE_INSET
+        } else {
+            0.0
+        };
+        #[cfg(not(windows))]
+        let inset: f32 = 0.0;
+
         let mut animating = false;
 
-        egui::TopBottomPanel::top("top")
+        egui::TopBottomPanel::top("titlebar")
+            .exact_height(TITLEBAR_H)
             .frame(
                 egui::Frame::none()
-                    .fill(tint(BG, 120))
-                    .inner_margin(egui::Margin::symmetric(20.0, 12.0)),
+                    .fill(tint(BG, 132))
+                    .inner_margin(egui::Margin {
+                        left: 10.0 + inset,
+                        right: 10.0 + inset,
+                        top: inset,
+                        bottom: 0.0,
+                    }),
             )
-            .show(ctx, |ui| self.header(ui));
+            .show(ctx, |ui| self.titlebar(ui));
 
         if self.player.is_some() {
             let name = self
@@ -389,7 +413,12 @@ impl eframe::App for App {
                 .frame(
                     egui::Frame::none()
                         .fill(tint(BG, 142))
-                        .inner_margin(egui::Margin::symmetric(16.0, 7.0)),
+                        .inner_margin(egui::Margin {
+                            left: 16.0 + inset,
+                            right: 16.0 + inset,
+                            top: 7.0,
+                            bottom: 7.0 + inset,
+                        }),
                 )
                 .show(ctx, |ui| self.player_bar(ui, &name));
         }
@@ -400,7 +429,12 @@ impl eframe::App for App {
             .frame(
                 egui::Frame::none()
                     .fill(tint(BG, 104))
-                    .inner_margin(egui::Margin::symmetric(12.0, 12.0)),
+                    .inner_margin(egui::Margin {
+                        left: 12.0 + inset,
+                        right: 12.0,
+                        top: 12.0,
+                        bottom: 12.0 + inset,
+                    }),
             )
             .show(ctx, |ui| animating |= self.sidebar(ui));
 
@@ -410,7 +444,12 @@ impl eframe::App for App {
             .frame(
                 egui::Frame::none()
                     .fill(tint(BG, 104))
-                    .inner_margin(egui::Margin::symmetric(16.0, 12.0)),
+                    .inner_margin(egui::Margin {
+                        left: 16.0,
+                        right: 16.0 + inset,
+                        top: 12.0,
+                        bottom: 12.0 + inset,
+                    }),
             )
             .show(ctx, |ui| animating |= self.detail(ui));
 
@@ -418,7 +457,12 @@ impl eframe::App for App {
             .frame(
                 egui::Frame::none()
                     .fill(tint(BG, 92))
-                    .inner_margin(egui::Margin::symmetric(16.0, 12.0)),
+                    .inner_margin(egui::Margin {
+                        left: 16.0,
+                        right: 16.0,
+                        top: 12.0,
+                        bottom: 12.0 + inset,
+                    }),
             )
             .show(ctx, |ui| animating |= self.queue(ui, ctx));
 
@@ -458,32 +502,81 @@ fn fmt_size(b: u64) -> String {
 }
 
 impl App {
-    fn header(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("格式转换器").size(19.0).color(TEXT).strong());
-            ui.add_space(10.0);
-            ui.label(
-                RichText::new("转换 · 质量判断 · 格式解释")
-                    .size(11.0)
-                    .color(DIM),
-            );
+    /// 自绘标题栏。系统标题栏已经去掉，拖动/按钮都在这里。
+    fn titlebar(&mut self, ui: &mut egui::Ui) {
+        let full = ui.available_rect_before_wrap();
+        ui.set_height(TITLEBAR_H);
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let (label, color) = if self.tools.is_some() {
-                    ("ffmpeg 就绪", ACCENT)
+        // 先注册拖动区（后注册的按钮会覆盖在上面，优先接点击）
+        let resp = ui.interact(
+            full,
+            ui.id().with("titlebar_drag"),
+            egui::Sense::click_and_drag(),
+        );
+        #[cfg(windows)]
+        let native_frame = frame::ACTIVE.load(std::sync::atomic::Ordering::SeqCst);
+        #[cfg(not(windows))]
+        let native_frame = false;
+
+        // 原生 WM_NCHITTEST 接管后，拖动由系统处理；再发 StartDrag 会两边抢
+        if resp.drag_started() && !native_frame {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
+        if resp.double_clicked() {
+            let maxed = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed));
+        }
+
+        // 左边：标题 + 副标题
+        ui.painter().text(
+            full.left_center() + egui::vec2(8.0, -6.0),
+            egui::Align2::LEFT_CENTER,
+            "格式转换器",
+            egui::FontId::proportional(13.5),
+            TEXT,
+        );
+        ui.painter().text(
+            full.left_center() + egui::vec2(8.0, 8.0),
+            egui::Align2::LEFT_CENTER,
+            "转换 · 质量判断 · 格式解释",
+            egui::FontId::proportional(9.0),
+            DIM,
+        );
+
+        // 右边：图钉 / 最小化 / 最大化 / 关闭
+        let mut rect = egui::Rect::from_min_size(
+            egui::pos2(full.right() - TITLEBAR_H, full.top()),
+            egui::vec2(TITLEBAR_H, TITLEBAR_H),
+        );
+        let maxed = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+
+        // 从右往左排：关闭、最大化、最小化、图钉
+        if title_button(ui, rect, TitleBtn::Close, false) {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        if title_button(ui, rect, if maxed { TitleBtn::Restore } else { TitleBtn::Maximize }, false) {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed));
+        }
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        if title_button(ui, rect, TitleBtn::Minimize, false) {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        if title_button(ui, rect, TitleBtn::Pin, self.pinned) {
+            self.pinned = !self.pinned;
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                if self.pinned {
+                    egui::WindowLevel::AlwaysOnTop
                 } else {
-                    ("缺 ffmpeg", DANGER)
-                };
-                egui::Frame::none()
-                    .fill(tint(color, 26))
-                    .stroke(line(color, 70))
-                    .rounding(Rounding::same(20.0))
-                    .inner_margin(egui::Margin::symmetric(10.0, 3.0))
-                    .show(ui, |ui| {
-                        ui.label(RichText::new(label).size(10.5).color(color));
-                    });
-            });
-        });
+                    egui::WindowLevel::Normal
+                },
+            ));
+        }
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui) -> bool {
@@ -1163,6 +1256,94 @@ fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
     None
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum TitleBtn {
+    Pin,
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
+}
+
+/// 标题栏按钮。图标全部用 painter 画，不依赖字体。
+fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, active: bool) -> bool {
+    let resp = ui.interact(rect, ui.id().with(("tbtn", kind as u8)), egui::Sense::click());
+    let p = ui.painter();
+    if resp.hovered() {
+        let bg = if kind == TitleBtn::Close {
+            Color32::from_rgb(196, 60, 60)
+        } else {
+            tint(Color32::WHITE, 26)
+        };
+        p.rect_filled(rect, Rounding::same(6.0), bg);
+    }
+    let c = rect.center();
+    let col = if resp.hovered() && kind == TitleBtn::Close {
+        Color32::WHITE
+    } else if active {
+        ACCENT
+    } else {
+        MUTED
+    };
+    match kind {
+        TitleBtn::Minimize => {
+            p.line_segment(
+                [c + egui::vec2(-5.0, 0.0), c + egui::vec2(5.0, 0.0)],
+                Stroke::new(1.2, col),
+            );
+        }
+        TitleBtn::Maximize => {
+            p.rect_stroke(
+                egui::Rect::from_center_size(c, egui::vec2(10.0, 10.0)),
+                Rounding::same(2.0),
+                Stroke::new(1.2, col),
+            );
+        }
+        TitleBtn::Restore => {
+            p.rect_stroke(
+                egui::Rect::from_center_size(c + egui::vec2(1.5, 1.5), egui::vec2(8.0, 8.0)),
+                Rounding::same(2.0),
+                Stroke::new(1.2, col),
+            );
+            p.line_segment(
+                [
+                    c + egui::vec2(-4.0, -4.0),
+                    c + egui::vec2(2.0, -4.0),
+                ],
+                Stroke::new(1.2, col),
+            );
+        }
+        TitleBtn::Close => {
+            for d in [-4.0_f32, 4.0] {
+                p.line_segment(
+                    [
+                        c + egui::vec2(-d, -d),
+                        c + egui::vec2(d, d),
+                    ],
+                    Stroke::new(1.2, col),
+                );
+            }
+        }
+        TitleBtn::Pin => {
+            // 简化图钉：一个圆 + 一根针；固定时实心
+            let head = c + egui::vec2(0.0, -2.0);
+            if active {
+                p.circle_filled(head, 3.6, col);
+            } else {
+                p.circle_stroke(head, 3.6, Stroke::new(1.2, col));
+            }
+            p.line_segment(
+                [head + egui::vec2(0.0, 3.8), head + egui::vec2(0.0, 8.0)],
+                Stroke::new(1.2, col),
+            );
+        }
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
 #[derive(Clone, Copy)]
 enum Icon {
     Play,
@@ -1401,6 +1582,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1060.0, 660.0])
             .with_min_inner_size([960.0, 560.0])
+            .with_decorations(false)
             .with_transparent(true)
             .with_title("格式转换器"),
         ..Default::default()
