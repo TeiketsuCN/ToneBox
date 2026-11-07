@@ -950,19 +950,22 @@ impl App {
         // 小字：高度 + 透明度一起动
         let expanded_here = self.expanded == Some(spec.id);
         if self.blurb_t > 0.01 && expanded_here {
-            let wrap_w = (ui.available_width() - 12.0).max(60.0);
+            // 左边留 6px 缩进，所以排版宽度要比可用宽度再窄 6px，
+            // 否则文字会被自己的裁剪矩形切掉右边（长文案换行后就露出来了）
+            let avail_w = (ui.available_width() - 4.0).max(60.0);
+            let text_w = (avail_w - 6.0).max(50.0);
             // 有长文案就用长文案（wiki.rs 里写的），没有就退回三行小字
             let text = fc_core::long_blurb(spec.id).unwrap_or(spec.blurb);
             let galley = ui.painter().layout(
                 text.to_string(),
                 egui::FontId::proportional(9.5),
                 MUTED,
-                wrap_w,
+                text_w,
             );
             let full_h = galley.size().y + 3.0;
             let h = full_h * self.blurb_t;
             let (rect, _) =
-                ui.allocate_exact_size(egui::vec2(wrap_w, h), egui::Sense::hover());
+                ui.allocate_exact_size(egui::vec2(avail_w, h), egui::Sense::hover());
             ui.painter()
                 .with_clip_rect(rect)
                 .galley(rect.min + egui::vec2(6.0, 0.0), galley, MUTED);
