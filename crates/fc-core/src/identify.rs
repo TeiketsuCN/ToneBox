@@ -17,85 +17,118 @@ pub struct Encrypted {
     pub platform: &'static str,
     /// 格式代号，如 "mflac"
     pub format: &'static str,
-    /// 一句话说明 + 合法出路
+    /// 这是什么
     pub hint: &'static str,
+    /// 那怎么办——只说合规的路，绝不给破解指引
+    pub advice: &'static str,
     /// 0.0 ~ 1.0
     pub confidence: f32,
 }
 
 /// 已知的加密扩展名表
-const EXT_TABLE: &[(&str, &str, &str, &str)] = &[
-    // (扩展名, 平台, 格式代号, 说明)
+const EXT_TABLE: &[(&str, &str, &str, &str, &str)] = &[
+    // (扩展名, 平台, 格式代号, 说明, 合法出路)
     (
         "mflac",
         "QQ 音乐",
         "mflac",
         "QQ 音乐会员下载的加密 FLAC。密钥在客户端里，文件本身不含解密信息。",
+        ADVICE_CLIENT,
     ),
     (
         "mflac0",
         "QQ 音乐",
         "mflac",
         "QQ 音乐会员下载的加密 FLAC。密钥在客户端里，文件本身不含解密信息。",
+        ADVICE_CLIENT,
     ),
     (
         "mflac1",
         "QQ 音乐",
         "mflac",
         "QQ 音乐会员下载的加密 FLAC。密钥在客户端里，文件本身不含解密信息。",
+        ADVICE_CLIENT,
     ),
     (
         "mgg",
         "QQ 音乐",
         "mgg",
         "QQ 音乐会员下载的加密 OGG。",
+        ADVICE_CLIENT,
     ),
     (
         "mgg0",
         "QQ 音乐",
         "mgg",
         "QQ 音乐会员下载的加密 OGG。",
+        ADVICE_CLIENT,
     ),
     (
         "mgg1",
         "QQ 音乐",
         "mgg",
         "QQ 音乐会员下载的加密 OGG。",
+        ADVICE_CLIENT,
     ),
     (
         "qmc0",
         "QQ 音乐",
         "qmc",
         "QQ 音乐早期加密格式（QMC）。",
+        ADVICE_CLIENT,
     ),
     (
         "qmc3",
         "QQ 音乐",
         "qmc",
         "QQ 音乐早期加密格式（QMC）。",
+        ADVICE_CLIENT,
     ),
     (
         "qmcflac",
         "QQ 音乐",
         "qmc",
         "QQ 音乐早期加密 FLAC（QMC）。",
+        ADVICE_CLIENT,
     ),
     (
         "qmcogg",
         "QQ 音乐",
         "qmc",
         "QQ 音乐早期加密 OGG（QMC）。",
+        ADVICE_CLIENT,
     ),
-    ("ncm", "网易云音乐", "ncm", "网易云音乐会员下载的加密格式（NCM）。"),
-    ("kgm", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。"),
-    ("kgma", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。"),
-    ("kgg", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。"),
-    ("kwm", "酷我音乐", "kwm", "酷我音乐会员下载的加密格式。"),
-    ("xm", "虾米音乐", "xm", "虾米音乐的加密格式。**该平台已停止服务**，文件基本无解。"),
-    ("m4p", "Apple Music", "fairplay", "Apple 的 FairPlay 加密 AAC。"),
-    ("aa", "Audible", "aa", "Audible 有声书的旧加密格式。"),
-    ("aax", "Audible", "aax", "Audible 有声书的加密格式。"),
+    ("ncm", "网易云音乐", "ncm", "网易云音乐会员下载的加密格式（NCM）。", ADVICE_CLIENT),
+    ("kgm", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。", ADVICE_CLIENT),
+    ("kgma", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。", ADVICE_CLIENT),
+    ("kgg", "酷狗音乐", "kgm", "酷狗音乐会员下载的加密格式。", ADVICE_CLIENT),
+    ("kwm", "酷我音乐", "kwm", "酷我音乐会员下载的加密格式。", ADVICE_CLIENT),
+    (
+        "xm",
+        "虾米音乐",
+        "xm",
+        "虾米音乐的加密格式。",
+        "该平台 2021 年已停止服务，服务器端密钥随之下线。这类文件目前没有合规的打开方式。",
+    ),
+    (
+        "m4p",
+        "Apple Music",
+        "fairplay",
+        "Apple 的 FairPlay 加密 AAC。",
+        "在 Apple Music 客户端内播放即可。想拿到不加密的文件，只能买 iTunes Store 的无 DRM 版本。",
+    ),
+    ("aa", "Audible", "aa", "Audible 有声书的旧加密格式。", ADVICE_APP),
+    ("aax", "Audible", "aax", "Audible 有声书的加密格式。", ADVICE_APP),
 ];
+
+/// 音乐平台通用出路
+const ADVICE_CLIENT: &str = "合规的做法只有两条：在它的官方客户端里播放；\
+或者从正规渠道重新买一份无损（数字专辑 / 实体 CD）。\
+技术上没有解开它的合法途径，本工具也不会去做。";
+
+/// 有专用 App 的平台
+const ADVICE_APP: &str = "在它的官方 App 里播放。\
+想把内容拿到别的地方用，只能看这个平台有没有提供导出功能。";
 
 /// 已知的正常容器魔数——命中任何一种就说明**不是**整文件加密
 const MAGIC: &[(&[u8], &str)] = &[
@@ -160,7 +193,9 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
                 platform: "索尼",
                 format: "OpenMG",
                 hint: "Sony OpenMG 加密的 ATRAC 文件。密钥在当年的 MD/Walkman 设备里，\
-                       官方工具 SonicStage 已停止维护。法律上不允许绕过。",
+                       官方工具 SonicStage 已停止维护。",
+                advice: "唯一合路是把 MD 机的光纤/模拟输出接到声卡，实时回录成 WAV。\
+                         音质取决于回录链路，但这是不碰 DRM 的唯一办法——很多老玩家现在就是这么做的。",
                 confidence: 0.97,
             });
         }
@@ -182,6 +217,7 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
             platform: "网易云音乐",
             format: "ncm",
             hint: "网易云音乐会员下载的 NCM 加密文件。密钥在客户端，文件本身不含解密信息。",
+            advice: ADVICE_CLIENT,
             confidence: 0.99,
         });
     }
@@ -189,7 +225,7 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
     // 3. 文件名/扩展名命中。
     //    注意用整个文件名匹配：QQ 下载的文件常被改名成 `xxx.mflac1.flac`，
     //    只看最后一段扩展名（flac）会漏掉。
-    if let Some((hit, platform, format, hint)) = EXT_TABLE
+    if let Some((hit, platform, format, hint, advice)) = EXT_TABLE
         .iter()
         .find(|(e, ..)| *e == ext || name.contains(e))
     {
@@ -208,6 +244,7 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
             platform,
             format,
             hint,
+            advice,
             confidence,
         });
     }
@@ -226,6 +263,8 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
                 format: "unknown",
                 hint: "文件内容看起来是加密的，但不在已知格式库里。\
                        可能来自某个音乐平台的私有加密，也可能文件本身损坏。",
+                advice: "先看它从哪个平台下载的，再按那个平台的办法处理。\
+                         如果是从网盘转来的，原文件名里通常有线索。",
                 confidence: if h > 7.85 { 0.75 } else { 0.55 },
             });
         }
@@ -243,6 +282,11 @@ impl Encrypted {
             self.format,
             self.confidence * 100.0
         )
+    }
+
+    /// 两段完整说明：是什么 + 怎么办
+    pub fn full_text(&self) -> String {
+        format!("{}\n\n{}", self.hint, self.advice)
     }
 }
 

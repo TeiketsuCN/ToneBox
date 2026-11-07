@@ -18,6 +18,9 @@ eframe = { version = "0.29", default-features = false, features = ["glow", "defa
 rfd = "0.15"
 image = { version = "0.25", default-features = false, features = [ "jpeg", "png" ] }
 
+[build-dependencies]
+winresource = "0.1"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",

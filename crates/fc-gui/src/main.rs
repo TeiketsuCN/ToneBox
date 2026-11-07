@@ -222,11 +222,7 @@ impl App {
                 Err(e) => {
                     // 读不出来时先问一句"是不是加密的"，能答就答得比报错清楚
                     let msg = match fc_core::identify(&p) {
-                        Some(enc) => format!(
-                            "{}\n\n{}",
-                            enc.summary(),
-                            enc.hint
-                        ),
+                        Some(enc) => format!("{}\n\n{}", enc.summary(), enc.full_text()),
                         None => format!("{e:#}"),
                     };
                     (None, Some(msg))
@@ -1887,7 +1883,7 @@ fn main() -> eframe::Result<()> {
             Some(e) => {
                 println!("{}", e.summary());
                 println!();
-                println!("{}", e.hint);
+                println!("{}", e.full_text());
             }
             None => println!("不是加密文件（或不在已知格式库里）"),
         }
@@ -1933,13 +1929,32 @@ fn main() -> eframe::Result<()> {
     }
 
     let preload: Vec<PathBuf> = args.iter().map(PathBuf::from).collect();
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
+
+    // 窗口图标（任务栏/Alt-Tab 用的），和 exe 里嵌的是同一张图
+    let icon = {
+        const PNG: &[u8] = include_bytes!("../assets/icon.png");
+        image::load_from_memory(PNG).ok().map(|img| {
+            let rgba = img.to_rgba8();
+            egui::IconData {
+                rgba: rgba.as_raw().clone(),
+                width: rgba.width(),
+                height: rgba.height(),
+            }
+        })
+    };
+
+    let mut viewport = egui::ViewportBuilder::default()
             .with_inner_size([1060.0, 660.0])
             .with_min_inner_size([960.0, 560.0])
             .with_decorations(false)
             .with_transparent(true)
-            .with_title("格式转换器"),
+            .with_title("格式转换器");
+    if let Some(icon) = icon {
+        viewport = viewport.with_icon(icon);
+    }
+
+    let options = eframe::NativeOptions {
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

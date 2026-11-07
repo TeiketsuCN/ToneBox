@@ -212,6 +212,8 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 5 | 置顶开关 | ✅ 完成 |
 | 6 | 设置页 | ✅ 完成（覆盖层滑入 + 配置持久化） |
 | 7 | 频谱分析接进 GUI | ✅ 完成（B 实现的 `fc-analyze` 已接入详情面板） |
+| 8 | DRM 指纹识别 | ✅ 完成（8 家平台 + 未知兜底 + 合法出路文案） |
+| 9 | 打包收尾（图标 + 版本资源） | ✅ 完成（`build.rs` + winresource） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -223,6 +225,8 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 - **`SetWindowSubclass` 在 windows-sys 里没有**（comctl32 那套没导出）。
   改用 `SetWindowLongPtrW(GWLP_WNDPROC)` 手动子类化，转发时用 `CallWindowProcW`。
 - **`GetClientRect` 在 WindowsAndMessaging，`ScreenToClient` 在 Graphics::Gdi**，别搞混。
+- **winresource 的 `compile()` 会失败也不该中断构建**：用 `let _ =` 吞掉错误，
+  没图标总比编译不过强（机器 B 的环境未必有 windres）。
 - **顶部 44px 是原生命中区**：`WM_NCHITTEST` 返回 `HTCAPTION` 之后，
   那块区域的点击被系统拿去当"拖标题栏"，**永远进不了 egui**。
   覆盖层的按钮如果放在 y<44 会完全点不动（Esc 能救，但按钮是死的）。
