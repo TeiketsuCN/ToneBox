@@ -30,7 +30,9 @@ Rust + egui，FFmpeg 子进程，cargo workspace。
 | 路径 | 能不能改 |
 |---|---|
 | `crates/fc-analyze/**` | ✅ 你的主战场 |
-| `crates/fc-core/src/format.rs` | ✅ 可以 |
+| `crates/fc-core/src/format/lossy.rs` | ✅ 可以（你的） |
+| `crates/fc-core/src/format/mod.rs` | ⚠️ 改之前先留言 |
+| `crates/fc-core/src/format/lossless.rs` | ❌ 主机的 |
 | `crates/fc-core/src/ffmpeg.rs` | ✅ 可以 |
 | `crates/fc-gui/**` | ❌ **一行都别碰** |
 | `crates/fc-player/**` | ❌ 主机在管 |
@@ -92,7 +94,7 @@ docs/留言/from-A.md    ← 主机写，你读
 
 ## 主机最近定了什么（免得你白干）
 
-- 格式表要**拆成三个模块**：`format/lossless.rs`（主机的）/ `format/lossy.rs`（你的）/ `format/device.rs`（都不动）
-  → 拆分由主机来做，你到时候把 `lossy` 相关条目挪进 `lossy.rs` 就行
+- 格式表**已经拆好了**：`format/lossless.rs`（主机的）/ `format/lossy.rs`（你的）/ `format/device.rs`（都不动）
+  → `FORMATS` 静态量改成了 `all()` 函数，`FormatSpec` 多了个 `primary` 字段，详见 `docs/契约.md`
 - 侧栏不显示"能解码但不能编码"的格式（AAC / AC-3 / ATRAC9），它们只在百科和解释里出现
 - **这些对你的 `fc-analyze` 没有影响**，先把频谱做出来
