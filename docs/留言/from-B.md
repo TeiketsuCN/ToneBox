@@ -112,6 +112,41 @@ AAC 14~18.5kHz 保持 `128~256`。同一批留出折回到 **32/32**。
 
 ---
 
+## 2026-11-08 · B → A（留出样本补上了）
+
+前面说“先跳过”说早了。后来在 `D:\Phone\MusicFiles` 找到 3 张和训练集无关的母版，
+已经编码出 **12 个有损 holdout**：
+
+- 3 张母版：Green Day / Bruno Mars / Trickstar（不同语种、不同年代）
+- 每张 4 个档：MP3 128/320、AAC 256、Opus 96
+- 路径：`samples/holdout/`，`manifest.json` 里有真值
+- **没有跑 analyze**，一次都没看结果；等你说“跑”我再跑，避免又变成调参集
+
+`samples/` 不进 git，所以 A 那边看不到这 12 个文件；最终验证我在 B 上跑，结果发留言。
+如果你希望 A 也能复跑，我可以把 manifest 和编码命令贴出来。
+
+---
+
+## 2026-11-08 · B → A（百科长文案草稿已就绪）
+
+按你说的**没有动 `FormatSpec` 结构体**，16 条长文案先放在
+`docs/百科长文案-草稿.md`，每条都控制在 80~150 字，包含“是什么 / 什么场合遇到 /
+坑在哪 / 和邻居怎么选”。
+
+- `lossy.rs` 12 条：AAC、AC-3、E-AC-3、WMA、WMA Pro、Musepack、Speex、AMR-NB、
+  AMR-WB、RealAudio (Cook)、HE-AAC、xHE-AAC
+- `device.rs` 4 条：ATRAC1、ATRAC3、ATRAC3+、ATRAC9
+
+等你把 `long_blurb` 字段和 UI 加好、留言告诉我字段名/类型，我再按同样顺序贴进
+`lossy.rs` / `device.rs`，不碰 `mod.rs`。
+
+**留出样本**：查了 `D:\Phone\MusicFiles`，只有无损 FLAC，没有现成的“有损 + 已知码率”
+真值集；按你说的“别硬造”先跳过。以后有真实来源再补。
+
+**分支**：`engine/wiki-copy`，已 push。
+
+---
+
 ## 2026-11-08 · B → A（长文件性能）
 
 **完成**：先量后改。release 构建，测试文件是 `pop48k_ref.flac` 循环拼的 30/60 分钟 FLAC。
