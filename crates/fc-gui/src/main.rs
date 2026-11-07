@@ -1,16 +1,18 @@
-//! 格式转换器 —— 三栏形态
+//! 格式转换器 —— 三栏形态 + 壁纸毛玻璃 + 动效
 //!
-//! 布局：左（输出格式 + 该格式的小字解释） / 中（队列） / 右（选中文件详情）
+//! 布局：左（输出格式 + 小字解释） / 中（队列） / 右（选中文件详情）
 //!
-//! 三条已经定下来的产品决定：
+//! 三条产品决定：
 //!   1. 输出格式默认全局一个，单个文件可以在队列里单独覆盖
 //!   2. 支持一次拖多个文件
 //!   3. 格式百科不单独开页面，挂在格式自己身上——点它，下面出小字
 //!
-//! 渲染注意：eframe 0.29 的 glow 后端对 `from_rgba_unmultiplied` 会二次 gamma
-//! （alpha=10 实测渲染成 55% 白）。所有半透明色必须走 premultiplied，见 `tint()`。
+//! 动效策略：不依赖 egui 的 animation API，自己用 `approach()` 做指数逼近。
+//! 好处是行为完全可预测，不会因为版本升级挂掉。
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod bg;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -22,19 +24,18 @@ use fc_core::{estimate_size, FormatSpec, Group, MediaInfo, Tools};
 
 // ── 配色 ────────────────────────────────────────────────
 const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
-const MUTED: Color32 = Color32::from_rgb(148, 159, 178);
-const DIM: Color32 = Color32::from_rgb(104, 114, 132);
-const ACCENT: Color32 = Color32::from_rgb(120, 226, 212);
+const MUTED: Color32 = Color32::from_rgb(158, 168, 186);
+const DIM: Color32 = Color32::from_rgb(112, 122, 140);
+const ACCENT: Color32 = Color32::from_rgb(122, 226, 214);
 const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
-const BG: Color32 = Color32::from_rgb(17, 19, 26);
+const BG: Color32 = Color32::from_rgb(14, 16, 22);
 
 // ── 布局规范 ────────────────────────────────────────────
-// 面板宽度必须是常量，且内容宽度在面板内锁死（ui.set_width）。
+// 面板宽度必须是常量，内容宽度在面板内锁死。
 // 所有长文本一律显式 wrap，任何元素都不允许横向溢出把窗口边缘切掉。
 const LEFT_W: f32 = 216.0;
 const RIGHT_W: f32 = 300.0;
-const PANEL_PAD_X: f32 = 14.0;
 
 fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
@@ -48,6 +49,30 @@ fn tint(c: Color32, a: u8) -> Color32 {
 
 fn line(c: Color32, a: u8) -> Stroke {
     Stroke::new(1.0, tint(c, a))
+}
+
+/// 两个预乘色按 t 混合
+fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgba_premultiplied(
+        f(a.r(), b.r()),
+        f(a.g(), b.g()),
+        f(a.b(), b.b()),
+        f(a.a(), b.a()),
+    )
+}
+
+/// 指数逼近：dt 无关的稳定缓动。返回是否还在动。
+fn approach(cur: &mut f32, target: f32, dt: f32, speed: f32) -> bool {
+    let k = (dt * speed).clamp(0.0, 1.0);
+    *cur += (target - *cur) * k;
+    if (target - *cur).abs() < 0.002 {
+        *cur = target;
+        false
+    } else {
+        true
+    }
 }
 
 // ── 队列条目 ────────────────────────────────────────────
@@ -64,15 +89,17 @@ struct Item {
     info: Option<MediaInfo>,
     error: Option<String>,
     state: State,
-    /// 单文件覆盖的目标格式 id；None 表示跟随全局
     override_id: Option<&'static str>,
+    // 动效状态
+    hover_t: f32,
+    sel_t: f32,
+    hovered: bool,
+    progress_t: f32,
 }
 
 impl Item {
     fn spec(&self, global: &'static FormatSpec) -> &'static FormatSpec {
-        self.override_id
-            .and_then(fc_core::by_id)
-            .unwrap_or(global)
+        self.override_id.and_then(fc_core::by_id).unwrap_or(global)
     }
     fn name(&self) -> String {
         self.path
@@ -104,6 +131,14 @@ struct App {
     player: Option<fc_player::Player>,
     player_for: Option<usize>,
     play_error: Option<String>,
+    // 背景与动效
+    bg: bg::WallpaperBg,
+    dt: f32,
+    fmt_sel: Vec<(&'static str, f32)>,
+    blurb_t: f32,
+    blurb_id: Option<&'static str>,
+    detail_t: f32,
+    detail_for: usize,
 }
 
 impl App {
@@ -133,6 +168,13 @@ impl App {
             player: None,
             player_for: None,
             play_error: None,
+            bg: bg::WallpaperBg::new(&cc.egui_ctx),
+            dt: 0.016,
+            fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
+            blurb_t: 1.0,
+            blurb_id: Some(target.id),
+            detail_t: 1.0,
+            detail_for: 0,
         }
     }
 
@@ -152,6 +194,10 @@ impl App {
                 error,
                 state: State::Pending,
                 override_id: None,
+                hover_t: 0.0,
+                sel_t: 0.0,
+                hovered: false,
+                progress_t: 0.0,
             });
         }
         if !self.items.is_empty() && self.selected >= self.items.len() {
@@ -218,6 +264,7 @@ impl App {
         self.play_error = None;
         let Some(tools) = self.tools.clone() else {
             self.play_error = Some("找不到 ffmpeg，无法试听".into());
+            self.player_for = Some(idx);
             return;
         };
         let Some(it) = self.items.get(idx) else { return };
@@ -294,6 +341,7 @@ impl eframe::App for App {
         if !self.backdrop_done && self.frames > 3 {
             self.backdrop_done = apply_backdrop();
         }
+        self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         self.poll();
 
         if let Some(p) = self.player.as_mut() {
@@ -315,11 +363,16 @@ impl eframe::App for App {
             self.add_files(dropped);
         }
 
+        // 背景画在最底层
+        self.bg.paint(ctx);
+
+        let mut animating = false;
+
         egui::TopBottomPanel::top("top")
             .frame(
                 egui::Frame::none()
-                    .fill(tint(BG, 246))
-                    .inner_margin(egui::Margin::symmetric(20.0, 14.0)),
+                    .fill(tint(BG, 120))
+                    .inner_margin(egui::Margin::symmetric(20.0, 12.0)),
             )
             .show(ctx, |ui| self.header(ui));
 
@@ -328,28 +381,32 @@ impl eframe::App for App {
             .resizable(false)
             .frame(
                 egui::Frame::none()
-                    .fill(tint(BG, 242))
-                    .inner_margin(egui::Margin::symmetric(12.0, 14.0)),
+                    .fill(tint(BG, 104))
+                    .inner_margin(egui::Margin::symmetric(12.0, 12.0)),
             )
-            .show(ctx, |ui| self.sidebar(ui));
+            .show(ctx, |ui| animating |= self.sidebar(ui));
 
         egui::SidePanel::right("detail")
             .exact_width(RIGHT_W)
             .resizable(false)
             .frame(
                 egui::Frame::none()
-                    .fill(tint(BG, 242))
-                    .inner_margin(egui::Margin::symmetric(16.0, 14.0)),
+                    .fill(tint(BG, 104))
+                    .inner_margin(egui::Margin::symmetric(16.0, 12.0)),
             )
-            .show(ctx, |ui| self.detail(ui));
+            .show(ctx, |ui| animating |= self.detail(ui));
 
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
-                    .fill(tint(BG, 240))
-                    .inner_margin(egui::Margin::symmetric(16.0, 14.0)),
+                    .fill(tint(BG, 92))
+                    .inner_margin(egui::Margin::symmetric(16.0, 12.0)),
             )
-            .show(ctx, |ui| self.queue(ui, ctx));
+            .show(ctx, |ui| animating |= self.queue(ui, ctx));
+
+        if animating {
+            ctx.request_repaint();
+        }
     }
 }
 
@@ -387,7 +444,11 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(RichText::new("格式转换器").size(19.0).color(TEXT).strong());
             ui.add_space(10.0);
-            ui.label(RichText::new("转换 · 质量判断 · 格式解释").size(11.0).color(DIM));
+            ui.label(
+                RichText::new("转换 · 质量判断 · 格式解释")
+                    .size(11.0)
+                    .color(DIM),
+            );
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let (label, color) = if self.tools.is_some() {
@@ -407,40 +468,64 @@ impl App {
         });
     }
 
-    fn sidebar(&mut self, ui: &mut egui::Ui) {
+    fn sidebar(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
+        let dt = self.dt;
+        let mut animating = false;
+
         ui.label(RichText::new("输出格式").size(11.0).color(DIM));
-        ui.add_space(6.0);
+        ui.add_space(4.0);
+
+        // 展开状态变化时，把高度动画归零重来
+        if self.blurb_id != self.expanded {
+            self.blurb_id = self.expanded;
+            self.blurb_t = 0.0;
+        }
+        // 只在这里驱动一次，不能放进每行的循环（会互相覆盖导致永远振荡）
+        animating |= approach(
+            &mut self.blurb_t,
+            if self.expanded.is_some() { 1.0 } else { 0.0 },
+            dt,
+            14.0,
+        );
 
         for group in [Group::Lossless, Group::Lossy, Group::Device] {
-            let items: Vec<&'static FormatSpec> =
-                fc_core::browsable().filter(|f| f.group == group).collect();
-            if items.is_empty() {
+            let specs: Vec<&'static FormatSpec> = fc_core::browsable()
+                .filter(|f| f.group == group)
+                .collect();
+            if specs.is_empty() {
                 continue;
             }
             ui.add_space(8.0);
             ui.label(RichText::new(group.title()).size(10.0).color(DIM));
             ui.add_space(2.0);
 
-            for spec in items {
+            for spec in specs {
                 let selected = spec.id == self.target.id;
-                let row = egui::Button::new(
-                    RichText::new(spec.name)
-                        .size(13.0)
-                        .color(if selected { ACCENT } else { TEXT }),
-                )
-                .fill(if selected {
-                    tint(ACCENT, 22)
-                } else {
-                    Color32::TRANSPARENT
-                })
-                .stroke(if selected {
-                    line(ACCENT, 60)
-                } else {
-                    Stroke::NONE
-                })
-                .rounding(Rounding::same(9.0))
-                .min_size(egui::vec2(ui.available_width(), 30.0));
+                let cur = {
+                    let slot = self
+                        .fmt_sel
+                        .iter_mut()
+                        .find(|(id, _)| *id == spec.id)
+                        .map(|(_, v)| v);
+                    match slot {
+                        Some(v) => {
+                            animating |= approach(v, if selected { 1.0 } else { 0.0 }, dt, 16.0);
+                            *v
+                        }
+                        None => 0.0,
+                    }
+                };
+
+                let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
+                let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
+                let text_c = blend(TEXT, ACCENT, cur);
+
+                let row = egui::Button::new(RichText::new(spec.name).size(13.0).color(text_c))
+                    .fill(fill)
+                    .stroke(Stroke::new(1.0, stroke_c))
+                    .rounding(Rounding::same(9.0))
+                    .min_size(egui::vec2(ui.available_width(), 30.0));
 
                 if ui.add(row).clicked() {
                     self.target = spec;
@@ -451,23 +536,28 @@ impl App {
                     };
                 }
 
-                if self.expanded == Some(spec.id) {
-                    ui.add_space(3.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.add_space(6.0);
-                        ui.label(
-                            RichText::new(spec.blurb)
-                                .size(10.0)
-                                .color(MUTED)
-                                .line_height(Some(15.0)),
-                        );
-                    });
-                    ui.add_space(4.0);
+                // 小字：高度 + 透明度一起动（动画值在循环外统一驱动，否则每行互相打架）
+                let expanded_here = self.expanded == Some(spec.id);
+
+                if self.blurb_t > 0.01 && expanded_here {
+                    let wrap_w = (ui.available_width() - 12.0).max(60.0);
+                    let galley = ui.painter().layout(
+                        spec.blurb.to_string(),
+                        egui::FontId::proportional(10.0),
+                        MUTED,
+                        wrap_w,
+                    );
+                    let full_h = galley.size().y + 4.0;
+                    let h = full_h * self.blurb_t;
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(wrap_w, h), egui::Sense::hover());
+                    ui.painter()
+                        .with_clip_rect(rect)
+                        .galley(rect.min + egui::vec2(6.0, 0.0), galley, MUTED);
                 }
             }
         }
 
-        // 底部固定区
         ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
             ui.add_space(4.0);
             ui.label(
@@ -476,20 +566,24 @@ impl App {
                     .color(DIM),
             );
         });
+
+        animating
     }
 
-    fn queue(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn queue(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         ui.set_width(ui.available_width());
         if self.items.is_empty() {
-            self.drop_zone(ui, ctx);
-            return;
+            self.drop_zone(ui);
+            return false;
         }
-
+        let dt = self.dt;
+        let mut animating = false;
         let mut remove: Option<usize> = None;
         let count = self.items.len();
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .max_height(ui.available_height() - 62.0)
+            .max_height(ui.available_height() - 58.0)
             .show(ui, |ui| {
                 for i in 0..count {
                     let is_sel = i == self.selected;
@@ -500,19 +594,28 @@ impl App {
                     let state = self.items[i].state.clone();
                     let override_id = self.items[i].override_id;
 
+                    // 动效值先算，再画
+                    let (sel_t, hov_t) = {
+                        let it = &mut self.items[i];
+                        animating |= approach(&mut it.sel_t, if is_sel { 1.0 } else { 0.0 }, dt, 16.0);
+                        let target_h = if it.hovered { 1.0 } else { 0.0 };
+                        animating |= approach(&mut it.hover_t, target_h, dt, 14.0);
+                        (it.sel_t, it.hover_t)
+                    };
+
+                    let base = blend(tint(Color32::WHITE, 6), tint(Color32::WHITE, 16), hov_t);
+                    let fill = blend(base, tint(ACCENT, 30), sel_t);
+                    let stroke_c = blend(
+                        blend(Color32::TRANSPARENT, tint(Color32::WHITE, 22), hov_t),
+                        tint(ACCENT, 90),
+                        sel_t,
+                    );
+
                     let frame = egui::Frame::none()
-                        .fill(if is_sel {
-                            tint(ACCENT, 16)
-                        } else {
-                            tint(Color32::WHITE, 8)
-                        })
-                        .stroke(if is_sel {
-                            line(ACCENT, 55)
-                        } else {
-                            line(Color32::WHITE, 18)
-                        })
+                        .fill(fill)
+                        .stroke(Stroke::new(1.0, stroke_c))
                         .rounding(Rounding::same(12.0))
-                        .inner_margin(egui::Margin::symmetric(14.0, 11.0));
+                        .inner_margin(egui::Margin::symmetric(14.0, 10.0));
 
                     let inner_w = ui.available_width();
                     let resp = frame.show(ui, |ui| {
@@ -521,10 +624,8 @@ impl App {
                             ui.vertical(|ui| {
                                 ui.set_max_width((row_w - 168.0).max(140.0));
                                 ui.add(
-                                    egui::Label::new(
-                                        RichText::new(&name).size(12.5).color(TEXT),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Truncate),
+                                    egui::Label::new(RichText::new(&name).size(12.5).color(TEXT))
+                                        .wrap_mode(egui::TextWrapMode::Truncate),
                                 );
                                 ui.add_space(2.0);
                                 let sub = match &info {
@@ -536,8 +637,11 @@ impl App {
                                         spec.name
                                     ),
                                     None => {
-                                        let e = error.clone().unwrap_or_else(|| "读取失败".into());
-                                        let first: String = e.lines().next().unwrap_or("").chars().take(46).collect();
+                                        let e = error
+                                            .clone()
+                                            .unwrap_or_else(|| "读取失败".into());
+                                        let first: String =
+                                            e.lines().next().unwrap_or("").chars().take(46).collect();
                                         format!("{first}…")
                                     }
                                 };
@@ -550,9 +654,7 @@ impl App {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 match &state {
                                     State::Pending => {
-                                        ui.label(
-                                            RichText::new("待转换").size(10.0).color(MUTED),
-                                        );
+                                        ui.label(RichText::new("待转换").size(10.0).color(MUTED));
                                     }
                                     State::Running(p) => {
                                         ui.add(
@@ -573,24 +675,26 @@ impl App {
                                     }
                                 }
 
-                                // 单文件覆盖目标格式
-                                ui.menu_button(RichText::new("···").size(13.0).color(DIM), |ui| {
-                                    ui.set_min_width(120.0);
-                                    if ui
-                                        .selectable_label(override_id.is_none(), "跟随全局")
-                                        .clicked()
-                                    {
-                                        self.items[i].override_id = None;
-                                        ui.close_menu();
-                                    }
-                                    for f in fc_core::browsable() {
-                                        let on = override_id == Some(f.id);
-                                        if ui.selectable_label(on, f.name).clicked() {
-                                            self.items[i].override_id = Some(f.id);
+                                ui.menu_button(
+                                    RichText::new("···").size(12.0).color(DIM),
+                                    |ui| {
+                                        ui.set_min_width(120.0);
+                                        if ui
+                                            .selectable_label(override_id.is_none(), "跟随全局")
+                                            .clicked()
+                                        {
+                                            self.items[i].override_id = None;
                                             ui.close_menu();
                                         }
-                                    }
-                                });
+                                        for f in fc_core::browsable() {
+                                            let on = override_id == Some(f.id);
+                                            if ui.selectable_label(on, f.name).clicked() {
+                                                self.items[i].override_id = Some(f.id);
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    },
+                                );
 
                                 if ui
                                     .small_button(RichText::new("×").size(11.0).color(DIM))
@@ -602,16 +706,14 @@ impl App {
                         });
                     });
 
-                    if resp
-                        .response
-                        .interact(egui::Sense::click())
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .clicked()
-                    {
+                    let hovered = resp.response.hovered() || resp.response.contains_pointer();
+                    self.items[i].hovered = hovered;
+
+                    if resp.response.interact(egui::Sense::click()).clicked() {
                         self.selected = i;
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(5.0);
                 }
             });
 
@@ -620,7 +722,7 @@ impl App {
             self.selected = self.selected.min(self.items.len().saturating_sub(1));
         }
 
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
             let can = !self.running
                 && self.tools.is_some()
@@ -629,20 +731,20 @@ impl App {
                     .iter()
                     .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
             let btn = egui::Button::new(
-                RichText::new(if self.running {
-                    "转换中…"
-                } else {
-                    "开始转换"
-                })
-                .size(13.0)
-                .color(if can {
-                    Color32::from_rgb(10, 26, 24)
-                } else {
-                    DIM
-                }),
+                RichText::new(if self.running { "转换中…" } else { "开始转换" })
+                    .size(13.0)
+                    .color(if can {
+                        Color32::from_rgb(10, 26, 24)
+                    } else {
+                        DIM
+                    }),
             )
             .fill(if can { ACCENT } else { tint(Color32::WHITE, 10) })
-            .stroke(if can { Stroke::NONE } else { line(Color32::WHITE, 18) })
+            .stroke(if can {
+                Stroke::NONE
+            } else {
+                line(Color32::WHITE, 18)
+            })
             .rounding(Rounding::same(9.0))
             .min_size(egui::vec2(112.0, 34.0));
 
@@ -678,7 +780,7 @@ impl App {
             if self.running {
                 ui.add(
                     egui::ProgressBar::new(self.overall())
-                        .desired_width(ui.available_width() - 8.0)
+                        .desired_width((ui.available_width() - 8.0).max(60.0))
                         .fill(ACCENT),
                 );
             } else if ui
@@ -694,14 +796,16 @@ impl App {
                 self.selected = 0;
             }
         });
+
+        animating
     }
 
-    fn drop_zone(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
+    fn drop_zone(&mut self, ui: &mut egui::Ui) {
         let mut do_pick = false;
         let avail = ui.available_height();
         egui::Frame::none()
             .fill(tint(Color32::WHITE, 6))
-            .stroke(line(Color32::WHITE, 20))
+            .stroke(line(Color32::WHITE, 22))
             .rounding(Rounding::same(16.0))
             .inner_margin(egui::Margin::symmetric(20.0, 16.0))
             .show(ui, |ui| {
@@ -712,17 +816,18 @@ impl App {
                     ui.label(RichText::new("把音频文件拖到这里").size(15.0).color(TEXT));
                     ui.add_space(5.0);
                     ui.label(
-                        RichText::new("可以一次拖多个 · MP3 / FLAC / WAV / M4A / OGG / Opus / ATRAC")
-                            .size(10.5)
-                            .color(MUTED),
+                        RichText::new(
+                            "可以一次拖多个 · MP3 / FLAC / WAV / M4A / OGG / Opus / ATRAC",
+                        )
+                        .size(10.5)
+                        .color(MUTED),
                     );
                     ui.add_space(16.0);
-                    let btn = egui::Button::new(
-                        RichText::new("选择文件").size(12.5).color(TEXT),
-                    )
-                    .fill(tint(Color32::WHITE, 16))
-                    .stroke(line(Color32::WHITE, 32))
-                    .rounding(Rounding::same(9.0));
+                    let btn =
+                        egui::Button::new(RichText::new("选择文件").size(12.5).color(TEXT))
+                            .fill(tint(Color32::WHITE, 16))
+                            .stroke(line(Color32::WHITE, 32))
+                            .rounding(Rounding::same(9.0));
                     if ui.add(btn).clicked() {
                         do_pick = true;
                     }
@@ -744,22 +849,36 @@ impl App {
         }
     }
 
-    fn detail(&mut self, ui: &mut egui::Ui) {
-        // 规范：内容宽度锁死，任何子元素不许横向溢出
+    fn detail(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
+        let dt = self.dt;
+        let mut animating = false;
+
+        // 切换选中项时，内容从下方滑入 + 淡入
+        if self.detail_for != self.selected {
+            self.detail_for = self.selected;
+            self.detail_t = 0.0;
+        }
+        animating |= approach(&mut self.detail_t, 1.0, dt, 12.0);
+        let t = self.detail_t;
+        ui.add_space(16.0 * (1.0 - t));
 
         let Some(it) = self.items.get(self.selected) else {
             ui.label(RichText::new("详情").size(10.5).color(DIM));
             ui.add_space(10.0);
             para(ui, "拖入文件后，这里显示源文件的真实参数、质量判断和解释。", 10.5, DIM);
-            return;
+            return animating;
         };
 
-        ui.label(RichText::new("详情").size(10.5).color(DIM));
+        let fade = |c: Color32| c.gamma_multiply(t);
+
+        ui.label(RichText::new("详情").size(10.5).color(fade(DIM)));
         ui.add_space(8.0);
         ui.add(
-            egui::Label::new(RichText::new(it.name()).size(12.5).color(TEXT).strong())
-                .wrap_mode(egui::TextWrapMode::Truncate),
+            egui::Label::new(
+                RichText::new(it.name()).size(12.5).color(fade(TEXT)).strong(),
+            )
+            .wrap_mode(egui::TextWrapMode::Truncate),
         );
         ui.add_space(10.0);
 
@@ -786,17 +905,13 @@ impl App {
                         p.toggle();
                     }
                     ui.label(
-                        RichText::new(format!(
-                            "{} / {}",
-                            fmt_duration(pos),
-                            fmt_duration(dur)
-                        ))
-                        .size(10.0)
-                        .color(MUTED),
+                        RichText::new(format!("{} / {}", fmt_duration(pos), fmt_duration(dur)))
+                            .size(10.0)
+                            .color(MUTED),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let mut vol = p.volume();
-                        ui.spacing_mut().slider_width = 62.0;
+                        ui.spacing_mut().slider_width = 58.0;
                         if ui
                             .add(
                                 egui::Slider::new(&mut vol, 0.0..=1.0)
@@ -813,7 +928,7 @@ impl App {
                 seek_to = seek_bar(ui, pos, dur);
             }
         } else if it.info.is_some() {
-            let b = egui::Button::new(RichText::new("试听").size(11.0).color(TEXT))
+            let b = egui::Button::new(RichText::new("试听").size(11.0).color(fade(TEXT)))
                 .fill(tint(Color32::WHITE, 16))
                 .stroke(line(Color32::WHITE, 30))
                 .rounding(Rounding::same(8.0))
@@ -929,14 +1044,16 @@ impl App {
             _ => {}
         }
 
-        if let Some(t) = seek_to {
+        if let Some(t2) = seek_to {
             if let Some(p) = self.player.as_mut() {
-                p.seek(t);
+                p.seek(t2);
             }
         }
         if want_play {
             self.start_play(self.selected);
         }
+
+        animating
     }
 }
 
@@ -961,24 +1078,6 @@ fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
     None
 }
 
-/// 段落文字：永远是 wrap 的，杜绝溢出
-fn para(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
-    ui.add(
-        egui::Label::new(RichText::new(text).size(size).color(color))
-            .wrap_mode(egui::TextWrapMode::Wrap),
-    );
-}
-
-/// 键值行
-fn row(ui: &mut egui::Ui, key: &str, value: &str) {
-    ui.label(RichText::new(key).size(9.5).color(DIM));
-    ui.add(
-        egui::Label::new(RichText::new(value).size(10.0).color(TEXT))
-            .wrap_mode(egui::TextWrapMode::Wrap),
-    );
-    ui.end_row();
-}
-
 fn card(ui: &mut egui::Ui, color: Color32, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::none()
         .fill(tint(color, 16))
@@ -995,8 +1094,28 @@ fn chip(ui: &mut egui::Ui, text: &str, color: Color32) {
         .rounding(Rounding::same(8.0))
         .inner_margin(egui::Margin::symmetric(8.0, 2.0))
         .show(ui, |ui| {
-            ui.add(egui::Label::new(RichText::new(text).size(9.5).color(color)).wrap_mode(egui::TextWrapMode::Extend));
+            ui.add(
+                egui::Label::new(RichText::new(text).size(9.5).color(color))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            );
         });
+}
+
+/// 段落文字：永远 wrap，杜绝溢出
+fn para(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
+    ui.add(
+        egui::Label::new(RichText::new(text).size(size).color(color))
+            .wrap_mode(egui::TextWrapMode::Wrap),
+    );
+}
+
+fn row(ui: &mut egui::Ui, key: &str, value: &str) {
+    ui.label(RichText::new(key).size(9.5).color(DIM));
+    ui.add(
+        egui::Label::new(RichText::new(value).size(10.0).color(TEXT))
+            .wrap_mode(egui::TextWrapMode::Wrap),
+    );
+    ui.end_row();
 }
 
 fn install_fonts(ctx: &egui::Context) {
@@ -1011,11 +1130,7 @@ fn install_fonts(ctx: &egui::Context) {
                 .font_data
                 .insert("cjk".to_owned(), egui::FontData::from_owned(bytes));
             for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-                fonts
-                    .families
-                    .entry(fam)
-                    .or_default()
-                    .insert(0, "cjk".to_owned());
+                fonts.families.entry(fam).or_default().insert(0, "cjk".to_owned());
             }
             break;
         }
@@ -1023,11 +1138,7 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// 只设置深色标题栏。
-///
-/// 踩过的坑，别再加回去：DWMWA_SYSTEMBACKDROP_TYPE、ACCENT_ENABLE_ACRYLICBLURBEHIND、
-/// DwmExtendFrameIntoClientArea(-1) 三者任意一个都会覆盖 per-pixel alpha，
-/// 让半透明窗口变成全不透明。
+/// 只设深色标题栏。毛玻璃走的是壁纸方案（见 bg.rs），不碰 DWM。
 #[cfg(windows)]
 fn apply_backdrop() -> bool {
     use windows_sys::Win32::Foundation::HWND;
@@ -1072,7 +1183,6 @@ fn main() -> eframe::Result<()> {
                 std::process::exit(1);
             }
         };
-        let spec = fc_core::default_target();
         println!(
             "输入: {} / {} kbps / {} Hz / {:.1}s",
             info.codec_label(),
@@ -1084,7 +1194,7 @@ fn main() -> eframe::Result<()> {
             &tools,
             Path::new(input),
             Path::new(output),
-            spec.args,
+            fc_core::default_target().args,
             info.duration_s,
             Box::new(|_| {}),
         ) {
@@ -1095,16 +1205,12 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
-    // 命令行试听：验证解码 + 声卡链路（不需要点界面）
     if args.first().map(|s| s.as_str()) == Some("--play") {
         let Some(input) = args.get(1) else {
             eprintln!("用法: format-converter --play <文件> [秒数]");
             std::process::exit(2);
         };
-        let secs: f64 = args
-            .get(2)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(4.0);
+        let secs: f64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(4.0);
         let tools = fc_core::locate().expect("找不到 ffmpeg");
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
@@ -1113,8 +1219,14 @@ fn main() -> eframe::Result<()> {
                 std::process::exit(1);
             }
         };
-        println!("试听: {} / {} kbps / {:.1}s", info.codec_label(), info.bitrate_kbps, info.duration_s);
-        let mut pl = match fc_player::Player::open(&tools.ffmpeg, Path::new(input), info.duration_s) {
+        println!(
+            "试听: {} / {} kbps / {:.1}s",
+            info.codec_label(),
+            info.bitrate_kbps,
+            info.duration_s
+        );
+        let mut pl = match fc_player::Player::open(&tools.ffmpeg, Path::new(input), info.duration_s)
+        {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("打开音频输出失败: {e:#}");
