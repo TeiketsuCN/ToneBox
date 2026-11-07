@@ -188,6 +188,10 @@ struct App {
     donate_alipay: Option<egui::TextureHandle>,
     /// 当前 ffmpeg 实际带哪些编码器（开机问一次）
     encoders: std::collections::HashSet<String>,
+    /// 格式百科
+    wiki_open: bool,
+    wiki_sel: &'static str,
+    wiki_filter: String,
 }
 
 impl App {
@@ -244,6 +248,9 @@ impl App {
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
+            wiki_open: false,
+            wiki_sel: "flac",
+            wiki_filter: String::new(),
         }
     }
 
@@ -697,6 +704,9 @@ impl eframe::App for App {
             self.dt,
             16.0,
         );
+        if self.wiki_open {
+            self.wiki_page(ctx);
+        }
         if self.settings_t > 0.001 {
             self.settings_panel(ctx);
         }
@@ -882,7 +892,23 @@ impl App {
         let dt = self.dt;
         let mut animating = false;
 
-        ui.label(RichText::new("输出格式").size(11.0).color(DIM));
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("输出格式").size(11.0).color(DIM));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("百科").size(9.0).color(MUTED))
+                            .fill(tint(Color32::WHITE, 8))
+                            .stroke(line(Color32::WHITE, 16))
+                            .rounding(Rounding::same(6.0)),
+                    )
+                    .on_hover_text("看看每个格式到底是什么")
+                    .clicked()
+                {
+                    self.wiki_open = true;
+                }
+            });
+        });
         ui.add_space(4.0);
 
         // 展开状态变化时，把高度动画归零重来
@@ -1349,6 +1375,190 @@ impl App {
                 self.add_files(paths);
             }
         }
+    }
+
+    /// 格式百科：左边列表，右边长文。B 写的 29 条长文案就展示在这里。
+    fn wiki_page(&mut self, ctx: &egui::Context) {
+        let screen = ctx.screen_rect();
+        let area = egui::Rect::from_min_max(
+            egui::pos2(screen.left(), screen.top() + TITLEBAR_H),
+            screen.max,
+        );
+
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.wiki_open = false;
+        }
+
+        egui::Area::new(egui::Id::new("wiki_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(area.min)
+            .show(ctx, |ui| {
+                egui::Frame::none()
+                    .fill(tint(BG, 255))
+                    .inner_margin(egui::Margin::symmetric(28.0, 18.0))
+                    .show(ui, |ui| {
+                        ui.set_min_size(area.size());
+                        ui.set_max_width(area.width() - 56.0);
+                        ui.add_space(TITLEBAR_H);
+
+                        // 顶栏
+                        let back_rect =
+                            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(78.0, 30.0));
+                        let back = ui.interact(
+                            back_rect,
+                            ui.id().with("wiki_back"),
+                            egui::Sense::click(),
+                        );
+                        ui.painter().rect_filled(
+                            back_rect,
+                            Rounding::same(8.0),
+                            if back.hovered() {
+                                tint(Color32::WHITE, 22)
+                            } else {
+                                tint(Color32::WHITE, 12)
+                            },
+                        );
+                        ui.painter().text(
+                            back_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "← 返回",
+                            egui::FontId::proportional(11.0),
+                            TEXT,
+                        );
+                        if back.clicked() {
+                            self.wiki_open = false;
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.add_space(88.0);
+                            ui.label(RichText::new("格式百科").size(15.0).color(TEXT).strong());
+                            ui.add_space(16.0);
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.wiki_filter)
+                                    .hint_text("搜格式名…")
+                                    .desired_width(180.0)
+                                    .margin(egui::vec2(8.0, 5.0)),
+                            );
+                        });
+
+                        ui.add_space(14.0);
+
+                        let keyword = self.wiki_filter.trim().to_lowercase();
+                        let list: Vec<&'static FormatSpec> = fc_core::all()
+                            .filter(|f| {
+                                keyword.is_empty()
+                                    || f.name.to_lowercase().contains(&keyword)
+                                    || f.id.contains(&keyword)
+                                    || f.ext.contains(&keyword)
+                            })
+                            .collect();
+
+                        let body_h = (ui.available_height() - 8.0).max(120.0);
+                        let right_w = (ui.available_width() - 210.0 - 10.0).max(220.0);
+                        ui.horizontal_top(|ui| {
+                            // 左：列表
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(210.0, body_h),
+                                Layout::top_down(Align::LEFT),
+                                |ui| {
+                                ui.set_min_height(body_h);
+                                egui::ScrollArea::vertical()
+                                    .id_salt("wiki_list")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        for f in &list {
+                                            let on = f.id == self.wiki_sel;
+                                            let b = egui::Button::new(
+                                                RichText::new(f.name).size(11.0).color(if on {
+                                                    ACCENT
+                                                } else {
+                                                    MUTED
+                                                }),
+                                            )
+                                            .fill(if on {
+                                                tint(ACCENT, 20)
+                                            } else {
+                                                Color32::TRANSPARENT
+                                            })
+                                            .stroke(Stroke::NONE)
+                                            .rounding(Rounding::same(7.0))
+                                            .min_size(egui::vec2(ui.available_width(), 24.0));
+                                            if ui.add(b).clicked() {
+                                                self.wiki_sel = f.id;
+                                            }
+                                        }
+                                    });
+                                },
+                            );
+
+                            ui.add_space(10.0);
+
+                            // 右：详情
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(right_w, body_h),
+                                Layout::top_down(Align::LEFT),
+                                |ui| {
+                                ui.set_min_height(body_h);
+                                egui::ScrollArea::vertical()
+                                    .id_salt("wiki_body")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        // 一行太长不好读，限制在 760 左右
+                                        ui.set_max_width((right_w - 18.0).min(760.0));
+                                        let Some(spec) = fc_core::by_id(self.wiki_sel) else {
+                                            return;
+                                        };
+                                        ui.label(
+                                            RichText::new(spec.name).size(20.0).color(TEXT).strong(),
+                                        );
+                                        ui.add_space(6.0);
+                                        ui.horizontal(|ui| {
+                                            let kind = match spec.kind {
+                                                fc_core::Kind::Lossless => "无损",
+                                                fc_core::Kind::Lossy => "有损",
+                                                _ => "设备专用",
+                                            };
+                                            ui.label(
+                                                RichText::new(kind).size(9.5).color(ACCENT),
+                                            );
+                                            ui.label(RichText::new("·").size(9.5).color(DIM));
+                                            ui.label(
+                                                RichText::new(spec.patent.label())
+                                                    .size(9.5)
+                                                    .color(MUTED),
+                                            );
+                                            ui.label(RichText::new("·").size(9.5).color(DIM));
+                                            ui.label(
+                                                RichText::new(format!(".{}", spec.ext))
+                                                    .size(9.5)
+                                                    .color(MUTED),
+                                            );
+                                            ui.label(RichText::new("·").size(9.5).color(DIM));
+                                            let w = if spec.can_encode {
+                                                "可以转成这个"
+                                            } else {
+                                                "只能读，不能转出"
+                                            };
+                                            ui.label(RichText::new(w).size(9.5).color(
+                                                if spec.can_encode { ACCENT } else { WARN },
+                                            ));
+                                        });
+                                        ui.add_space(14.0);
+
+                                        let text = fc_core::long_blurb(spec.id)
+                                            .unwrap_or(spec.blurb);
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(text).size(11.0).color(MUTED),
+                                            )
+                                            .wrap_mode(egui::TextWrapMode::Wrap),
+                                        );
+                                    });
+                                },
+                            );
+                        });
+                    });
+            });
     }
 
     /// 设置页：从下往上滑入的覆盖层，不弹新窗口
