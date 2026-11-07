@@ -101,6 +101,9 @@ struct App {
     batch_done: usize,
     frames: u64,
     backdrop_done: bool,
+    player: Option<fc_player::Player>,
+    player_for: Option<usize>,
+    play_error: Option<String>,
 }
 
 impl App {
@@ -127,6 +130,9 @@ impl App {
             batch_done: 0,
             frames: 0,
             backdrop_done: false,
+            player: None,
+            player_for: None,
+            play_error: None,
         }
     }
 
@@ -207,6 +213,31 @@ impl App {
         });
     }
 
+    fn start_play(&mut self, idx: usize) {
+        self.player = None;
+        self.play_error = None;
+        let Some(tools) = self.tools.clone() else {
+            self.play_error = Some("找不到 ffmpeg，无法试听".into());
+            return;
+        };
+        let Some(it) = self.items.get(idx) else { return };
+        let Some(info) = it.info.clone() else {
+            self.play_error = Some("这个文件解不出音频，没法试听".into());
+            self.player_for = Some(idx);
+            return;
+        };
+        match fc_player::Player::open(&tools.ffmpeg, &it.path, info.duration_s) {
+            Ok(p) => {
+                self.player = Some(p);
+                self.player_for = Some(idx);
+            }
+            Err(e) => {
+                self.play_error = Some(format!("{e:#}"));
+                self.player_for = Some(idx);
+            }
+        }
+    }
+
     fn poll(&mut self) {
         let mut msgs = Vec::new();
         if let Some(rx) = &self.rx {
@@ -264,6 +295,14 @@ impl eframe::App for App {
             self.backdrop_done = apply_backdrop();
         }
         self.poll();
+
+        if let Some(p) = self.player.as_mut() {
+            if p.finished() {
+                p.pause();
+            } else if p.is_playing() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(60));
+            }
+        }
 
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
@@ -724,6 +763,75 @@ impl App {
         );
         ui.add_space(10.0);
 
+        // ── 试听条 ──
+        let mut want_play = false;
+        let mut seek_to: Option<f64> = None;
+        if self.player_for == Some(self.selected) {
+            if let Some(p) = self.player.as_mut() {
+                let pos = p.position_s();
+                let dur = p.duration_s().max(0.1);
+                let playing = p.is_playing();
+                ui.horizontal(|ui| {
+                    let label = if playing { "暂停" } else { "播放" };
+                    let b = egui::Button::new(
+                        RichText::new(label)
+                            .size(11.0)
+                            .color(Color32::from_rgb(10, 26, 24)),
+                    )
+                    .fill(ACCENT)
+                    .stroke(Stroke::NONE)
+                    .rounding(Rounding::same(8.0))
+                    .min_size(egui::vec2(54.0, 28.0));
+                    if ui.add(b).clicked() {
+                        p.toggle();
+                    }
+                    ui.label(
+                        RichText::new(format!(
+                            "{} / {}",
+                            fmt_duration(pos),
+                            fmt_duration(dur)
+                        ))
+                        .size(10.0)
+                        .color(MUTED),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let mut vol = p.volume();
+                        ui.spacing_mut().slider_width = 62.0;
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut vol, 0.0..=1.0)
+                                    .show_value(false)
+                                    .trailing_fill(true),
+                            )
+                            .changed()
+                        {
+                            p.set_volume(vol);
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                seek_to = seek_bar(ui, pos, dur);
+            }
+        } else if it.info.is_some() {
+            let b = egui::Button::new(RichText::new("试听").size(11.0).color(TEXT))
+                .fill(tint(Color32::WHITE, 16))
+                .stroke(line(Color32::WHITE, 30))
+                .rounding(Rounding::same(8.0))
+                .min_size(egui::vec2(54.0, 28.0));
+            if ui.add(b).clicked() {
+                want_play = true;
+            }
+        }
+
+        if self.player_for == Some(self.selected) {
+            if let Some(e) = self.play_error.clone() {
+                ui.add_space(4.0);
+                para(ui, &e, 9.5, DANGER);
+            }
+        }
+
+        ui.add_space(10.0);
+
         if let Some(m) = &it.info {
             ui.horizontal(|ui| {
                 chip(ui, m.codec_label(), ACCENT);
@@ -820,7 +928,37 @@ impl App {
             }
             _ => {}
         }
+
+        if let Some(t) = seek_to {
+            if let Some(p) = self.player.as_mut() {
+                p.seek(t);
+            }
+        }
+        if want_play {
+            self.start_play(self.selected);
+        }
     }
+}
+
+/// 可点击跳转的进度条
+fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 12.0), egui::Sense::click_and_drag());
+    let frac = ((pos / dur.max(0.001)) as f32).clamp(0.0, 1.0);
+    let p = ui.painter();
+    p.rect_filled(rect, Rounding::same(6.0), tint(Color32::WHITE, 14));
+    if frac > 0.0 {
+        let mut fill = rect;
+        fill.set_width(rect.width() * frac);
+        p.rect_filled(fill, Rounding::same(6.0), ACCENT);
+    }
+    if resp.clicked() || resp.dragged() {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            let f = ((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+            return Some((f as f64) * dur);
+        }
+    }
+    None
 }
 
 /// 段落文字：永远是 wrap 的，杜绝溢出
@@ -954,6 +1092,42 @@ fn main() -> eframe::Result<()> {
             std::process::exit(1);
         }
         println!("完成: {output}");
+        return Ok(());
+    }
+
+    // 命令行试听：验证解码 + 声卡链路（不需要点界面）
+    if args.first().map(|s| s.as_str()) == Some("--play") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter --play <文件> [秒数]");
+            std::process::exit(2);
+        };
+        let secs: f64 = args
+            .get(2)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(4.0);
+        let tools = fc_core::locate().expect("找不到 ffmpeg");
+        let info = match fc_core::probe(&tools, Path::new(input)) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("无法读取: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        println!("试听: {} / {} kbps / {:.1}s", info.codec_label(), info.bitrate_kbps, info.duration_s);
+        let mut pl = match fc_player::Player::open(&tools.ffmpeg, Path::new(input), info.duration_s) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("打开音频输出失败: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        let t0 = std::time::Instant::now();
+        while t0.elapsed().as_secs_f64() < secs {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            println!("  位置 {:.2}s / {:.2}s", pl.position_s(), info.duration_s);
+        }
+        pl.pause();
+        println!("ok");
         return Ok(());
     }
 

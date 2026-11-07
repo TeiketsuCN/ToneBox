@@ -16,6 +16,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 三 crate。
 | ffprobe 读真实参数 | ✅ |
 | 有损源警告（转无损不会增加信息量） | ✅ |
 | 转 FLAC / WAV / ALAC / AIFF / MP3 / Opus / Vorbis | ✅ |
+| 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
 | 加密文件识别 + 解释（不解密） | ✅ |
 | 频谱质量评估 | ⏳ 契约已定，`fc-analyze` 待实现 |
 | 命令行 `--convert` | ✅ |
@@ -28,6 +29,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 三 crate。
 crates/
 ├── fc-core/      格式表 + probe + convert      【引擎，机器 B 管】
 ├── fc-analyze/   频谱分析（stub）               【引擎，机器 B 管】
+├── fc-player/    试听（ffmpeg + cpal）          【本机管】
 └── fc-gui/       三栏界面 + 队列状态机           【界面，本机管】
 docs/
 ├── 契约.md               并行开发的归属表与冻结 API
@@ -86,6 +88,7 @@ winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e
 format-converter.exe                      # 空白启动
 format-converter.exe a.mp3 b.oma          # 直接载入多个文件
 format-converter.exe --convert in.mp3 out.flac
+format-converter.exe --play in.oma 5      # 试听 5 秒，验证声卡链路
 ```
 
 ffmpeg 查找顺序：程序同目录 → 同目录 `ffmpeg\` → WinGet Links → `C:\ffmpeg\bin` → PATH。

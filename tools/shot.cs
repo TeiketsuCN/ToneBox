@@ -21,6 +21,12 @@ public class WinShot
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint flags, int dx, int dy, uint data, IntPtr extra);
+
     public static int[] Rect(IntPtr h)
     {
         RECT r;
@@ -30,16 +36,25 @@ public class WinShot
 
     public static void Move(IntPtr h, int x, int y, int w, int hh)
     {
-        SetWindowPos(h, IntPtr.Zero, x, y, w, hh, 0x0004 /*NOZORDER*/);
+        SetWindowPos(h, IntPtr.Zero, x, y, w, hh, 0x0004);
     }
 
     public static void TopMost(IntPtr h)
     {
-        SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 /*NOSIZE|NOMOVE*/);
+        SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002);
     }
 
     public static void NoTopMost(IntPtr h)
     {
         SetWindowPos(h, new IntPtr(-2), 0, 0, 0, 0, 0x0001 | 0x0002);
+    }
+
+    public static void Click(int x, int y)
+    {
+        SetCursorPos(x, y);
+        System.Threading.Thread.Sleep(120);
+        mouse_event(0x0002, 0, 0, 0, IntPtr.Zero);
+        System.Threading.Thread.Sleep(60);
+        mouse_event(0x0004, 0, 0, 0, IntPtr.Zero);
     }
 }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fc-core", "crates/fc-analyze", "crates/fc-gui"]
+members = ["crates/fc-core", "crates/fc-analyze", "crates/fc-player", "crates/fc-gui"]
 
 [workspace.package]
 version = "0.1.0"
