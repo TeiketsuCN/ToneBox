@@ -29,6 +29,13 @@ const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
 const BG: Color32 = Color32::from_rgb(17, 19, 26);
 
+// ── 布局规范 ────────────────────────────────────────────
+// 面板宽度必须是常量，且内容宽度在面板内锁死（ui.set_width）。
+// 所有长文本一律显式 wrap，任何元素都不允许横向溢出把窗口边缘切掉。
+const LEFT_W: f32 = 216.0;
+const RIGHT_W: f32 = 300.0;
+const PANEL_PAD_X: f32 = 14.0;
+
 fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
     Color32::from_rgba_premultiplied(
@@ -278,7 +285,7 @@ impl eframe::App for App {
             .show(ctx, |ui| self.header(ui));
 
         egui::SidePanel::left("formats")
-            .exact_width(214.0)
+            .exact_width(LEFT_W)
             .resizable(false)
             .frame(
                 egui::Frame::none()
@@ -288,7 +295,7 @@ impl eframe::App for App {
             .show(ctx, |ui| self.sidebar(ui));
 
         egui::SidePanel::right("detail")
-            .exact_width(286.0)
+            .exact_width(RIGHT_W)
             .resizable(false)
             .frame(
                 egui::Frame::none()
@@ -362,6 +369,7 @@ impl App {
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui) {
+        ui.set_width(ui.available_width());
         ui.label(RichText::new("输出格式").size(11.0).color(DIM));
         ui.add_space(6.0);
 
@@ -432,6 +440,7 @@ impl App {
     }
 
     fn queue(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.set_width(ui.available_width());
         if self.items.is_empty() {
             self.drop_zone(ui, ctx);
             return;
@@ -466,10 +475,18 @@ impl App {
                         .rounding(Rounding::same(12.0))
                         .inner_margin(egui::Margin::symmetric(14.0, 11.0));
 
+                    let inner_w = ui.available_width();
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            let row_w = ui.available_width();
                             ui.vertical(|ui| {
-                                ui.label(RichText::new(&name).size(12.5).color(TEXT));
+                                ui.set_max_width((row_w - 168.0).max(140.0));
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&name).size(12.5).color(TEXT),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Truncate),
+                                );
                                 ui.add_space(2.0);
                                 let sub = match &info {
                                     Some(m) => format!(
@@ -485,7 +502,10 @@ impl App {
                                         format!("{first}…")
                                     }
                                 };
-                                ui.label(RichText::new(sub).size(10.0).color(DIM));
+                                ui.add(
+                                    egui::Label::new(RichText::new(sub).size(10.0).color(DIM))
+                                        .wrap_mode(egui::TextWrapMode::Truncate),
+                                );
                             });
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -686,43 +706,55 @@ impl App {
     }
 
     fn detail(&mut self, ui: &mut egui::Ui) {
+        // 规范：内容宽度锁死，任何子元素不许横向溢出
+        ui.set_width(ui.available_width());
+
         let Some(it) = self.items.get(self.selected) else {
-            ui.label(RichText::new("详情").size(11.0).color(DIM));
+            ui.label(RichText::new("详情").size(10.5).color(DIM));
             ui.add_space(10.0);
-            ui.label(
-                RichText::new("拖入文件后，这里显示源文件的真实参数、质量判断和解释。")
-                    .size(10.5)
-                    .color(DIM),
-            );
+            para(ui, "拖入文件后，这里显示源文件的真实参数、质量判断和解释。", 10.5, DIM);
             return;
         };
 
-        let w = ui.available_width();
-        ui.set_max_width(w);
-        ui.label(RichText::new("详情").size(11.0).color(DIM));
+        ui.label(RichText::new("详情").size(10.5).color(DIM));
         ui.add_space(8.0);
-        ui.add(egui::Label::new(RichText::new(it.name()).size(13.0).color(TEXT).strong()).truncate());
-        ui.add_space(8.0);
+        ui.add(
+            egui::Label::new(RichText::new(it.name()).size(12.5).color(TEXT).strong())
+                .wrap_mode(egui::TextWrapMode::Truncate),
+        );
+        ui.add_space(10.0);
 
         if let Some(m) = &it.info {
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 chip(ui, m.codec_label(), ACCENT);
-                if m.bitrate_kbps > 0 {
-                    chip(ui, &format!("{} kbps", m.bitrate_kbps), MUTED);
-                }
-                if m.sample_rate > 0 {
-                    chip(ui, &format!("{} Hz", m.sample_rate), MUTED);
-                }
-                if m.channels > 0 {
-                    chip(ui, &format!("{} 声道", m.channels), MUTED);
-                }
-                if m.duration_s > 0.0 {
-                    chip(ui, &fmt_duration(m.duration_s), MUTED);
-                }
-                if m.size_bytes > 0 {
-                    chip(ui, &fmt_size(m.size_bytes), MUTED);
-                }
             });
+            ui.add_space(10.0);
+
+            egui::Grid::new("info_grid")
+                .num_columns(2)
+                .spacing([12.0, 7.0])
+                .show(ui, |ui| {
+                    if m.bitrate_kbps > 0 {
+                        row(ui, "码率", &format!("{} kbps", m.bitrate_kbps));
+                    }
+                    if m.sample_rate > 0 {
+                        row(ui, "采样率", &format!("{} Hz", m.sample_rate));
+                    }
+                    if m.channels > 0 {
+                        row(ui, "声道", &format!("{}", m.channels));
+                    }
+                    if m.duration_s > 0.0 {
+                        row(ui, "时长", &fmt_duration(m.duration_s));
+                    }
+                    if m.size_bytes > 0 {
+                        row(ui, "体积", &fmt_size(m.size_bytes));
+                    }
+                    let spec = it.spec(self.target);
+                    let est = estimate_size(m, spec);
+                    if est > 0 {
+                        row(ui, "输出", &format!("{} ≈ {}", spec.name, fmt_size(est)));
+                    }
+                });
 
             let spec = it.spec(self.target);
             if m.is_lossy()
@@ -731,82 +763,82 @@ impl App {
                     fc_core::Kind::Lossless | fc_core::Kind::Uncompressed
                 )
             {
-                ui.add_space(12.0);
+                ui.add_space(14.0);
                 card(ui, WARN, |ui| {
-                    ui.label(
-                        RichText::new("不会增加任何信息量")
-                            .size(12.0)
-                            .color(WARN)
-                            .strong(),
-                    );
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(format!(
-                            "源文件是 {} 有损压缩。转成 {} 只是换了个更大的容器，\
-                             文件会变大，声音不会变好。",
+                    para(ui, "不会增加任何信息量", 11.5, WARN);
+                    ui.add_space(5.0);
+                    para(
+                        ui,
+                        &format!(
+                            "源文件是 {} 有损压缩。转成 {} 只是换了个更大的容器，文件会变大，声音不会变好。",
                             m.codec_label(),
                             spec.name
-                        ))
-                        .size(10.5)
-                        .color(MUTED),
+                        ),
+                        10.0,
+                        MUTED,
                     );
                 });
-            }
-
-            let est = estimate_size(m, spec);
-            if est > 0 {
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new(format!(
-                        "输出为 {} · 预估 {}",
-                        spec.name,
-                        fmt_size(est)
-                    ))
-                    .size(10.5)
-                    .color(DIM),
-                );
             }
         }
 
         if let Some(e) = &it.error {
-            ui.add_space(12.0);
+            ui.add_space(14.0);
             card(ui, DANGER, |ui| {
-                ui.label(RichText::new("读不出来").size(12.0).color(DANGER).strong());
-                ui.add_space(4.0);
-                ui.label(RichText::new(e).size(10.0).color(MUTED));
+                para(ui, "读不出来", 11.5, DANGER);
+                ui.add_space(5.0);
+                para(ui, e, 9.5, MUTED);
             });
         }
 
         match &it.state {
             State::Done(path, size) => {
-                ui.add_space(12.0);
+                ui.add_space(14.0);
                 card(ui, ACCENT, |ui| {
-                    ui.label(RichText::new("转换完成").size(12.0).color(ACCENT).strong());
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(format!(
-                            "{}\n{}",
+                    para(ui, "转换完成", 11.5, ACCENT);
+                    ui.add_space(5.0);
+                    para(
+                        ui,
+                        &format!(
+                            "{}　{}",
                             path.file_name()
                                 .map(|s| s.to_string_lossy().to_string())
                                 .unwrap_or_default(),
                             fmt_size(*size)
-                        ))
-                        .size(10.0)
-                        .color(MUTED),
+                        ),
+                        9.5,
+                        MUTED,
                     );
                 });
             }
             State::Failed(e) => {
-                ui.add_space(12.0);
+                ui.add_space(14.0);
                 card(ui, DANGER, |ui| {
-                    ui.label(RichText::new("转换失败").size(12.0).color(DANGER).strong());
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(e).size(9.5).color(MUTED));
+                    para(ui, "转换失败", 11.5, DANGER);
+                    ui.add_space(5.0);
+                    para(ui, e, 9.5, MUTED);
                 });
             }
             _ => {}
         }
     }
+}
+
+/// 段落文字：永远是 wrap 的，杜绝溢出
+fn para(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
+    ui.add(
+        egui::Label::new(RichText::new(text).size(size).color(color))
+            .wrap_mode(egui::TextWrapMode::Wrap),
+    );
+}
+
+/// 键值行
+fn row(ui: &mut egui::Ui, key: &str, value: &str) {
+    ui.label(RichText::new(key).size(9.5).color(DIM));
+    ui.add(
+        egui::Label::new(RichText::new(value).size(10.0).color(TEXT))
+            .wrap_mode(egui::TextWrapMode::Wrap),
+    );
+    ui.end_row();
 }
 
 fn card(ui: &mut egui::Ui, color: Color32, add: impl FnOnce(&mut egui::Ui)) {
@@ -929,7 +961,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1060.0, 660.0])
-            .with_min_inner_size([880.0, 540.0])
+            .with_min_inner_size([960.0, 560.0])
             .with_transparent(true)
             .with_title("格式转换器"),
         ..Default::default()
