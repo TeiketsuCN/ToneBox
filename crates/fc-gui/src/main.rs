@@ -2512,11 +2512,16 @@ impl App {
         }
 
         ui.add_space(8.0);
+        // 单个文件可能用 `···` 覆盖过输出格式，所以逐个按它自己的目标算，
+        // 不能一律乘全局格式（否则队列里有覆盖时这个数就是错的）。
         let est = self
             .items
             .iter()
-            .filter_map(|i| i.info.as_ref())
-            .map(|m| fc_core::estimate_size(m, self.target, &self.cfg.opts))
+            .filter_map(|i| {
+                i.info
+                    .as_ref()
+                    .map(|m| fc_core::estimate_size(m, i.spec(self.target), &self.cfg.opts))
+            })
             .sum::<u64>();
         if est > 0 {
             para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
