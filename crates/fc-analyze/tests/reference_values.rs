@@ -27,7 +27,7 @@ const CASES: &[Expect] = &[
         file: r"mp3\pop48k_mp3_128k.mp3",
         cutoff: 16758.0,
         slope: -105.5,
-        estimate: "128",
+        estimate: "128/192/320",
     },
     Expect {
         file: r"aac\beatles69_aac_256k.m4a",

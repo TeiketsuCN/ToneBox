@@ -7,9 +7,11 @@ pub mod ffmpeg;
 pub mod format;
 pub mod identify;
 pub mod tags;
+pub mod metadata;
 
 pub use ffmpeg::{convert, locate, probe, MediaInfo, ProgressFn, Tools};
 pub use identify::{identify, Encrypted};
+pub use metadata::{metadata_args, MetaWrite};
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
 pub use format::{
     all, args_for, browsable, by_id, default_target, estimate_size, knobs_for, split_group,
