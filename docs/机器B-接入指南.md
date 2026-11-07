@@ -11,7 +11,11 @@
 
 - Windows 10/11
 - 和主机在同一个内网（能 ping 通 `192.168.31.192`）
-- 需要知道主机账户 `23501` 的**登录密码**（SMB 要用）
+- 主机的共享用**专用本地账户** `fcsync`（密码见下），不是主账户 `23501`
+
+> 为什么不用主账户：主机上的 `23501` 是**微软账户**（PrincipalSource = MicrosoftAccount），
+> SMB 不接受 `KOALA\23501` + 微软密码，用户名得写成 `MicrosoftAccount\邮箱`，很难用。
+> 所以专门建了一个本地账户 `fcsync` 只用于同步。
 
 没有 Visual Studio / MSVC 也没关系，我们走 gnu 工具链。
 
@@ -29,8 +33,7 @@
 先连一次，会提示输入密码：
 
 ```powershell
-net use \\192.168.31.192\FormatConverterGit /user:KOALA\23501 *
-# 提示 Password for KOALA\23501: 输入密码
+net use \\192.168.31.192\FormatConverterGit /user:KOALA\fcsync Fc-2026-sync
 ```
 
 验证：
