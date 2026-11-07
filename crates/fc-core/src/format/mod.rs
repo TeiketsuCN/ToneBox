@@ -152,9 +152,18 @@ pub fn targets_for(src: Option<&MediaInfo>) -> Vec<Choice> {
         .collect()
 }
 
-/// 粗估输出体积（字节）。只用于侧栏给个量级，不追求精确。
-pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec) -> u64 {
-    if info.duration_s <= 0.0 || info.sample_rate == 0 {
+/// 粗估输出体积（字节）。只用于界面给个量级，不追求精确。
+///
+/// 有固定码率的格式按「码率 × 时长」算——旋钮一调，估计跟着变。
+/// 无损、Vorbis 这种没有固定码率的，退回「PCM × size_ratio」的量级估算。
+pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) -> u64 {
+    if info.duration_s <= 0.0 {
+        return 0;
+    }
+    if let Some(kbps) = bitrate_of(spec, o) {
+        return (info.duration_s * kbps as f64 * 1000.0 / 8.0) as u64;
+    }
+    if info.sample_rate == 0 {
         return 0;
     }
     let bits = if spec.kind == Kind::Uncompressed { 24.0 } else { 16.0 };
@@ -207,7 +216,11 @@ impl BitDepth {
 }
 
 /// 用户可调的输出参数。默认值就是各格式的推荐值。
+///
+/// `#[serde(default)]` 是给旧配置留的后路：新版本加了字段之后，
+/// 老 `config.json` 里缺的字段会补默认值，而不是让整个设置解析失败被重置。
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ConvertOptions {
     /// FLAC 压缩等级 0~12（不影响音质，只影响体积和速度）
     pub flac_level: u8,
@@ -220,12 +233,13 @@ pub struct ConvertOptions {
     /// Vorbis 质量 0~10
     pub vorbis_q: u8,
     /// AAC 码率 kbps
-    #[serde(default = "default_aac_bitrate")]
     pub aac_bitrate: u32,
-}
-
-fn default_aac_bitrate() -> u32 {
-    256
+    /// AC-3 码率 kbps（固定 48 kHz 输出）
+    pub ac3_bitrate: u32,
+    /// E-AC-3 码率 kbps（固定 48 kHz 输出）
+    pub eac3_bitrate: u32,
+    /// WMA（wmav2）码率 kbps
+    pub wma_bitrate: u32,
 }
 
 impl Default for ConvertOptions {
@@ -237,8 +251,77 @@ impl Default for ConvertOptions {
             opus_bitrate: 96,
             vorbis_q: 6,
             aac_bitrate: 256,
+            ac3_bitrate: 448,
+            eac3_bitrate: 640,
+            wma_bitrate: 192,
         }
     }
+}
+
+/// 某个格式可选的码率档位（kbps）。空数组表示这个格式没有码率旋钮。
+///
+/// 界面照着这张表画按钮，不要在 GUI 里另写一份——那是格式知识，归 core。
+pub fn bitrate_choices(id: &str) -> &'static [u32] {
+    match id {
+        "mp3" => &[128, 192, 256, 320],
+        "opus" => &[64, 96, 128, 192],
+        "aac" => &[128, 192, 256, 320],
+        // AC-3 的合法码率是一串固定档位（32/40/48/56/64/80/96/112/128/160/192/
+        // 224/256/320/384/448/512/576/640），界面只放常用的四档，
+        // 448 是 DVD 立体声的默认值。
+        "ac3" => &[192, 320, 448, 640],
+        // E-AC-3 能到 6144，但立体声音乐超过 1024 没有意义，
+        // 而且码率一高，老功放解码会先崩。
+        "eac3" => &[192, 384, 640, 1024],
+        // 老播放器通常只认到 192；给到 320 是留给新播放器。
+        "wma" => &[128, 192, 256, 320],
+        _ => &[],
+    }
+}
+
+/// 把配置里可能过时的值吸附到最近的合法档位。
+///
+/// 用户可能拿着上一版的 config.json，或者以后档位表改过；
+/// 与其把一个 ffmpeg 不接受的值丢过去，不如就近取一档。
+fn snap_bitrate(id: &str, v: u32) -> u32 {
+    let choices = bitrate_choices(id);
+    if choices.is_empty() || choices.contains(&v) {
+        return v;
+    }
+    *choices
+        .iter()
+        .min_by_key(|c| c.abs_diff(v))
+        .expect("档位表非空")
+}
+
+/// 这个格式在当前参数下的目标码率（kbps）。没有固定码率时返回 `None`。
+///
+/// 用来算体积估计，也用来让「输出」摘要和按钮上的数字对得上。
+pub fn bitrate_of(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
+    Some(snap_bitrate(
+        spec.id,
+        match spec.id {
+            "mp3" => o.mp3_bitrate,
+            "opus" => o.opus_bitrate,
+            "aac" => o.aac_bitrate,
+            "ac3" => o.ac3_bitrate,
+            "eac3" => o.eac3_bitrate,
+            "wma" => o.wma_bitrate,
+            // MP2 目前没做旋钮，码率写死在表里
+            "mp2" => 256,
+            _ => return None,
+        },
+    ))
+}
+
+/// 旋钮下面的一行小字：只写「选这个值时要注意什么」，格式介绍放 `blurb` / 百科。
+pub fn knob_note(spec: &FormatSpec) -> Option<&'static str> {
+    Some(match spec.id {
+        "ac3" => "AC-3 固定输出 48 kHz，448k 是 DVD 立体声的默认值；多声道要按声道数另算。",
+        "eac3" => "E-AC-3 同码率比 AC-3 省，但老功放、老电视只认 AC-3。",
+        "wma" => "老播放器通常只认 128~192k，调高不一定放得动。",
+        _ => return None,
+    })
 }
 
 /// 某个格式在当前参数下有哪些可调的旋钮——UI 用它决定显示什么。
@@ -250,6 +333,9 @@ pub enum Knob {
     OpusBitrate,
     VorbisQuality,
     AacBitrate,
+    Ac3Bitrate,
+    Eac3Bitrate,
+    WmaBitrate,
 }
 
 /// 这个格式能调什么。空数组表示"没得调，用默认值"。
@@ -263,6 +349,9 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "opus" => &[Knob::OpusBitrate],
         "vorbis" => &[Knob::VorbisQuality],
         "aac" => &[Knob::AacBitrate],
+        "ac3" => &[Knob::Ac3Bitrate],
+        "eac3" => &[Knob::Eac3Bitrate],
+        "wma" => &[Knob::WmaBitrate],
         _ => &[],
     }
 }
@@ -291,13 +380,13 @@ pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
             s("-c:a"),
             s("libmp3lame"),
             s("-b:a"),
-            format!("{}k", o.mp3_bitrate),
+            format!("{}k", snap_bitrate("mp3", o.mp3_bitrate)),
         ],
         "opus" => vec![
             s("-c:a"),
             s("libopus"),
             s("-b:a"),
-            format!("{}k", o.opus_bitrate),
+            format!("{}k", snap_bitrate("opus", o.opus_bitrate)),
         ],
         "vorbis" => vec![
             s("-c:a"),
@@ -309,7 +398,31 @@ pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
             s("-c:a"),
             s("aac"),
             s("-b:a"),
-            format!("{}k", o.aac_bitrate),
+            format!("{}k", snap_bitrate("aac", o.aac_bitrate)),
+        ],
+        // Dolby 两个都固定 48 kHz：DVD / 蓝光规范是 48k，
+        // 而且 AC-3 的码率档位是按 48k 定义的。
+        "ac3" => vec![
+            s("-c:a"),
+            s("ac3"),
+            s("-b:a"),
+            format!("{}k", snap_bitrate("ac3", o.ac3_bitrate)),
+            s("-ar"),
+            s("48000"),
+        ],
+        "eac3" => vec![
+            s("-c:a"),
+            s("eac3"),
+            s("-b:a"),
+            format!("{}k", snap_bitrate("eac3", o.eac3_bitrate)),
+            s("-ar"),
+            s("48000"),
+        ],
+        "wma" => vec![
+            s("-c:a"),
+            s("wmav2"),
+            s("-b:a"),
+            format!("{}k", snap_bitrate("wma", o.wma_bitrate)),
         ],
         // 没列的格式用表里的默认参数
         _ => spec.args.iter().map(|a| a.to_string()).collect(),
@@ -419,9 +532,109 @@ mod tests {
         assert_eq!(knobs_for(spec("flac")), &[Knob::FlacLevel]);
         assert_eq!(knobs_for(spec("wav")), &[Knob::BitDepth]);
         assert_eq!(knobs_for(spec("mp3")), &[Knob::Mp3Bitrate]);
+        assert_eq!(knobs_for(spec("ac3")), &[Knob::Ac3Bitrate]);
+        assert_eq!(knobs_for(spec("eac3")), &[Knob::Eac3Bitrate]);
+        assert_eq!(knobs_for(spec("wma")), &[Knob::WmaBitrate]);
         // 无损自适应格式不该有旋钮
         assert!(knobs_for(spec("alac")).is_empty());
         assert!(knobs_for(spec("wavpack")).is_empty());
+    }
+
+    #[test]
+    fn every_bitrate_knob_has_choices() {
+        // 防止「加了 Knob 但忘了档位表」：界面上会出现一排空按钮
+        for f in all() {
+            if knobs_for(f)
+                .iter()
+                .any(|k| !matches!(k, Knob::FlacLevel | Knob::VorbisQuality | Knob::BitDepth))
+            {
+                assert!(
+                    !bitrate_choices(f.id).is_empty(),
+                    "{} 有码率旋钮却没有档位表",
+                    f.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dolby_and_wma_bitrate_reaches_args() {
+        let mut o = ConvertOptions::default();
+
+        o.ac3_bitrate = 640;
+        let a = args_for(spec("ac3"), &o);
+        assert!(a.contains(&"640k".to_string()), "AC-3 码率没进参数: {a:?}");
+        // Dolby 必须 48kHz，否则码率档位对不上
+        let ar = a.iter().position(|v| v == "-ar").expect("AC-3 缺 -ar");
+        assert_eq!(a[ar + 1], "48000");
+
+        o.eac3_bitrate = 1024;
+        let a = args_for(spec("eac3"), &o);
+        assert!(a.contains(&"1024k".to_string()), "E-AC-3 码率没进参数: {a:?}");
+        let ar = a.iter().position(|v| v == "-ar").expect("E-AC-3 缺 -ar");
+        assert_eq!(a[ar + 1], "48000");
+
+        o.wma_bitrate = 128;
+        assert!(args_for(spec("wma"), &o).contains(&"128k".to_string()));
+    }
+
+    #[test]
+    fn stale_bitrate_snaps_to_allowed_choice() {
+        // 老 config.json 里可能躺着一个现在已经不提供的档位
+        let mut o = ConvertOptions::default();
+        o.ac3_bitrate = 1000; // 旧值 / 手改值
+        let a = args_for(spec("ac3"), &o);
+        assert!(
+            a.iter().any(|v| bitrate_choices("ac3").iter().any(|c| format!("{c}k") == *v)),
+            "非法码率没有吸附到合法档位: {a:?}"
+        );
+
+        o.mp3_bitrate = 111;
+        let a = args_for(spec("mp3"), &o);
+        assert!(a.contains(&"128k".to_string()), "111 应吸附到最近的 128: {a:?}");
+    }
+
+    #[test]
+    fn old_config_without_new_fields_still_loads() {
+        // 这是加字段时最容易踩的坑：缺字段会让整个 Settings 解析失败被重置
+        let old = r#"{
+            "flac_level": 8,
+            "bit_depth": "Int24",
+            "mp3_bitrate": 320,
+            "opus_bitrate": 96,
+            "vorbis_q": 6
+        }"#;
+        let o: ConvertOptions = serde_json::from_str(old).expect("老配置应该还能读");
+        assert_eq!(o.aac_bitrate, 256);
+        assert_eq!(o.ac3_bitrate, 448);
+        assert_eq!(o.eac3_bitrate, 640);
+        assert_eq!(o.wma_bitrate, 192);
+    }
+
+    #[test]
+    fn estimate_follows_bitrate() {
+        use crate::MediaInfo;
+        let info = MediaInfo {
+            codec: "flac".into(),
+            container: "flac".into(),
+            sample_rate: 44100,
+            channels: 2,
+            bitrate_kbps: 900,
+            duration_s: 60.0,
+            size_bytes: 0,
+        };
+        let mut o = ConvertOptions::default();
+        o.ac3_bitrate = 448;
+        let a = estimate_size(&info, spec("ac3"), &o);
+        // 60 秒 × 448 kbps ≈ 3.36 MB
+        assert!((3_350_000..3_370_000).contains(&a), "448k/60s 应该约 3.36MB，实际 {a}");
+
+        o.ac3_bitrate = 192;
+        let b = estimate_size(&info, spec("ac3"), &o);
+        assert!(b < a, "码率调低，预计体积应该跟着变小");
+
+        // Vorbis 没有固定码率，走原来的 size_ratio 估算，不该是 0
+        assert!(estimate_size(&info, spec("vorbis"), &o) > 0);
     }
 
     #[test]

@@ -905,6 +905,8 @@ impl App {
                     .on_hover_text("看看每个格式到底是什么")
                     .clicked()
                 {
+                    // 打开时对准当前输出格式：用户多半是"想知道我正在转的这个是什么"
+                    self.wiki_sel = self.target.id;
                     self.wiki_open = true;
                 }
             });
@@ -1545,6 +1547,60 @@ impl App {
                                         });
                                         ui.add_space(14.0);
 
+                                        // 百科是"挑格式"的最后一站：看完解释直接换输出目标，
+                                        // 不用再回侧栏找一遍。
+                                        let enc_ok = fc_core::encoder_for(spec.id)
+                                            .map(|e| self.encoders.contains(e))
+                                            .unwrap_or(true);
+                                        if spec.can_encode && enc_ok {
+                                            let is_target = spec.id == self.target.id;
+                                            let btn = egui::Button::new(
+                                                RichText::new(if is_target {
+                                                    format!("{} 就是当前输出格式", spec.name)
+                                                } else {
+                                                    format!("把输出格式设为 {}", spec.name)
+                                                })
+                                                .size(10.5)
+                                                .color(Color32::from_rgb(10, 26, 24)),
+                                            )
+                                            .fill(if is_target {
+                                                tint(ACCENT, 110)
+                                            } else {
+                                                ACCENT
+                                            })
+                                            .stroke(Stroke::NONE)
+                                            .rounding(Rounding::same(9.0))
+                                            .min_size(egui::vec2(0.0, 30.0));
+                                            if ui
+                                                .add(btn)
+                                                .on_hover_text("回到主界面，接下来转的文件都用这个格式")
+                                                .clicked()
+                                                && !is_target
+                                            {
+                                                self.target = spec;
+                                                self.wiki_open = false;
+                                            }
+                                            ui.add_space(4.0);
+                                            para(
+                                                ui,
+                                                "选中后的码率等参数在右侧「输出」列调整。",
+                                                8.5,
+                                                DIM,
+                                            );
+                                        } else if spec.can_encode {
+                                            ui.add_space(2.0);
+                                            card(ui, DANGER, |ui| {
+                                                para(
+                                                    ui,
+                                                    "你的 ffmpeg 里没有这个编码器，暂时不能转成它。",
+                                                    10.0,
+                                                    MUTED,
+                                                );
+                                            });
+                                        }
+
+                                        ui.add_space(6.0);
+
                                         let text = fc_core::long_blurb(spec.id)
                                             .unwrap_or(spec.blurb);
                                         ui.add(
@@ -1948,7 +2004,7 @@ impl App {
                         row(ui, "体积", &fmt_size(m.size_bytes));
                     }
                     let spec = it.spec(self.target);
-                    let est = estimate_size(m, spec);
+                    let est = estimate_size(m, spec, &self.cfg.opts);
                     if est > 0 {
                         row(ui, "输出", &format!("{} ≈ {}", spec.name, fmt_size(est)));
                     }
@@ -2114,7 +2170,10 @@ impl App {
             Some(Knob::OpusBitrate) => format!("{}k", self.cfg.opts.opus_bitrate),
             Some(Knob::VorbisQuality) => format!("q{}", self.cfg.opts.vorbis_q),
             Some(Knob::AacBitrate) => format!("{}k", self.cfg.opts.aac_bitrate),
-            _ => "默认".into(),
+            Some(Knob::Ac3Bitrate) => format!("{}k", self.cfg.opts.ac3_bitrate),
+            Some(Knob::Eac3Bitrate) => format!("{}k", self.cfg.opts.eac3_bitrate),
+            Some(Knob::WmaBitrate) => format!("{}k", self.cfg.opts.wma_bitrate),
+            None => "默认".into(),
         }
     }
 
@@ -2457,7 +2516,7 @@ impl App {
             .items
             .iter()
             .filter_map(|i| i.info.as_ref())
-            .map(|m| fc_core::estimate_size(m, self.target))
+            .map(|m| fc_core::estimate_size(m, self.target, &self.cfg.opts))
             .sum::<u64>();
         if est > 0 {
             para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
@@ -2517,42 +2576,16 @@ impl App {
                     }
                 });
             }
-            Knob::Mp3Bitrate => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
-                    for v in [128u32, 192, 256, 320] {
-                        let on = self.cfg.opts.mp3_bitrate == v;
-                        if seg_button(ui, &format!("{v}"), on) {
-                            self.cfg.opts.mp3_bitrate = v;
-                            changed = true;
-                        }
-                    }
-                });
-            }
+            Knob::Mp3Bitrate => changed |= bitrate_row(ui, "mp3", &mut self.cfg.opts.mp3_bitrate),
             Knob::OpusBitrate => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
-                    for v in [64u32, 96, 128, 192] {
-                        let on = self.cfg.opts.opus_bitrate == v;
-                        if seg_button(ui, &format!("{v}"), on) {
-                            self.cfg.opts.opus_bitrate = v;
-                            changed = true;
-                        }
-                    }
-                });
+                changed |= bitrate_row(ui, "opus", &mut self.cfg.opts.opus_bitrate)
             }
-            Knob::AacBitrate => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("码率").size(9.5).color(MUTED));
-                    for v in [128u32, 192, 256, 320] {
-                        let on = self.cfg.opts.aac_bitrate == v;
-                        if seg_button(ui, &format!("{v}"), on) {
-                            self.cfg.opts.aac_bitrate = v;
-                            changed = true;
-                        }
-                    }
-                });
+            Knob::AacBitrate => changed |= bitrate_row(ui, "aac", &mut self.cfg.opts.aac_bitrate),
+            Knob::Ac3Bitrate => changed |= bitrate_row(ui, "ac3", &mut self.cfg.opts.ac3_bitrate),
+            Knob::Eac3Bitrate => {
+                changed |= bitrate_row(ui, "eac3", &mut self.cfg.opts.eac3_bitrate)
             }
+            Knob::WmaBitrate => changed |= bitrate_row(ui, "wma", &mut self.cfg.opts.wma_bitrate),
         }
         changed
     }
@@ -2787,6 +2820,28 @@ fn seg_button(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     .rounding(Rounding::same(8.0))
     .min_size(egui::vec2(0.0, 24.0));
     ui.add(b).clicked()
+}
+
+/// 码率旋钮：档位表来自 core，界面不自己维护格式知识。
+///
+/// 顺手把「选这个值要注意什么」画在下面——AC-3 的 48kHz、WMA 的老播放器上限
+/// 这类信息比一个数字有用得多。
+fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("码率").size(9.5).color(MUTED));
+        for &v in fc_core::bitrate_choices(id) {
+            let on = *val == v;
+            if seg_button(ui, &format!("{v}"), on) {
+                *val = v;
+                changed = true;
+            }
+        }
+    });
+    if let Some(note) = fc_core::by_id(id).and_then(fc_core::knob_note) {
+        para(ui, note, 8.5, DIM);
+    }
+    changed
 }
 
 /// 设置页的小节标题
