@@ -126,6 +126,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
 
     let family = Family::of(&info.codec);
     let lossless = is_lossless_codec(&info.codec);
+    let he_aac = family == Family::Aac && is_he_aac(&tools.ffprobe, path);
     let mut caveats: Vec<String> = Vec::new();
 
     let (estimate, base_conf) = if lossless {
@@ -140,6 +141,12 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                 .to_string(),
         );
         ("不可判定".to_string(), 0.10)
+    } else if he_aac {
+        caveats.push(
+            "HE-AAC / xHE-AAC 使用 SBR/PS 频带复制，低码率仍保留高频；截止法对它和 Opus 一样失效。"
+                .to_string(),
+        );
+        ("不可判定".to_string(), 0.12)
     } else if edge.is_none() {
         let (est, conf, why) = no_edge_guess(family);
         caveats.push(why.to_string());
@@ -370,6 +377,41 @@ fn classify(family: Family, cutoff: f64, slope: f64) -> Guess {
     }
 }
 
+fn profile_is_he_aac(profile: &str) -> bool {
+    let p = profile.to_ascii_uppercase();
+    p.contains("HE-AAC") || p.contains("HE_AAC") || p.contains("XHE-AAC") || p.contains("XHE_AAC")
+}
+
+/// 从 ffprobe 的 stream profile 里识别 HE-AAC / xHE-AAC。
+/// `MediaInfo` 没有 profile 字段（公开 API 冻结），这里单独问一次 ffprobe。
+fn is_he_aac(ffprobe: &Path, path: &Path) -> bool {
+    let mut cmd = Command::new(ffprobe);
+    cmd.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=profile",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+    ])
+    .arg(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let out = match cmd.output() {
+        Ok(out) if out.status.success() => out,
+        _ => return false,
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .any(profile_is_he_aac)
+}
+
 fn decode_mono(ffmpeg: &PathBuf, path: &Path, sample_rate: u32) -> Result<Vec<f32>> {
     let mut cmd = Command::new(ffmpeg);
     cmd.args(["-v", "error", "-nostdin", "-i"])
@@ -538,4 +580,19 @@ fn mean_of_slice(values: &[f64]) -> f64 {
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::profile_is_he_aac;
+
+    #[test]
+    fn detects_he_aac_profiles() {
+        assert!(profile_is_he_aac("HE-AAC"));
+        assert!(profile_is_he_aac("HE-AACv2"));
+        assert!(profile_is_he_aac("xHE-AAC"));
+        assert!(profile_is_he_aac("he_aac"));
+        assert!(!profile_is_he_aac("LC"));
+        assert!(!profile_is_he_aac(""));
+    }
 }
