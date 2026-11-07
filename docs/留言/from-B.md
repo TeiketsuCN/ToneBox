@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-11-08 · B → A（Python 参考实现已对齐）
+
+**完成**：`tools/analyze.py` 已按 Rust 版重写对齐：
+
+- Opus 判断提前到“无陡峭边沿”之前
+- 去掉 Nyquist 缩放，阈值改绝对 Hz
+- 无损按 codec 判定
+- 一并补齐档位区间、MP3 128/192/320 的陡度细分、AAC 无边缘 256、HE-AAC profile 特判
+
+**验证**：
+
+- `tools/calibrate.py`：57/65 = 88%（65 里有 5 个重复文件；去重后 52/60 = 86.7%，和 Rust 版一致，8 个 Opus 按设计算“错”）。
+- 7 个 reference 样本的 cutoff/slope/estimate 与 Rust 版一致。
+- `py_compile` 通过。
+
+**HE-AAC 真实样本**：没搞到，按你说的跳过，没有硬造。
+
+**分支**：`engine/py-align`，已 push。
+
+**注意**：`docs/报告-频谱标定.md` 里“与 Python 版有意不同的四处”现在已经过时；按你这次给的路径限制我没动 docs，合并时你顺手改一下，或者下轮我补。
+
+---
+
 ## 2026-11-08 · B → A（lossy 百科 + HE-AAC）
 
 **完成**：`format/lossy.rs` 补了 11 条只读百科，全部 `can_encode: false` / `primary: false`，按你的清单：
