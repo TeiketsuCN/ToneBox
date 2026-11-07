@@ -139,6 +139,8 @@ struct App {
     blurb_id: Option<&'static str>,
     detail_t: f32,
     detail_for: usize,
+    /// 上一次点击的行号和时刻，用来自己判定双击
+    last_click: (usize, f64),
 }
 
 impl App {
@@ -175,6 +177,7 @@ impl App {
             blurb_id: Some(target.id),
             detail_t: 1.0,
             detail_for: 0,
+            last_click: (usize::MAX, -10.0),
         }
     }
 
@@ -376,6 +379,21 @@ impl eframe::App for App {
             )
             .show(ctx, |ui| self.header(ui));
 
+        if self.player.is_some() {
+            let name = self
+                .player_for
+                .and_then(|i| self.items.get(i))
+                .map(|it| it.name())
+                .unwrap_or_else(|| "—".into());
+            egui::TopBottomPanel::bottom("player")
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 142))
+                        .inner_margin(egui::Margin::symmetric(16.0, 7.0)),
+                )
+                .show(ctx, |ui| self.player_bar(ui, &name));
+        }
+
         egui::SidePanel::left("formats")
             .exact_width(LEFT_W)
             .resizable(false)
@@ -489,83 +507,105 @@ impl App {
             14.0,
         );
 
-        for group in [Group::Lossless, Group::Lossy, Group::Device] {
-            let specs: Vec<&'static FormatSpec> = fc_core::browsable()
-                .filter(|f| f.group == group)
-                .collect();
-            if specs.is_empty() {
-                continue;
-            }
-            ui.add_space(8.0);
-            ui.label(RichText::new(group.title()).size(10.0).color(DIM));
-            ui.add_space(2.0);
+        // 底部提示固定（用内嵌面板占位，避免被滚动内容盖住），其余区域可滚
+        egui::TopBottomPanel::bottom("fmt_footer")
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
+            .show_inside(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(
+                    RichText::new("只处理未加密文件 · 不支持任何 DRM")
+                        .size(9.5)
+                        .color(DIM),
+                );
+            });
 
-            for spec in specs {
-                let selected = spec.id == self.target.id;
-                let cur = {
-                    let slot = self
-                        .fmt_sel
-                        .iter_mut()
-                        .find(|(id, _)| *id == spec.id)
-                        .map(|(_, v)| v);
-                    match slot {
-                        Some(v) => {
-                            animating |= approach(v, if selected { 1.0 } else { 0.0 }, dt, 16.0);
-                            *v
-                        }
-                        None => 0.0,
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                // 紧凑排布：全部格式一屏放下，不做折叠
+                ui.spacing_mut().item_spacing.y = 2.0;
+                // 按钮默认内边距 7px 会把 24px 的行撑到 28px，侧栏挤不下
+                ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
+
+                for group in Group::all() {
+                    let specs: Vec<&'static FormatSpec> = fc_core::browsable()
+                        .filter(|f| f.group == group)
+                        .collect();
+                    if specs.is_empty() {
+                        continue;
                     }
-                };
 
-                let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
-                let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
-                let text_c = blend(TEXT, ACCENT, cur);
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(group.title()).size(9.5).color(DIM));
+                    ui.add_space(1.0);
 
-                let row = egui::Button::new(RichText::new(spec.name).size(13.0).color(text_c))
-                    .fill(fill)
-                    .stroke(Stroke::new(1.0, stroke_c))
-                    .rounding(Rounding::same(9.0))
-                    .min_size(egui::vec2(ui.available_width(), 30.0));
-
-                if ui.add(row).clicked() {
-                    self.target = spec;
-                    self.expanded = if self.expanded == Some(spec.id) {
-                        None
-                    } else {
-                        Some(spec.id)
-                    };
+                    for spec in specs {
+                        animating |= self.format_row(ui, spec, dt);
+                    }
                 }
+            });
 
-                // 小字：高度 + 透明度一起动（动画值在循环外统一驱动，否则每行互相打架）
-                let expanded_here = self.expanded == Some(spec.id);
+        animating
+    }
 
-                if self.blurb_t > 0.01 && expanded_here {
-                    let wrap_w = (ui.available_width() - 12.0).max(60.0);
-                    let galley = ui.painter().layout(
-                        spec.blurb.to_string(),
-                        egui::FontId::proportional(10.0),
-                        MUTED,
-                        wrap_w,
-                    );
-                    let full_h = galley.size().y + 4.0;
-                    let h = full_h * self.blurb_t;
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(wrap_w, h), egui::Sense::hover());
-                    ui.painter()
-                        .with_clip_rect(rect)
-                        .galley(rect.min + egui::vec2(6.0, 0.0), galley, MUTED);
+    /// 画一行输出格式（含展开后的小字）
+    fn format_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        spec: &'static FormatSpec,
+        dt: f32,
+    ) -> bool {
+        let mut animating = false;
+        let selected = spec.id == self.target.id;
+
+        let cur = {
+            match self.fmt_sel.iter_mut().find(|(id, _)| *id == spec.id) {
+                Some((_, v)) => {
+                    animating |= approach(v, if selected { 1.0 } else { 0.0 }, dt, 16.0);
+                    *v
                 }
+                None => 0.0,
             }
+        };
+
+        let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
+        let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
+        let text_c = blend(TEXT, ACCENT, cur);
+
+        let row = egui::Button::new(RichText::new(spec.name).size(11.5).color(text_c))
+            .fill(fill)
+            .stroke(Stroke::new(1.0, stroke_c))
+            .rounding(Rounding::same(8.0))
+            .min_size(egui::vec2(ui.available_width(), 24.0));
+
+        if ui.add(row).clicked() {
+            self.target = spec;
+            self.expanded = if self.expanded == Some(spec.id) {
+                None
+            } else {
+                Some(spec.id)
+            };
         }
 
-        ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new("只处理未加密文件\n不支持任何 DRM")
-                    .size(9.5)
-                    .color(DIM),
+        // 小字：高度 + 透明度一起动
+        let expanded_here = self.expanded == Some(spec.id);
+        if self.blurb_t > 0.01 && expanded_here {
+            let wrap_w = (ui.available_width() - 12.0).max(60.0);
+            let galley = ui.painter().layout(
+                spec.blurb.to_string(),
+                egui::FontId::proportional(9.5),
+                MUTED,
+                wrap_w,
             );
-        });
+            let full_h = galley.size().y + 3.0;
+            let h = full_h * self.blurb_t;
+            let (rect, _) =
+                ui.allocate_exact_size(egui::vec2(wrap_w, h), egui::Sense::hover());
+            ui.painter()
+                .with_clip_rect(rect)
+                .galley(rect.min + egui::vec2(6.0, 0.0), galley, MUTED);
+        }
 
         animating
     }
@@ -579,6 +619,7 @@ impl App {
         let dt = self.dt;
         let mut animating = false;
         let mut remove: Option<usize> = None;
+        let mut play_now: Option<usize> = None;
         let count = self.items.len();
 
         egui::ScrollArea::vertical()
@@ -617,12 +658,11 @@ impl App {
                         .rounding(Rounding::same(12.0))
                         .inner_margin(egui::Margin::symmetric(14.0, 10.0));
 
-                    let inner_w = ui.available_width();
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let row_w = ui.available_width();
                             ui.vertical(|ui| {
-                                ui.set_max_width((row_w - 168.0).max(140.0));
+                                ui.set_max_width((row_w - 186.0).max(120.0));
                                 ui.add(
                                     egui::Label::new(RichText::new(&name).size(12.5).color(TEXT))
                                         .wrap_mode(egui::TextWrapMode::Truncate),
@@ -652,6 +692,7 @@ impl App {
                             });
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                ui.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
                                 match &state {
                                     State::Pending => {
                                         ui.label(RichText::new("待转换").size(10.0).color(MUTED));
@@ -709,8 +750,29 @@ impl App {
                     let hovered = resp.response.hovered() || resp.response.contains_pointer();
                     self.items[i].hovered = hovered;
 
-                    if resp.response.interact(egui::Sense::click()).clicked() {
-                        self.selected = i;
+                    // 用稳定 id 重新注册交互，否则 Frame 每帧生成的 id 不同，
+                    // egui 无法把两次点击关联成双击。
+                    let row_id = ui.id().with(("queue_row", i));
+                    let row_resp = ui.interact(
+                        resp.response.rect,
+                        row_id,
+                        egui::Sense::click(),
+                    );
+                    if row_resp.clicked() {
+                        // 自己判定双击：egui 的 double_clicked 依赖跨帧的 widget id，
+                        // 在 ScrollArea + Frame 里不稳定，所以用时间差自己算。
+                        let now = ui.input(|inp| inp.time);
+                        let is_double = self.last_click.0 == i && now - self.last_click.1 < 0.45;
+                        if is_double {
+                            play_now = Some(i);
+                            self.last_click = (usize::MAX, -10.0);
+                        } else {
+                            self.selected = i;
+                            self.last_click = (i, now);
+                        }
+                    }
+                    if row_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
 
                     ui.add_space(5.0);
@@ -720,6 +782,10 @@ impl App {
         if let Some(i) = remove {
             self.items.remove(i);
             self.selected = self.selected.min(self.items.len().saturating_sub(1));
+        }
+        if let Some(i) = play_now {
+            self.selected = i;
+            self.start_play(i);
         }
 
         ui.add_space(4.0);
@@ -849,6 +915,93 @@ impl App {
         }
     }
 
+    /// 底部全局播放条
+    fn player_bar(&mut self, ui: &mut egui::Ui, name: &str) {
+        ui.set_width(ui.available_width());
+
+        let (playing, pos, dur, vol) = match self.player.as_ref() {
+            Some(p) => (p.is_playing(), p.position_s(), p.duration_s().max(0.1), p.volume()),
+            None => return,
+        };
+
+        let mut toggle = false;
+        let mut stop = false;
+        let mut seek: Option<f64> = None;
+        let mut vol_change: Option<f32> = None;
+
+        ui.horizontal(|ui| {
+            if icon_button(ui, if playing { Icon::Pause } else { Icon::Play }, true) {
+                toggle = true;
+            }
+            ui.add_space(2.0);
+            if icon_button(ui, Icon::Stop, false) {
+                stop = true;
+            }
+            ui.add_space(10.0);
+            ui.add_sized(
+                egui::vec2(190.0, 18.0),
+                egui::Label::new(RichText::new(name).size(10.5).color(MUTED))
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+            );
+            ui.add_space(8.0);
+
+            // 进度条：可点、可拖
+            let bar_w = (ui.available_width() - 200.0).max(80.0);
+            let (rect, resp) =
+                ui.allocate_exact_size(egui::vec2(bar_w, 12.0), egui::Sense::click_and_drag());
+            let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
+            let p = ui.painter();
+            p.rect_filled(rect, Rounding::same(6.0), tint(Color32::WHITE, 14));
+            if frac > 0.0 {
+                let mut f = rect;
+                f.set_width(rect.width() * frac);
+                p.rect_filled(f, Rounding::same(6.0), ACCENT);
+            }
+            if (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
+                if let Some(pp) = resp.interact_pointer_pos() {
+                    seek = Some(((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64 * dur);
+                }
+            }
+
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new(format!("{} / {}", fmt_duration(pos), fmt_duration(dur)))
+                    .size(9.5)
+                    .color(DIM),
+            );
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let mut v = vol;
+                ui.spacing_mut().slider_width = 70.0;
+                if ui
+                    .add(
+                        egui::Slider::new(&mut v, 0.0..=1.0)
+                            .show_value(false)
+                            .trailing_fill(true),
+                    )
+                    .changed()
+                {
+                    vol_change = Some(v);
+                }
+            });
+        });
+
+        if let Some(p) = self.player.as_mut() {
+            if toggle {
+                p.toggle();
+            }
+            if stop {
+                p.stop();
+            }
+            if let Some(t2) = seek {
+                p.seek(t2);
+            }
+            if let Some(v) = vol_change {
+                p.set_volume(v);
+            }
+        }
+    }
+
     fn detail(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
         let dt = self.dt;
@@ -882,67 +1035,8 @@ impl App {
         );
         ui.add_space(10.0);
 
-        // ── 试听条 ──
-        let mut want_play = false;
-        let mut seek_to: Option<f64> = None;
-        if self.player_for == Some(self.selected) {
-            if let Some(p) = self.player.as_mut() {
-                let pos = p.position_s();
-                let dur = p.duration_s().max(0.1);
-                let playing = p.is_playing();
-                ui.horizontal(|ui| {
-                    let label = if playing { "暂停" } else { "播放" };
-                    let b = egui::Button::new(
-                        RichText::new(label)
-                            .size(11.0)
-                            .color(Color32::from_rgb(10, 26, 24)),
-                    )
-                    .fill(ACCENT)
-                    .stroke(Stroke::NONE)
-                    .rounding(Rounding::same(8.0))
-                    .min_size(egui::vec2(54.0, 28.0));
-                    if ui.add(b).clicked() {
-                        p.toggle();
-                    }
-                    ui.label(
-                        RichText::new(format!("{} / {}", fmt_duration(pos), fmt_duration(dur)))
-                            .size(10.0)
-                            .color(MUTED),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let mut vol = p.volume();
-                        ui.spacing_mut().slider_width = 58.0;
-                        if ui
-                            .add(
-                                egui::Slider::new(&mut vol, 0.0..=1.0)
-                                    .show_value(false)
-                                    .trailing_fill(true),
-                            )
-                            .changed()
-                        {
-                            p.set_volume(vol);
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                seek_to = seek_bar(ui, pos, dur);
-            }
-        } else if it.info.is_some() {
-            let b = egui::Button::new(RichText::new("试听").size(11.0).color(fade(TEXT)))
-                .fill(tint(Color32::WHITE, 16))
-                .stroke(line(Color32::WHITE, 30))
-                .rounding(Rounding::same(8.0))
-                .min_size(egui::vec2(54.0, 28.0));
-            if ui.add(b).clicked() {
-                want_play = true;
-            }
-        }
-
-        if self.player_for == Some(self.selected) {
-            if let Some(e) = self.play_error.clone() {
-                ui.add_space(4.0);
-                para(ui, &e, 9.5, DANGER);
-            }
+        if it.info.is_some() {
+            para(ui, "双击队列里的文件即可试听", 9.5, DIM);
         }
 
         ui.add_space(10.0);
@@ -1044,15 +1138,6 @@ impl App {
             _ => {}
         }
 
-        if let Some(t2) = seek_to {
-            if let Some(p) = self.player.as_mut() {
-                p.seek(t2);
-            }
-        }
-        if want_play {
-            self.start_play(self.selected);
-        }
-
         animating
     }
 }
@@ -1076,6 +1161,58 @@ fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
         }
     }
     None
+}
+
+#[derive(Clone, Copy)]
+enum Icon {
+    Play,
+    Pause,
+    Stop,
+}
+
+/// 播放控制图标。不用字符（字体里没有 ⏸⏹），直接用 painter 画。
+fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::click());
+    let p = ui.painter();
+    let bg = if resp.hovered() {
+        tint(Color32::WHITE, 22)
+    } else {
+        tint(Color32::WHITE, 8)
+    };
+    p.rect_filled(rect, Rounding::same(8.0), bg);
+
+    let c = rect.center();
+    let col = if accent { ACCENT } else { TEXT };
+    match icon {
+        Icon::Play => {
+            let tri = vec![
+                c + egui::vec2(-4.0, -6.5),
+                c + egui::vec2(-4.0, 6.5),
+                c + egui::vec2(7.0, 0.0),
+            ];
+            p.add(egui::Shape::convex_polygon(tri, col, Stroke::NONE));
+        }
+        Icon::Pause => {
+            for dx in [-4.5_f32, 1.5] {
+                p.rect_filled(
+                    egui::Rect::from_min_size(c + egui::vec2(dx, -6.5), egui::vec2(3.0, 13.0)),
+                    Rounding::same(1.0),
+                    col,
+                );
+            }
+        }
+        Icon::Stop => {
+            p.rect_filled(
+                egui::Rect::from_center_size(c, egui::vec2(11.0, 11.0)),
+                Rounding::same(2.0),
+                col,
+            );
+        }
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
 }
 
 fn card(ui: &mut egui::Ui, color: Color32, add: impl FnOnce(&mut egui::Ui)) {
@@ -1119,20 +1256,36 @@ fn row(ui: &mut egui::Ui, key: &str, value: &str) {
 }
 
 fn install_fonts(ctx: &egui::Context) {
+    // 内嵌的 Noto Sans SC 子集（SIL OFL）。
+    // 只含界面用到的字，8.1 MB 压到 169 KB，由 tools/subset-font.py 生成。
+    // 改完 UI 文案记得重跑一次，否则新字会落到系统字体上，字形不一致。
+    const UI_FONT: &[u8] = include_bytes!("../assets/NotoSansSC-Subset.otf");
+
     let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .font_data
+        .insert("ui".to_owned(), egui::FontData::from_static(UI_FONT));
+
+    // 系统字体做兜底：用户的文件名里可能有子集里没有的罕见字
+    let mut fallback = false;
     for path in [
         r"C:\Windows\Fonts\msyh.ttc",
-        r"C:\Windows\Fonts\Deng.ttf",
         r"C:\Windows\Fonts\simhei.ttf",
     ] {
         if let Ok(bytes) = std::fs::read(path) {
             fonts
                 .font_data
-                .insert("cjk".to_owned(), egui::FontData::from_owned(bytes));
-            for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-                fonts.families.entry(fam).or_default().insert(0, "cjk".to_owned());
-            }
+                .insert("fallback".to_owned(), egui::FontData::from_owned(bytes));
+            fallback = true;
             break;
+        }
+    }
+
+    for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        let list = fonts.families.entry(fam).or_default();
+        list.insert(0, "ui".to_owned());
+        if fallback {
+            list.push("fallback".to_owned());
         }
     }
     ctx.set_fonts(fonts);

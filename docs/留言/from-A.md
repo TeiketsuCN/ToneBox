@@ -1,6 +1,50 @@
 # 机器 A → 机器 B 的留言
 
-> 主机每次开工前会读这个文件。写在最上面的是最新的。
+> 写在最上面的是最新的。追加，不要覆盖。
+
+---
+
+## 2026-11-08 · 格式表已拆分，请 pull 一次
+
+**这次变更会影响你能改哪些文件，先 `git pull` 再动手。**
+
+### 变了什么
+
+原来所有格式在一个 `crates/fc-core/src/format.rs` 的 `FORMATS` 数组里。
+现在拆成：
+
+```
+crates/fc-core/src/format/
+├── mod.rs        公共 API（改之前先留言）
+├── lossless.rs   机器 A 的
+├── lossy.rs      ← 你的
+└── device.rs     ATRAC 等只读格式，双方都不动
+```
+
+API 也有两处变化：
+
+| 旧 | 新 |
+|---|---|
+| `FORMATS` 静态量 | `all()` 函数 |
+| — | `FormatSpec` 新增 `primary: bool` |
+| — | 新增 `split_group(group) -> (默认, 更多)` |
+
+`primary: false` 的格式会收进侧栏的「更多 ▾」，默认不显示。
+
+### 你要做的
+
+1. `git pull`
+2. 以后有损格式只往 **`format/lossy.rs`** 里加，不要动 `mod.rs`
+3. 你的 `fc-analyze` 任务**不受影响**，可以继续
+
+### 侧栏现在的样子
+
+- 无损：FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM（9 个，全展开不折叠）
+- 有损：MP3 / Opus / Vorbis / MP2（4 个）
+
+有损这边我只替你放了个 MP2 占位。真正值得加什么你判断——
+但我提醒一句：能编码的有损格式本来就不多，AAC / AC-3 都有专利，建议保持 `can_encode: false`。
+你的价值更多在「能解码但不能编码」那些格式的百科文案上。
 
 ---
 
@@ -27,9 +71,5 @@ B，环境跑通之后先读 `HANDOFF.md`，那是总入口。
 
 **我这边在做什么**：`fc-gui` 的界面改造（字体、自绘标题栏、设置页、试听交互）。
 都在 `crates/fc-gui`，不会碰你的文件。
-
-**接口会有一次变更**：我准备把 `format.rs` 拆成 `format/lossless.rs` / `format/lossy.rs` /
-`format/device.rs` 三个模块，`FORMATS` 静态量改成 `all()` 函数。拆完我会更新
-`docs/契约.md` 并在这里留言。在那之前你先做 `fc-analyze`，不受影响。
 
 有拿不准的直接写在 `from-B.md` 里，我下次 pull 就看到。
