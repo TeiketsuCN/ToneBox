@@ -186,6 +186,8 @@ struct App {
     /// 捐赠收款码（放在程序目录，runtime 读取，改名即可换）
     donate_wechat: Option<egui::TextureHandle>,
     donate_alipay: Option<egui::TextureHandle>,
+    /// 当前 ffmpeg 实际带哪些编码器（开机问一次）
+    encoders: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -202,8 +204,13 @@ impl App {
         let target = fc_core::default_target();
         let (atx, arx) = channel();
         let (mtx, mrx) = channel();
+        let tools = fc_core::locate();
+        let encoders = tools
+            .as_ref()
+            .map(|t| fc_core::list_encoders(&t.ffmpeg))
+            .unwrap_or_default();
         App {
-            tools: fc_core::locate(),
+            tools,
             items: Vec::new(),
             selected: 0,
             target,
@@ -236,6 +243,7 @@ impl App {
             meta_open: false,
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
+            encoders,
         }
     }
 
@@ -950,8 +958,13 @@ impl App {
         dt: f32,
     ) -> bool {
         let mut animating = false;
+        // 这个二进制里到底有没有对应的编码器
+        let enc = fc_core::encoder_for(spec.id);
+        let enc_ok = enc.map(|e| self.encoders.contains(e)).unwrap_or(true);
         let selectable = spec.can_encode;
-        let selected = selectable && spec.id == self.target.id;
+        // 编码器缺失时不能选为输出，否则转换时才炸
+        let usable = selectable && enc_ok;
+        let selected = usable && spec.id == self.target.id;
 
         let cur = {
             match self.fmt_sel.iter_mut().find(|(id, _)| *id == spec.id) {
@@ -965,27 +978,40 @@ impl App {
 
         let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
         let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
-        let base = if selectable { TEXT } else { MUTED };
+        let base = if !enc_ok {
+            DIM
+        } else if selectable {
+            TEXT
+        } else {
+            MUTED
+        };
         let text_c = blend(base, ACCENT, cur);
 
-        let mut row = egui::Button::new(RichText::new(spec.name).size(11.5).color(text_c))
+        let mut label = RichText::new(spec.name).size(11.5).color(text_c);
+        if !enc_ok {
+            label = label.strikethrough();
+        }
+        let mut row = egui::Button::new(label)
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke_c))
             .rounding(Rounding::same(8.0))
             .min_size(egui::vec2(ui.available_width(), 22.0));
-        if !selectable {
-            row = row
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::NONE);
+        if !usable {
+            row = row.fill(Color32::TRANSPARENT).stroke(Stroke::NONE);
         }
 
         let mut resp = ui.add(row);
-        if !selectable {
+        if !enc_ok {
+            resp = resp.on_hover_text(format!(
+                "你的机器上似乎没有这个编码器（{}）\n换个 ffmpeg 构建可能就有，或者别选这个格式。",
+                enc.unwrap_or("?")
+            ));
+        } else if !selectable {
             resp = resp.on_hover_text("只读格式：能解码，不能作为输出目标");
         }
         if resp.clicked() {
-            // 只读格式不改输出目标，只展开解释
-            if selectable {
+            // 只读/缺编码器的格式不改输出目标，只展开解释
+            if usable {
                 self.target = spec;
             }
             self.expanded = if self.expanded == Some(spec.id) {

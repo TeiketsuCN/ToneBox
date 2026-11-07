@@ -431,3 +431,25 @@ mod tests {
         }
     }
 }
+
+/// 这个格式要靠哪个 ffmpeg 编码器。
+///
+/// 用来做运行时探测：二进制里没有这个编码器，界面就把格式标成不可用，
+/// 而不是等用户点了转换才报错。
+pub fn encoder_for(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "flac" => "flac",
+        // 位深会换具体 pcm_* 名字，这里只确认 pcm 族在
+        "wav" | "caf" | "w64" | "pcm" => "pcm_s16le",
+        "aiff" => "pcm_s16be",
+        "alac" => "alac",
+        "wavpack" => "wavpack",
+        "tta" => "tta",
+        "mp3" => "libmp3lame",
+        "opus" => "libopus",
+        "vorbis" => "libvorbis",
+        "mp2" => "mp2",
+        "aac" => "aac",
+        _ => return None,
+    })
+}
