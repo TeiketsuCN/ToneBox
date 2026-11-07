@@ -450,6 +450,9 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         "vorbis" => "libvorbis",
         "mp2" => "mp2",
         "aac" => "aac",
+        "ac3" => "ac3",
+        "eac3" => "eac3",
+        "wma" => "wmav2",
         _ => return None,
     })
 }
