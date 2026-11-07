@@ -28,6 +28,13 @@ const SLOPE_WIN_HZ: f64 = 300.0;
 const SLOPE_MIN: f64 = 40.0;
 const KNEE_MIN_HZ: f64 = 4000.0;
 
+/// 超过这个时长就不再整段解码。10 分钟的整段 f32 单声道约 106MB，
+/// 30 分钟约 317MB；频谱特征只需要几十秒。
+const FULL_DECODE_LIMIT_S: f64 = 600.0;
+/// 长文件取三个 30 秒窗口，共 90 秒，避免只看开头。
+const SAMPLE_WINDOW_S: f64 = 30.0;
+const SAMPLE_POINTS: [f64; 3] = [0.1, 0.5, 0.9];
+
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -115,7 +122,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
     })?;
 
     let sr = info.sample_rate as f64;
-    let samples = decode_mono(&tools.ffmpeg, path, info.sample_rate)?;
+    let samples = decode_mono(&tools.ffmpeg, path, info.sample_rate, info.duration_s)?;
     let (freqs, db) = mean_spectrum(&samples, sr);
     let sm = smooth(&db, 9);
     let ref_db = median(&sm, &freqs, REF_BAND_LO, REF_BAND_HI);
@@ -412,11 +419,56 @@ fn is_he_aac(ffprobe: &Path, path: &Path) -> bool {
         .any(profile_is_he_aac)
 }
 
-fn decode_mono(ffmpeg: &PathBuf, path: &Path, sample_rate: u32) -> Result<Vec<f32>> {
+fn sample_windows(duration_s: f64) -> Vec<(f64, f64)> {
+    if duration_s <= FULL_DECODE_LIMIT_S {
+        return Vec::new();
+    }
+    let span = (duration_s - SAMPLE_WINDOW_S).max(0.0);
+    SAMPLE_POINTS
+        .iter()
+        .map(|fraction| (span * fraction, SAMPLE_WINDOW_S))
+        .collect()
+}
+
+fn decode_mono(
+    ffmpeg: &PathBuf,
+    path: &Path,
+    sample_rate: u32,
+    duration_s: f64,
+) -> Result<Vec<f32>> {
+    let windows = sample_windows(duration_s);
+    if windows.is_empty() {
+        return decode_segment(ffmpeg, path, sample_rate, None, None);
+    }
+
+    let mut samples = Vec::new();
+    for (start, len) in windows {
+        let part = decode_segment(ffmpeg, path, sample_rate, Some(start), Some(len))?;
+        samples.extend_from_slice(&part);
+    }
+    if samples.len() < NFFT {
+        bail!("样本太短，无法分析（少于 4096 个采样点）");
+    }
+    Ok(samples)
+}
+
+fn decode_segment(
+    ffmpeg: &PathBuf,
+    path: &Path,
+    sample_rate: u32,
+    start_s: Option<f64>,
+    len_s: Option<f64>,
+) -> Result<Vec<f32>> {
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(["-v", "error", "-nostdin", "-i"])
-        .arg(path)
-        .args(["-map", "0:a:0", "-ac", "1", "-ar"])
+    cmd.args(["-v", "error", "-nostdin"]);
+    if let Some(start) = start_s {
+        cmd.args(["-ss", &format!("{start:.3}")]);
+    }
+    cmd.arg("-i").arg(path);
+    if let Some(len) = len_s {
+        cmd.args(["-t", &format!("{len:.3}")]);
+    }
+    cmd.args(["-map", "0:a:0", "-ac", "1", "-ar"])
         .arg(sample_rate.to_string())
         .args(["-f", "f32le", "-"]);
     #[cfg(windows)]
@@ -584,7 +636,7 @@ fn round2(v: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::profile_is_he_aac;
+    use super::{profile_is_he_aac, sample_windows};
 
     #[test]
     fn detects_he_aac_profiles() {
@@ -594,5 +646,21 @@ mod tests {
         assert!(profile_is_he_aac("he_aac"));
         assert!(!profile_is_he_aac("LC"));
         assert!(!profile_is_he_aac(""));
+    }
+
+    #[test]
+    fn long_files_use_three_in_bounds_windows() {
+        assert!(sample_windows(30.0).is_empty());
+        assert!(sample_windows(600.0).is_empty());
+        assert!(!sample_windows(600.5).is_empty());
+
+        let windows = sample_windows(3600.0);
+        assert_eq!(windows.len(), 3);
+        for (start, len) in &windows {
+            assert!(*start >= 0.0);
+            assert!(*start + *len <= 3600.0 + 1e-9);
+        }
+        assert!(windows[0].0 < windows[1].0);
+        assert!(windows[1].0 < windows[2].0);
     }
 }
