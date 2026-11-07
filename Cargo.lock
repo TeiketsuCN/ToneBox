@@ -947,6 +947,8 @@ dependencies = [
  "fc-player",
  "image",
  "rfd",
+ "serde",
+ "serde_json",
  "windows-sys 0.59.0",
 ]
 

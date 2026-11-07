@@ -15,6 +15,7 @@
 mod bg;
 #[cfg(windows)]
 mod frame;
+mod settings;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -159,6 +160,10 @@ struct App {
     /// 频谱分析结果通道
     analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>)>,
     analysis_rx: Receiver<(usize, Result<QualityReport, String>)>,
+    /// 设置项
+    cfg: settings::Settings,
+    settings_open: bool,
+    settings_t: f32,
 }
 
 impl App {
@@ -200,6 +205,9 @@ impl App {
             pinned: false,
             analysis_tx: atx,
             analysis_rx: arx,
+            cfg: settings::Settings::load(),
+            settings_open: false,
+            settings_t: 0.0,
         }
     }
 
@@ -427,7 +435,7 @@ impl eframe::App for App {
         }
 
         // 背景画在最底层
-        self.bg.paint(ctx);
+        self.bg.paint_mode(ctx, self.cfg.bg_mode, self.cfg.dim);
 
         // 最大化时系统会把窗口撑到工作区外 8px，UI 这边补回来
         #[cfg(windows)]
@@ -517,6 +525,17 @@ impl eframe::App for App {
                     }),
             )
             .show(ctx, |ui| animating |= self.queue(ui, ctx));
+
+        // 设置覆盖层（最后画，盖住一切）
+        animating |= approach(
+            &mut self.settings_t,
+            if self.settings_open { 1.0 } else { 0.0 },
+            self.dt,
+            16.0,
+        );
+        if self.settings_t > 0.001 {
+            self.settings_panel(ctx);
+        }
 
         if animating {
             ctx.request_repaint();
@@ -657,9 +676,18 @@ impl App {
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
+                let b = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
+                    .fill(tint(Color32::WHITE, 10))
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(8.0))
+                    .min_size(egui::vec2(ui.available_width(), 26.0));
+                if ui.add(b).clicked() {
+                    self.settings_open = true;
+                }
+                ui.add_space(4.0);
                 ui.label(
                     RichText::new("只处理未加密文件 · 不支持任何 DRM")
-                        .size(9.5)
+                        .size(9.0)
                         .color(DIM),
                 );
             });
@@ -1060,6 +1088,165 @@ impl App {
         }
     }
 
+    /// 设置页：从下往上滑入的覆盖层，不弹新窗口
+    fn settings_panel(&mut self, ctx: &egui::Context) {
+        let t = self.settings_t;
+        let screen = ctx.screen_rect();
+        let top = screen.top() + TITLEBAR_H;
+        let area = egui::Rect::from_min_max(
+            egui::pos2(screen.left(), top),
+            screen.max,
+        );
+        // 整页不透明，只做"从下往上滑"的位移，不做淡入——否则底下的界面会透出来
+        let offset = 0.0;
+
+        let mut changed = false;
+
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.settings_open = false;
+        }
+
+        egui::Area::new(egui::Id::new("settings_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(area.min + egui::vec2(0.0, offset))
+            .show(ctx, |ui| {
+                egui::Frame::none()
+                    .fill(tint(BG, 255))
+                    .inner_margin(egui::Margin::symmetric(28.0, 18.0))
+                    .show(ui, |ui| {
+                        ui.set_min_size(area.size());
+                        ui.set_max_width(area.width() - 56.0);
+                        // 顶部 44px 是原生标题栏命中区（HTCAPTION），
+                        // 放在那里的按钮点不到，所以内容整体下移避开。
+                        ui.add_space(TITLEBAR_H + (1.0 - t) * 22.0);
+
+                        // 顶栏
+                        // 返回：用显式矩形做命中区，避免按钮布局和视觉位置对不上
+                        let back_rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            egui::vec2(78.0, 30.0),
+                        );
+                        let back = ui.interact(
+                            back_rect,
+                            ui.id().with("settings_back"),
+                            egui::Sense::click(),
+                        );
+                        ui.painter().rect_filled(
+                            back_rect,
+                            Rounding::same(8.0),
+                            if back.hovered() {
+                                tint(Color32::WHITE, 22)
+                            } else {
+                                tint(Color32::WHITE, 12)
+                            },
+                        );
+                        ui.painter().text(
+                            back_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "← 返回",
+                            egui::FontId::proportional(11.0),
+                            TEXT,
+                        );
+                        if back.clicked() {
+                            self.settings_open = false;
+                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(88.0);
+                            ui.label(RichText::new("设置").size(15.0).color(TEXT).strong());
+                        });
+                        ui.add_space(18.0);
+
+                        // ── 外观 ──
+                        section(ui, "外观");
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("背景").size(10.5).color(MUTED));
+                            ui.add_space(12.0);
+                            for m in settings::BgMode::all() {
+                                let on = self.cfg.bg_mode == m;
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new(m.label()).size(10.5).color(if on {
+                                                Color32::from_rgb(10, 26, 24)
+                                            } else {
+                                                MUTED
+                                            }),
+                                        )
+                                        .fill(if on { ACCENT } else { tint(Color32::WHITE, 10) })
+                                        .stroke(if on {
+                                            Stroke::NONE
+                                        } else {
+                                            line(Color32::WHITE, 20)
+                                        })
+                                        .rounding(Rounding::same(8.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    self.cfg.bg_mode = m;
+                                    changed = true;
+                                }
+                            }
+                        });
+
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("暗化").size(10.5).color(MUTED));
+                            ui.add_space(12.0);
+                            let mut dim = self.cfg.dim as i32;
+                            ui.spacing_mut().slider_width = 220.0;
+                            if ui
+                                .add(egui::Slider::new(&mut dim, 0..=210).show_value(false))
+                                .changed()
+                            {
+                                self.cfg.dim = dim as u8;
+                                changed = true;
+                            }
+                            ui.label(
+                                RichText::new(format!("{}", self.cfg.dim)).size(9.0).color(DIM),
+                            );
+                        });
+
+                        ui.add_space(18.0);
+
+                        // ── 行为 ──
+                        section(ui, "行为");
+                        let mut auto = self.cfg.auto_analyze;
+                        if ui
+                            .checkbox(&mut auto, RichText::new("选中文件时自动分析频谱").size(10.5).color(MUTED))
+                            .changed()
+                        {
+                            self.cfg.auto_analyze = auto;
+                            changed = true;
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("关掉后不自动分析，省 CPU；每个文件约 1 秒")
+                                .size(9.0)
+                                .color(DIM),
+                        );
+
+                        ui.add_space(18.0);
+
+                        // ── 关于 ──
+                        section(ui, "关于");
+                        egui::Grid::new("about")
+                            .num_columns(2)
+                            .spacing([16.0, 6.0])
+                            .show(ui, |ui| {
+                                row(ui, "版本", "0.1.0");
+                                row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
+                                row(ui, "音频解码", "ffmpeg 子进程");
+                                row(ui, "频谱分析", "fc-analyze（自研）");
+                                row(ui, "许可", "开源，详见仓库");
+                            });
+                    });
+            });
+
+        if changed {
+            self.cfg.save();
+        }
+    }
+
     /// 底部全局播放条
     fn player_bar(&mut self, ui: &mut egui::Ui, name: &str) {
         ui.set_width(ui.available_width());
@@ -1354,11 +1541,12 @@ impl App {
         }
 
         // 选中即分析（结果进缓存，切回来不重跑）
-        if self
-            .items
-            .get(self.selected)
-            .map(|i| matches!(i.analysis, Analysis::Idle) && i.info.is_some())
-            .unwrap_or(false)
+        if self.cfg.auto_analyze
+            && self
+                .items
+                .get(self.selected)
+                .map(|i| matches!(i.analysis, Analysis::Idle) && i.info.is_some())
+                .unwrap_or(false)
         {
             self.start_analyze(self.selected, ui.ctx());
         }
@@ -1526,6 +1714,12 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// 设置页的小节标题
+fn section(ui: &mut egui::Ui, title: &str) {
+    ui.label(RichText::new(title).size(10.0).color(DIM));
+    ui.add_space(6.0);
 }
 
 fn card(ui: &mut egui::Ui, color: Color32, add: impl FnOnce(&mut egui::Ui)) {

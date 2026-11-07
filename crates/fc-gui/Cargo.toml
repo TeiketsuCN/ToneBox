@@ -12,6 +12,8 @@ fc-core = { path = "../fc-core" }
 fc-analyze = { path = "../fc-analyze" }
 fc-player = { path = "../fc-player" }
 anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 rfd = "0.15"
 image = { version = "0.25", default-features = false, features = [ "jpeg", "png" ] }

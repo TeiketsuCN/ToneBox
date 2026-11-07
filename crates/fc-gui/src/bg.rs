@@ -42,9 +42,20 @@ impl WallpaperBg {
     }
 
     /// 画在最底层。窗口移动时 UV 跟着走，所以背景"贴着桌面"。
-    pub fn paint(&self, ctx: &egui::Context) {
+    pub fn paint_mode(&self, ctx: &egui::Context, mode: crate::settings::BgMode, dim: u8) {
         let screen = ctx.screen_rect();
         let painter = ctx.layer_painter(egui::LayerId::background());
+
+        use crate::settings::BgMode;
+
+        if mode == BgMode::Off {
+            painter.rect_filled(screen, 0.0, Color32::from_rgb(15, 17, 22));
+            return;
+        }
+        if mode == BgMode::Solid {
+            painter.rect_filled(screen, 0.0, Color32::from_rgb(20, 22, 30));
+            return;
+        }
 
         let Some(tex) = &self.tex else {
             painter.rect_filled(screen, 0.0, Color32::from_rgb(15, 17, 22));
@@ -75,7 +86,17 @@ impl WallpaperBg {
         painter.image(tex.id(), screen, uv, Color32::WHITE);
 
         // 压暗：保证任何壁纸上文字都够对比
-        painter.rect_filled(screen, 0.0, Color32::from_rgba_premultiplied(8, 10, 16, 96));
+        let a = dim as u16;
+        painter.rect_filled(
+            screen,
+            0.0,
+            Color32::from_rgba_premultiplied(
+                (8 * a / 255) as u8,
+                (10 * a / 255) as u8,
+                (16 * a / 255) as u8,
+                dim,
+            ),
+        );
     }
 }
 
