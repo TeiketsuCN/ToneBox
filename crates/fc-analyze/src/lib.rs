@@ -136,7 +136,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
     let he_aac = family == Family::Aac && is_he_aac(&tools.ffprobe, path);
     let mut caveats: Vec<String> = Vec::new();
 
-    let (estimate, base_conf) = if lossless {
+    let (estimate, mut base_conf) = if lossless {
         caveats.push(
             "编码本身是无损格式；频谱只能说明文件没有被再次有损压缩，不能证明母带质量。"
                 .to_string(),
@@ -197,6 +197,16 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
 
         (guess.estimate.to_string(), conf)
     };
+
+    // ATRAC 的阈值表只有 16 个文件、10 个档位，其中 6 档只有 1 个样本，也没有留出集。
+    // 所以结论只当参考：压低置信度，并在界面上明说——别让它看起来和 MP3 一样确定。
+    if matches!(family, Family::Atrac3 | Family::Atrac3p) {
+        caveats.push(
+            "ATRAC 阈值表只有 16 个样本、10 个档位（其中 6 档只有 1 个样本），也没有留出集验证；这一点只能当参考，不要当结论。"
+                .to_string(),
+        );
+        base_conf = base_conf.min(0.60);
+    }
 
     let confidence = (round2(base_conf.clamp(0.05, 0.97))).clamp(0.05, 0.97);
     Ok(QualityReport {
@@ -302,7 +312,12 @@ fn classify(family: Family, cutoff: f64) -> Guess {
         }
         Family::Atrac3 => {
             if cutoff >= 18000.0 {
-                Guess::exact("132")
+                // 132k 的实测边沿只有 17.7kHz，18kHz 以上没有样本可依
+                Guess::unsure(
+                    "132",
+                    0.55,
+                    "ATRAC3 132k 实测边沿 17.7kHz，18kHz 以上没有样本，按最高档外推。",
+                )
             } else if cutoff >= 16000.0 {
                 Guess::unsure(
                     "66~132",
@@ -321,11 +336,27 @@ fn classify(family: Family, cutoff: f64) -> Guess {
         }
         Family::Atrac3p => {
             if cutoff >= 19300.0 {
-                Guess::exact("256")
+                // 6 个 256k 样本全部来自同一母版，只能算"一个证据"
+                Guess::unsure(
+                    "256",
+                    0.55,
+                    "ATRAC3+ 256k 的边沿只由一个母版的 6 个样本标定，没有第二个来源验证。",
+                )
             } else if cutoff >= 18500.0 {
-                Guess::exact("48")
+                // 48k 那个样本是钢琴曲（高频本来就少），边沿 19.0kHz，和 256k 撞在一起。
+                // 以前在这里直接给 "48"，等于把异常值当规律。
+                Guess::unsure(
+                    "48/256",
+                    0.25,
+                    "48k 的样本是钢琴曲（高频本来就少），实测边沿 19.0kHz，与 256k 重叠；截止法分不开这两档。",
+                )
             } else if cutoff >= 16000.0 {
-                Guess::exact("128")
+                // 128k 实测在 15.3kHz，这一整段没有真实样本
+                Guess::unsure(
+                    "128~256",
+                    0.30,
+                    "16~18.5kHz 这一段没有真实 ATRAC3+ 样本，128k 与 256k 之间属于外推。",
+                )
             } else if cutoff >= 14500.0 {
                 Guess::unsure(
                     "65~128",

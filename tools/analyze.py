@@ -174,7 +174,9 @@ def classify(family, cutoff):
 
     if family == "atrac3":
         if cutoff >= 18000:
-            return "132", 1.0, None
+            # 132k 的实测边沿只有 17.7kHz，18kHz 以上没有样本可依
+            return ("132", 0.55,
+                    "ATRAC3 132k 实测边沿 17.7kHz，18kHz 以上没有样本，按最高档外推。")
         if cutoff >= 16000:
             return ("66~132", 0.50,
                     "ATRAC3 66k 与 132k 的截止频率重叠（同族样本差异大于档位差异），只能给区间。")
@@ -185,11 +187,18 @@ def classify(family, cutoff):
 
     if family == "atrac3p":
         if cutoff >= 19300:
-            return "256", 1.0, None
+            # 6 个 256k 样本全部来自同一母版，只能算"一个证据"
+            return ("256", 0.55,
+                    "ATRAC3+ 256k 的边沿只由一个母版的 6 个样本标定，没有第二个来源验证。")
         if cutoff >= 18500:
-            return "48", 1.0, None
+            # 48k 那个样本是钢琴曲（高频本来就少），边沿 19.0kHz，和 256k 撞在一起。
+            # 以前在这里直接给 "48"，等于把异常值当规律。
+            return ("48/256", 0.25,
+                    "48k 的样本是钢琴曲（高频本来就少），实测边沿 19.0kHz，与 256k 重叠；截止法分不开这两档。")
         if cutoff >= 16000:
-            return "128", 1.0, None
+            # 128k 实测在 15.3kHz，这一整段没有真实样本
+            return ("128~256", 0.30,
+                    "16~18.5kHz 这一段没有真实 ATRAC3+ 样本，128k 与 256k 之间属于外推。")
         if cutoff >= 14500:
             return ("65~128", 0.50,
                     "ATRAC3+ 65k 与 128k 的截止频率几乎重合，只能给区间。")
@@ -310,6 +319,15 @@ def analyze(path):
                 "边沿下方能量已偏低，音源本身高频可能就少（电子乐/老录音），推测可能偏低。"
             )
             conf *= 0.8
+
+    # ATRAC 的阈值表只有 16 个文件、10 个档位，其中 6 档只有 1 个样本，也没有留出集。
+    # 所以结论只当参考：压低置信度，并把这件事写进 caveats。
+    if fam in ("atrac3", "atrac3p"):
+        caveats.append(
+            "ATRAC 阈值表只有 16 个样本、10 个档位（其中 6 档只有 1 个样本），"
+            "也没有留出集验证；这一点只能当参考，不要当结论。"
+        )
+        conf = min(conf, 0.60)
 
     conf = round(max(0.05, min(0.97, conf)), 2)
     return {
