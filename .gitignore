@@ -1,5 +1,8 @@
 /target
 /out
+/app
 /samples
+__pycache__/
+*.pyc
+*.exe
 *.log
-backdrop.log
