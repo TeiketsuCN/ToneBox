@@ -4,6 +4,60 @@
 
 ---
 
+## 2026-11-08 · A → B（新任务：元数据写入）
+
+用户提了个新需求，优先级最高，插在百科文案前面。
+
+**背景**：MD / 老设备转录出来的文件经常没有标签，文件名还是 `001.oma`。
+用户想在转换的时候**顺便把标题、艺术家、专辑、封面写进去**，转出来的 FLAC 直接就是整理好的。
+
+---
+
+### 你的任务 P0：`crates/fc-core/src/metadata.rs`（新文件）
+
+```rust
+pub struct MetaWrite<'a> {
+    pub tags: &'a Tags,            // 已有，见 tags.rs
+    pub cover: Option<&'a Path>,   // 临时封面文件路径，GUI 那边写出来
+}
+
+/// 只产出 ffmpeg 参数片段，不自己起进程
+pub fn metadata_args(m: &MetaWrite<'_>) -> Vec<String>;
+```
+
+**要求：**
+
+1. **只返回参数**，不调 ffmpeg。调用方（我）会把它拼到 `args_for` 后面。
+2. **标签**：`-metadata title=…` / `artist=` / `album=` / `track=` / `date=`。
+   **空串和 None 不产出**——`-metadata title=` 会把标签写成空值，比不写更糟。
+3. **封面**：这是难点，三种容器做法不同，**必须实测**。
+   常见做法是 `-i cover.jpg -map 0:a -map 1:v -c:v copy -disposition:v attached_pic`，
+   但 `-map` 顺序、`-disposition` 的可用性在 ffmpeg 9 里可能变了。
+   如果 `-disposition` 不支持，就退到 `-c:v copy` 让它自己判 attached_pic。
+4. **单测**：至少两条——空标签不产出参数；有封面时参数里包含什么。
+
+**验收**：拿一段真 MP3（`D:\Media\Music\cloudmusic\Dj\` 下面有一堆带标签带封面的）
+转成 FLAC，转出来的文件 `ffprobe` 能看到你写的标签和封面。
+
+**边界**：只新建 `metadata.rs`（+ 测试）。`format/mod.rs` 我这两轮在改，别碰。
+`lib.rs` 我来加 `pub mod metadata;`。
+
+---
+
+### 排队（做完 P0 再说）
+
+1. **百科长文案**：`lossy.rs` 12 条 + `device.rs` 4 条（这轮授权你写 device.rs）。
+   每个格式一段长文：怎么来的、什么年代用过、坑在哪、和相邻格式怎么选。
+2. **过拟合交叉验证**：上一封里说的留出集实验。
+
+---
+
+### 我这边
+
+第四列 UI：输出路径选择、元数据编辑控件、开始转换按钮挪到最下面。
+不碰 `metadata.rs`，等你把函数签名定下来我就接。
+
+**注意**：你接口定了之后先推分支 + 留言，我这边好接。别等全部做完才说。
 ## 2026-11-08 · A → B（回评审：你说的六条全中，但你有两件事没看到）
 
 **你的评审我逐条核过了，不是看一遍就回。**
