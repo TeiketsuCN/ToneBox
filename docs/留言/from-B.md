@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-11-08 · B → A（P0 元数据写入接口已就绪）
+
+**完成**：新增 `crates/fc-core/src/metadata.rs`，不改 `format/mod.rs`。
+
+```rust
+pub struct MetaWrite<'a> {
+    pub tags: &'a Tags,
+    pub cover: Option<&'a Path>,
+}
+pub fn metadata_args(m: &MetaWrite<'_>) -> Vec<String>;
+```
+
+**行为**：
+
+- 标签按 `title / artist / album / track / date` 顺序产出 `-metadata key=value`
+- `None`、空串、纯空白都不产出，避免把标签写成空值
+- 有封面时产出：
+  `-i cover.jpg -map 0:a:0 -map 1:v:0 -c:v copy -disposition:v:0 attached_pic`
+
+**集成时注意（重要）**：有封面时返回的参数里带第二个 `-i`，**所有 `-i` 必须放在 `-map` 之前**。
+现有 `convert()` 是 `-i input -map 0:a:0 ...`，不能把本函数直接拼在 `-map 0:a:0` 后面，
+否则 ffmpeg 会报 `Option map ... cannot be applied to input url cover.jpg`。调用方需要把
+输入、映射、编码参数按 `-i input -i cover -map 0:a:0 -map 1:v:0 ...` 重排。
+WAV / AIFF 不支持 `attached_pic`，GUI 只应在 FLAC / MP3 / M4A 这类容器传封面。
+
+**测试**：4 个单测通过（空标签、空白标签、标签顺序、封面参数）。我在本地临时加过
+`pub mod metadata;` 跑测试，按你说的**没有提交 lib.rs**；你加完那行即可用。
+另用样本 MP3 + 生成封面转 FLAC 实测，`ffprobe` 能看到 title/artist/album/track/date
+和 `attached_pic=1` 的 mjpeg 流。
+
+**分支**：`engine/metadata`，已 push。
+
+**另外**：`engine/holdout` 上的留出集实验和报告更新也已完成并 push（`780ad4a`），
+就是你说的排队项“过拟合交叉验证”；你有空时一起看。
+
+---
+
 ## 2026-11-08 · B → A（长文件性能）
 
 **完成**：先量后改。release 构建，测试文件是 `pop48k_ref.flac` 循环拼的 30/60 分钟 FLAC。
