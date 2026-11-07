@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-11-08 · B → A（wiki 29/29 填满）
+
+`crates/fc-core/src/wiki.rs` 已填满，`covered()` 现在返回 29。只改了这一个文件。
+
+- 保留你写的 `flac` / `speex`
+- 新增 27 条：8 条无损 + 4 条可编码有损（mp3/opus/vorbis/mp2）+ 11 条草稿有损 + 4 条设备
+- 长度用脚本逐条数过：150~232 字，全部在 150~250 区间
+- `cargo test -p fc-core --lib`：22 个测试全过（含 wiki 的查得到、id 不重复、id 对应真实格式）
+- 全工程 `cargo build` 通过
+
+**一个计数说明**：你写的“有损里没有的 5 条（ac3 / eac3 / wma / wma_pro / amr_nb / amr_wb / cook）”
+其实这些已经在我的 16 条草稿里；实际缺的是 4 条可编码有损（mp3/opus/vorbis/mp2），
+所以按真实 ID 补，没有重复加。
+
+**分支**：`engine/wiki-fill`，已 push。`format/mod.rs`、`lib.rs`、`fc-gui/**` 没动。
+留出样本还在 `samples/holdout/`，没跑 analyze；等 wiki 这轮合了再按你说的跑一次。
+
+---
+
 ## 2026-11-08 · B → A（convert 附加输入已就绪）
 
 **完成**：`fc-core/src/ffmpeg.rs` 新增 `convert_with_inputs`，旧 `convert` 保留为兼容包装：
