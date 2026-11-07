@@ -164,6 +164,8 @@ struct App {
     cfg: settings::Settings,
     settings_open: bool,
     settings_t: f32,
+    output_open: bool,
+    output_t: f32,
 }
 
 impl App {
@@ -208,6 +210,8 @@ impl App {
             cfg: settings::Settings::load(),
             settings_open: false,
             settings_t: 0.0,
+            output_open: false,
+            output_t: 0.0,
         }
     }
 
@@ -248,7 +252,7 @@ impl App {
 
     fn start_batch(&mut self, ctx: &egui::Context) {
         let Some(tools) = self.tools.clone() else { return };
-        let mut jobs = Vec::new();
+        let mut jobs: Vec<(usize, PathBuf, PathBuf, Vec<String>, f64)> = Vec::new();
         for (i, it) in self.items.iter_mut().enumerate() {
             if it.info.is_none() || !matches!(it.state, State::Pending) {
                 continue;
@@ -256,7 +260,9 @@ impl App {
             let spec = it.spec(self.target);
             let out = unique_output(&it.path, spec.ext);
             let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
-            jobs.push((i, it.path.clone(), out, spec.args, dur));
+            // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
+            let args = fc_core::args_for(spec, &self.cfg.opts);
+            jobs.push((i, it.path.clone(), out, args, dur));
             it.state = State::Running(0.0);
         }
         if jobs.is_empty() {
@@ -274,11 +280,12 @@ impl App {
             for (idx, input, out, args, dur) in jobs {
                 let tx_p = tx.clone();
                 let ctx_p = ctx2.clone();
+                let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
                 let res = fc_core::convert(
                     &tools,
                     &input,
                     &out,
-                    args,
+                    &arg_refs,
                     dur,
                     Box::new(move |p| {
                         let _ = tx_p.send(Msg::Progress(idx, p));
@@ -540,6 +547,15 @@ impl eframe::App for App {
             self.dt,
             16.0,
         );
+        animating |= approach(
+            &mut self.output_t,
+            if self.output_open { 1.0 } else { 0.0 },
+            self.dt,
+            16.0,
+        );
+        if self.output_t > 0.001 {
+            self.output_page(ctx);
+        }
         if self.settings_t > 0.001 {
             self.settings_panel(ctx);
         }
@@ -683,14 +699,25 @@ impl App {
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let b = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
-                    .fill(tint(Color32::WHITE, 10))
-                    .stroke(line(Color32::WHITE, 18))
-                    .rounding(Rounding::same(8.0))
-                    .min_size(egui::vec2(ui.available_width(), 26.0));
-                if ui.add(b).clicked() {
-                    self.settings_open = true;
-                }
+                ui.horizontal(|ui| {
+                    let w = (ui.available_width() - 6.0) / 2.0;
+                    let b1 = egui::Button::new(RichText::new("输出").size(10.5).color(ACCENT))
+                        .fill(tint(ACCENT, 18))
+                        .stroke(line(ACCENT, 40))
+                        .rounding(Rounding::same(8.0))
+                        .min_size(egui::vec2(w, 26.0));
+                    if ui.add(b1).clicked() {
+                        self.output_open = true;
+                    }
+                    let b2 = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
+                        .fill(tint(Color32::WHITE, 10))
+                        .stroke(line(Color32::WHITE, 18))
+                        .rounding(Rounding::same(8.0))
+                        .min_size(egui::vec2(w, 26.0));
+                    if ui.add(b2).clicked() {
+                        self.settings_open = true;
+                    }
+                });
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new("只处理未加密文件 · 不支持任何 DRM")
@@ -1093,6 +1120,258 @@ impl App {
                 self.add_files(paths);
             }
         }
+    }
+
+    /// 输出页：预设在上、参数在下，改了立即生效
+    fn output_page(&mut self, ctx: &egui::Context) {
+        let t = self.output_t;
+        let screen = ctx.screen_rect();
+        let area = egui::Rect::from_min_max(
+            egui::pos2(screen.left(), screen.top() + TITLEBAR_H),
+            screen.max,
+        );
+
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.output_open = false;
+        }
+
+        let mut changed = false;
+
+        egui::Area::new(egui::Id::new("output_overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(area.min)
+            .show(ctx, |ui| {
+                egui::Frame::none()
+                    .fill(tint(BG, 255))
+                    .inner_margin(egui::Margin::symmetric(28.0, 18.0))
+                    .show(ui, |ui| {
+                        ui.set_min_size(area.size());
+                        ui.set_max_width(area.width() - 56.0);
+                        ui.add_space(TITLEBAR_H + (1.0 - t) * 22.0);
+
+                        // 顶栏
+                        let back_rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            egui::vec2(78.0, 30.0),
+                        );
+                        let back = ui.interact(
+                            back_rect,
+                            ui.id().with("output_back"),
+                            egui::Sense::click(),
+                        );
+                        ui.painter().rect_filled(
+                            back_rect,
+                            Rounding::same(8.0),
+                            if back.hovered() {
+                                tint(Color32::WHITE, 22)
+                            } else {
+                                tint(Color32::WHITE, 12)
+                            },
+                        );
+                        ui.painter().text(
+                            back_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "← 返回",
+                            egui::FontId::proportional(11.0),
+                            TEXT,
+                        );
+                        if back.clicked() {
+                            self.output_open = false;
+                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(88.0);
+                            ui.label(RichText::new("输出").size(15.0).color(TEXT).strong());
+                        });
+
+                        ui.add_space(16.0);
+
+                        // ── 格式 ──
+                        section(ui, "格式");
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
+                            for f in fc_core::browsable() {
+                                let on = f.id == self.target.id;
+                                let b = egui::Button::new(
+                                    RichText::new(f.name).size(10.5).color(if on {
+                                        Color32::from_rgb(10, 26, 24)
+                                    } else {
+                                        MUTED
+                                    }),
+                                )
+                                .fill(if on { ACCENT } else { tint(Color32::WHITE, 8) })
+                                .stroke(if on {
+                                    Stroke::NONE
+                                } else {
+                                    line(Color32::WHITE, 18)
+                                })
+                                .rounding(Rounding::same(8.0));
+                                if ui.add(b).clicked() {
+                                    self.target = f;
+                                    changed = true;
+                                }
+                            }
+                        });
+
+                        ui.add_space(16.0);
+
+                        // ── 预设 ──
+                        section(ui, "预设");
+                        ui.horizontal_wrapped(|ui| {
+                            for p in fc_core::PRESETS {
+                                let on = self.target.id == p.format;
+                                let btn = egui::Button::new(
+                                    RichText::new(format!("{}\n{}", p.name, p.note))
+                                        .size(10.0)
+                                        .color(if on { ACCENT } else { MUTED }),
+                                )
+                                .fill(if on {
+                                    tint(ACCENT, 18)
+                                } else {
+                                    tint(Color32::WHITE, 8)
+                                })
+                                .stroke(if on {
+                                    line(ACCENT, 50)
+                                } else {
+                                    line(Color32::WHITE, 18)
+                                })
+                                .rounding(Rounding::same(10.0))
+                                .min_size(egui::vec2(150.0, 46.0));
+                                if ui.add(btn).clicked() {
+                                    if let Some(f) = fc_core::by_id(p.format) {
+                                        self.target = f;
+                                    }
+                                    (p.apply)(&mut self.cfg.opts);
+                                    changed = true;
+                                }
+                            }
+                        });
+
+                        ui.add_space(16.0);
+
+                        // ── 参数 ──
+                        section(ui, &format!("{} 的参数", self.target.name));
+                        let knobs = fc_core::knobs_for(self.target);
+                        if knobs.is_empty() {
+                            para(ui, "这个格式没有可调参数，用推荐默认值。", 9.5, DIM);
+                        }
+                        for k in knobs {
+                            changed |= self.knob_row(ui, *k);
+                            ui.add_space(8.0);
+                        }
+
+                        ui.add_space(12.0);
+                        let n = self.items.len();
+                        let pending = self.items.iter().filter(|i| i.info.is_some()).count();
+                        let est = self
+                            .items
+                            .iter()
+                            .filter_map(|i| i.info.as_ref())
+                            .map(|m| fc_core::estimate_size(m, self.target))
+                            .sum::<u64>();
+                        let est_txt = if est > 0 {
+                            format!("（预计输出 {}）", fmt_size(est))
+                        } else {
+                            String::new()
+                        };
+                        para(
+                            ui,
+                            &format!("队列 {n} 个文件，{pending} 个可转换{est_txt}"),
+                            9.5,
+                            DIM,
+                        );
+                    });
+            });
+
+        if changed {
+            self.cfg.save();
+        }
+    }
+
+    /// 一个参数控件
+    fn knob_row(&mut self, ui: &mut egui::Ui, k: fc_core::Knob) -> bool {
+        use fc_core::{BitDepth, Knob};
+        let mut changed = false;
+        match k {
+            Knob::FlacLevel => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("压缩等级").size(10.0).color(MUTED));
+                    ui.add_space(10.0);
+                    let mut v = self.cfg.opts.flac_level as i32;
+                    ui.spacing_mut().slider_width = 220.0;
+                    if ui
+                        .add(egui::Slider::new(&mut v, 0..=12).show_value(false))
+                        .changed()
+                    {
+                        self.cfg.opts.flac_level = v as u8;
+                        changed = true;
+                    }
+                    ui.label(RichText::new(format!("{v}")).size(9.5).color(DIM));
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("0 最快 · 12 最小（不影响音质）").size(9.0).color(DIM));
+                });
+            }
+            Knob::VorbisQuality => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("质量").size(10.0).color(MUTED));
+                    ui.add_space(10.0);
+                    let mut v = self.cfg.opts.vorbis_q as i32;
+                    ui.spacing_mut().slider_width = 220.0;
+                    if ui
+                        .add(egui::Slider::new(&mut v, 0..=10).show_value(false))
+                        .changed()
+                    {
+                        self.cfg.opts.vorbis_q = v as u8;
+                        changed = true;
+                    }
+                    ui.label(RichText::new(format!("{v}")).size(9.5).color(DIM));
+                });
+            }
+            Knob::BitDepth => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("位深").size(10.0).color(MUTED));
+                    ui.add_space(10.0);
+                    for (d, label) in [
+                        (BitDepth::Int16, "16-bit"),
+                        (BitDepth::Int24, "24-bit"),
+                        (BitDepth::Int32f, "32-bit 浮点"),
+                    ] {
+                        let on = self.cfg.opts.bit_depth == d;
+                        if seg_button(ui, label, on) {
+                            self.cfg.opts.bit_depth = d;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::Mp3Bitrate => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("码率").size(10.0).color(MUTED));
+                    ui.add_space(10.0);
+                    for v in [128u32, 192, 256, 320] {
+                        let on = self.cfg.opts.mp3_bitrate == v;
+                        if seg_button(ui, &format!("{v}k"), on) {
+                            self.cfg.opts.mp3_bitrate = v;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::OpusBitrate => {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("码率").size(10.0).color(MUTED));
+                    ui.add_space(10.0);
+                    for v in [64u32, 96, 128, 192, 256] {
+                        let on = self.cfg.opts.opus_bitrate == v;
+                        if seg_button(ui, &format!("{v}k"), on) {
+                            self.cfg.opts.opus_bitrate = v;
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::VorbisQuality => {}
+        }
+        changed
     }
 
     /// 设置页：从下往上滑入的覆盖层，不弹新窗口
@@ -1723,6 +2002,20 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
     resp.clicked()
 }
 
+/// 分段选择按钮（位深 / 码率这类互斥选项）
+fn seg_button(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
+    let b = egui::Button::new(RichText::new(label).size(10.0).color(if on {
+        Color32::from_rgb(10, 26, 24)
+    } else {
+        MUTED
+    }))
+    .fill(if on { ACCENT } else { tint(Color32::WHITE, 8) })
+    .stroke(if on { Stroke::NONE } else { line(Color32::WHITE, 18) })
+    .rounding(Rounding::same(8.0))
+    .min_size(egui::vec2(0.0, 24.0));
+    ui.add(b).clicked()
+}
+
 /// 设置页的小节标题
 fn section(ui: &mut egui::Ui, title: &str) {
     ui.label(RichText::new(title).size(10.0).color(DIM));
@@ -1857,11 +2150,16 @@ fn main() -> eframe::Result<()> {
             info.sample_rate,
             info.duration_s
         );
+        let args = fc_core::args_for(
+            fc_core::default_target(),
+            &fc_core::ConvertOptions::default(),
+        );
+        let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         if let Err(e) = fc_core::convert(
             &tools,
             Path::new(input),
             Path::new(output),
-            fc_core::default_target().args,
+            &arg_refs,
             info.duration_s,
             Box::new(|_| {}),
         ) {

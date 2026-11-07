@@ -37,6 +37,9 @@ pub struct Settings {
     pub dim: u8,
     /// 选中文件就自动做频谱分析
     pub auto_analyze: bool,
+    /// 输出参数（压缩等级 / 位深 / 码率……）
+    #[serde(default)]
+    pub opts: fc_core::ConvertOptions,
 }
 
 impl Default for Settings {
@@ -45,6 +48,7 @@ impl Default for Settings {
             bg_mode: BgMode::Wallpaper,
             dim: 96,
             auto_analyze: true,
+            opts: fc_core::ConvertOptions::default(),
         }
     }
 }

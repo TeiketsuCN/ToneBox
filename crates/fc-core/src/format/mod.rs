@@ -156,3 +156,255 @@ pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec) -> u64 {
     let pcm = info.duration_s * info.sample_rate as f64 * info.channels.max(1) as f64 * bits / 8.0;
     (pcm * spec.size_ratio as f64) as u64
 }
+
+// ── 输出参数 ────────────────────────────────────────────
+
+/// 位深。0 位深这种概念在音频里没有，所以用枚举而不是整数。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum BitDepth {
+    Int16,
+    Int24,
+    Int32f,
+}
+
+impl BitDepth {
+    pub fn label(self) -> &'static str {
+        match self {
+            BitDepth::Int16 => "16-bit",
+            BitDepth::Int24 => "24-bit",
+            BitDepth::Int32f => "32-bit 浮点",
+        }
+    }
+    /// 小端（WAV / CAF / W64 / 裸 PCM 用）
+    pub fn codec_le(self) -> &'static str {
+        match self {
+            BitDepth::Int16 => "pcm_s16le",
+            BitDepth::Int24 => "pcm_s24le",
+            BitDepth::Int32f => "pcm_f32le",
+        }
+    }
+    /// 大端（AIFF 用）
+    pub fn codec_be(self) -> &'static str {
+        match self {
+            BitDepth::Int16 => "pcm_s16be",
+            BitDepth::Int24 => "pcm_s24be",
+            BitDepth::Int32f => "pcm_f32be",
+        }
+    }
+    /// 裸 PCM 的 muxer 名
+    pub fn raw_fmt(self) -> &'static str {
+        match self {
+            BitDepth::Int16 => "s16le",
+            BitDepth::Int24 => "s24le",
+            BitDepth::Int32f => "f32le",
+        }
+    }
+}
+
+/// 用户可调的输出参数。默认值就是各格式的推荐值。
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ConvertOptions {
+    /// FLAC 压缩等级 0~12（不影响音质，只影响体积和速度）
+    pub flac_level: u8,
+    /// PCM 位深
+    pub bit_depth: BitDepth,
+    /// MP3 码率 kbps
+    pub mp3_bitrate: u32,
+    /// Opus 码率 kbps
+    pub opus_bitrate: u32,
+    /// Vorbis 质量 0~10
+    pub vorbis_q: u8,
+}
+
+impl Default for ConvertOptions {
+    fn default() -> Self {
+        Self {
+            flac_level: 8,
+            bit_depth: BitDepth::Int24,
+            mp3_bitrate: 320,
+            opus_bitrate: 96,
+            vorbis_q: 6,
+        }
+    }
+}
+
+/// 某个格式在当前参数下有哪些可调的旋钮——UI 用它决定显示什么。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Knob {
+    FlacLevel,
+    BitDepth,
+    Mp3Bitrate,
+    OpusBitrate,
+    VorbisQuality,
+}
+
+/// 这个格式能调什么。空数组表示"没得调，用默认值"。
+pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
+    match spec.id {
+        "flac" => &[Knob::FlacLevel],
+        "wav" | "caf" | "w64" => &[Knob::BitDepth],
+        "aiff" => &[Knob::BitDepth],
+        "pcm" => &[Knob::BitDepth],
+        "mp3" => &[Knob::Mp3Bitrate],
+        "opus" => &[Knob::OpusBitrate],
+        "vorbis" => &[Knob::VorbisQuality],
+        _ => &[],
+    }
+}
+
+/// 按参数生成 ffmpeg 编码参数。
+///
+/// 这是把「静态 args」换成「可调参数」的唯一入口，GUI 不要自己拼参数字符串。
+pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
+    let s = |v: &str| v.to_string();
+    match spec.id {
+        "flac" => vec![
+            s("-c:a"),
+            s("flac"),
+            s("-compression_level"),
+            o.flac_level.min(12).to_string(),
+        ],
+        "wav" | "caf" | "w64" => vec![s("-c:a"), s(o.bit_depth.codec_le())],
+        "aiff" => vec![s("-c:a"), s(o.bit_depth.codec_be())],
+        "pcm" => vec![
+            s("-c:a"),
+            s(o.bit_depth.codec_le()),
+            s("-f"),
+            s(o.bit_depth.raw_fmt()),
+        ],
+        "mp3" => vec![
+            s("-c:a"),
+            s("libmp3lame"),
+            s("-b:a"),
+            format!("{}k", o.mp3_bitrate),
+        ],
+        "opus" => vec![
+            s("-c:a"),
+            s("libopus"),
+            s("-b:a"),
+            format!("{}k", o.opus_bitrate),
+        ],
+        "vorbis" => vec![
+            s("-c:a"),
+            s("libvorbis"),
+            s("-q:a"),
+            o.vorbis_q.min(10).to_string(),
+        ],
+        // 没列的格式用表里的默认参数
+        _ => spec.args.iter().map(|a| a.to_string()).collect(),
+    }
+}
+
+/// 一把预设——比一屏滑杆有用得多
+pub struct Preset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub note: &'static str,
+    pub format: &'static str,
+    pub apply: fn(&mut ConvertOptions),
+}
+
+pub static PRESETS: &[Preset] = &[
+    Preset {
+        id: "archive",
+        name: "MD 归档",
+        note: "无损，体积约 WAV 的六成",
+        format: "flac",
+        apply: |o| {
+            o.flac_level = 8;
+        },
+    },
+    Preset {
+        id: "car",
+        name: "车载",
+        note: "MP3 320，什么都能放",
+        format: "mp3",
+        apply: |o| {
+            o.mp3_bitrate = 320;
+        },
+    },
+    Preset {
+        id: "phone",
+        name: "手机",
+        note: "Opus 96，体积小一半有多",
+        format: "opus",
+        apply: |o| {
+            o.opus_bitrate = 96;
+        },
+    },
+    Preset {
+        id: "edit",
+        name: "再编辑",
+        note: "WAV 24-bit，剪片混音用",
+        format: "wav",
+        apply: |o| {
+            o.bit_depth = BitDepth::Int24;
+        },
+    },
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(id: &str) -> &'static FormatSpec {
+        by_id(id).unwrap()
+    }
+
+    #[test]
+    fn flac_level_reaches_args() {
+        let mut o = ConvertOptions::default();
+        o.flac_level = 12;
+        let a = args_for(spec("flac"), &o);
+        assert!(a.contains(&"12".to_string()), "压缩等级没进参数: {a:?}");
+        o.flac_level = 0;
+        let a = args_for(spec("flac"), &o);
+        assert!(a.contains(&"0".to_string()));
+    }
+
+    #[test]
+    fn bit_depth_changes_pcm_codec() {
+        let mut o = ConvertOptions::default();
+
+        o.bit_depth = BitDepth::Int16;
+        assert!(args_for(spec("wav"), &o).contains(&"pcm_s16le".to_string()));
+
+        o.bit_depth = BitDepth::Int32f;
+        assert!(args_for(spec("wav"), &o).contains(&"pcm_f32le".to_string()));
+
+        // AIFF 必须是大端
+        assert!(args_for(spec("aiff"), &o).contains(&"pcm_f32be".to_string()));
+
+        // 裸 PCM 还要带 muxer
+        let a = args_for(spec("pcm"), &o);
+        assert!(a.contains(&"f32le".to_string()), "裸 PCM 缺 muxer: {a:?}");
+    }
+
+    #[test]
+    fn bitrate_reaches_args() {
+        let mut o = ConvertOptions::default();
+        o.mp3_bitrate = 128;
+        assert!(args_for(spec("mp3"), &o).contains(&"128k".to_string()));
+        o.opus_bitrate = 192;
+        assert!(args_for(spec("opus"), &o).contains(&"192k".to_string()));
+        o.vorbis_q = 9;
+        assert!(args_for(spec("vorbis"), &o).contains(&"9".to_string()));
+    }
+
+    #[test]
+    fn knobs_match_formats() {
+        assert_eq!(knobs_for(spec("flac")), &[Knob::FlacLevel]);
+        assert_eq!(knobs_for(spec("wav")), &[Knob::BitDepth]);
+        assert_eq!(knobs_for(spec("mp3")), &[Knob::Mp3Bitrate]);
+        // 无损自适应格式不该有旋钮
+        assert!(knobs_for(spec("alac")).is_empty());
+        assert!(knobs_for(spec("wavpack")).is_empty());
+    }
+
+    #[test]
+    fn presets_point_to_real_formats() {
+        for p in PRESETS {
+            assert!(by_id(p.format).is_some(), "预设指向了不存在的格式: {}", p.format);
+        }
+    }
+}
