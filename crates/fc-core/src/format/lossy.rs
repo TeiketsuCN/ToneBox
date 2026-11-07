@@ -148,10 +148,12 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Lossy,
         patent: Patent::Free,
-        can_encode: false,
-        primary: false,
-        blurb: "2002 年的开源语音编码。\n低码率语音用，已被 Opus 取代，只解码。",
-        args: &[],
+        // 专利免费且 ffmpeg 有编码器（libspeex），所以作为输出开放。
+        // 但它是语音编码器，编音乐会很难听——这层判断写进 long_blurb，不藏在代码里。
+        can_encode: true,
+        primary: true,
+        blurb: "2002 年的开源语音编码，专利免费。\n专为人声设计，频率上限只有 8 kHz；编音乐金属感很重。",
+        args: &["-c:a", "libspeex", "-ar", "32000"],
         size_ratio: 0.02,
     },
     FormatSpec {

@@ -951,8 +951,10 @@ impl App {
         let expanded_here = self.expanded == Some(spec.id);
         if self.blurb_t > 0.01 && expanded_here {
             let wrap_w = (ui.available_width() - 12.0).max(60.0);
+            // 有长文案就用长文案（wiki.rs 里写的），没有就退回三行小字
+            let text = fc_core::long_blurb(spec.id).unwrap_or(spec.blurb);
             let galley = ui.painter().layout(
-                spec.blurb.to_string(),
+                text.to_string(),
                 egui::FontId::proportional(9.5),
                 MUTED,
                 wrap_w,

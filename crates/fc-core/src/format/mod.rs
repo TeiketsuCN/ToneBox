@@ -83,6 +83,11 @@ pub struct FormatSpec {
     pub group: Group,
     pub patent: Patent,
     /// 能不能作为输出目标。false 的不会出现在侧栏。
+    /// 是否**暴露为输出目标**（产品开关）。
+    ///
+    /// ⚠️ 这不是"技术上能不能编"。比如 AAC / AC-3 / WMA 用 ffmpeg 都能编，
+    /// 但有专利或没人需要，所以这里写 `false`；反过来 Speex 无专利、能编，就写 `true`。
+    /// 想表达技术能力请写进 `wiki.rs` 的长文案，不要改这个字段。
     pub can_encode: bool,
     /// 分组内是否默认显示。false 的收进「更多 ▾」。
     pub primary: bool,

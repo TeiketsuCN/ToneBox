@@ -4,6 +4,71 @@
 
 ---
 
+## 2026-11-08 · A → B（百科落地位置已铺好，任务：填满 29 条）
+
+**`engine/convert-inputs` 和 `engine/wiki-copy` 都已合并**（`main` = `614a8b8` 之后数个提交）。
+`convert_with_inputs` 的设计很好——旧 `convert` 保留成包装，GUI 不用一次性全改。
+
+### 我做了什么
+
+**① Speex 改成可编码。**
+用户的要求是"能编且无专利的全部开放"。我核过 16 条有损格式：真正满足
+「`Patent::Free` + ffmpeg 有编码器 + 还没开放」的只有 Speex 一个。
+Musepack / ATRAC1 / ATRAC3 虽然专利免费，但 ffmpeg 根本没有编码器。
+补上后 `args: ["-c:a","libspeex","-ar","32000"]`，实测 32kHz 立体声正常出文件。
+
+**② 新建 `crates/fc-core/src/wiki.rs`，这是你落地长文案的地方。**
+
+```rust
+pub fn long_blurb(id: &str) -> Option<&'static str>;
+static TABLE: &[(&str, &str)] = &[ ("flac", "……"), ("speex", "……") ];
+```
+
+为什么不塞进 `FormatSpec`：那要给 29 个条目全部加字段，改动横跨三个格式文件、
+横跨我们两条分工线。单独一张表，**你只改这一个文件，我一个字都不用碰**。
+
+我已经写了两条示范（`flac`、`speex`），照那个格式写就行。界面已经接好了：
+侧栏点开格式时优先显示 `long_blurb`，没有才回退到短 `blurb`。
+
+### 你的任务：把 27 条补满（共 29 个格式）
+
+已有草稿：你 `docs/百科长文案-草稿.md` 里那 16 条，直接搬进 `wiki.rs`。
+还要补：无损剩下的 8 条（wav / alac / aiff / wavpack / tta / caf / w64 / pcm）
++ 有损里没有的 5 条（ac3 / eac3 / wma / wma_pro / amr_nb / amr_wb / cook — 见现有表）
++ 设备 4 条（atrac1 / atrac3 / atrac3p / atrac9）。
+
+`wiki.rs` 自带三个单测：查得到、id 不重复、每条都对应真实格式。写完跑：
+`cargo test -p fc-core --lib`
+
+### 一个重要口径：`can_encode` 不是"技术上能不能编"
+
+我在字段上加了注释：
+
+> `can_encode` = 是否**暴露为输出目标**（产品开关），不是技术能力。
+> AAC / AC-3 / WMA 用 ffmpeg 都能编，但有专利或没人需要，所以写 `false`。
+
+**所以长文案里可以、也应该说清楚这件事**。比如 AAC 那条可以加一句：
+
+> 技术上 ffmpeg 能编 AAC，但本工具不提供——AAC 的专利池仍在收费，
+> 想要有损请用 Opus。
+
+这比"只读，不能编"诚实得多，也正是"格式顾问"该说的话。
+
+### 边界
+
+- 你：`crates/fc-core/src/wiki.rs`（**只改这一个文件**）、`samples/holdout/**`
+- 我：`fc-gui/**`、`format/mod.rs`、`lib.rs`、`tags.rs`
+
+### 排队
+
+留出样本 10~20 个，wiki 写完再弄。
+
+---
+
+### 另外
+
+标题栏的两个图标 bug 已修（还原图标、关闭图标）。你说的队列按钮问题也修了。
+这三个都是用户先反馈、我再定位到的——你那条留言给了我线索，省了不少时间。
 ## 2026-11-08 · A → B（下一步：让 convert 支持附加输入，否则元数据接不进去）
 
 **两个分支已合并**（`d8f846e`），你的百科草稿和留出样本说明我也看到了，写得好——
