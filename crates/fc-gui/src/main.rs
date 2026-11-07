@@ -49,6 +49,7 @@ const BG: Color32 = Color32::from_rgb(14, 16, 22);
 const TITLEBAR_H: f32 = 44.0;
 const LEFT_W: f32 = 216.0;
 const RIGHT_W: f32 = 300.0;
+const OUT_W: f32 = 240.0;
 
 fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
@@ -176,8 +177,6 @@ struct App {
     cfg: settings::Settings,
     settings_open: bool,
     settings_t: f32,
-    out_open: bool,
-    out_t: f32,
 }
 
 impl App {
@@ -225,8 +224,6 @@ impl App {
             cfg: settings::Settings::load(),
             settings_open: false,
             settings_t: 0.0,
-            out_open: false,
-            out_t: 0.0,
         }
     }
 
@@ -553,6 +550,22 @@ impl eframe::App for App {
                     }),
             )
             .show(ctx, |ui| animating |= self.sidebar(ui));
+
+        egui::SidePanel::right("output")
+            .exact_width(OUT_W)
+            .resizable(false)
+            .frame(
+                egui::Frame::none()
+                    .fill(tint(BG, 128))
+                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+            )
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        animating |= self.output_panel(ui);
+                    });
+            });
 
         egui::SidePanel::right("detail")
             .exact_width(RIGHT_W)
@@ -1437,18 +1450,6 @@ impl App {
         animating |= approach(&mut self.detail_t, 1.0, self.dt, 12.0);
         let t = self.detail_t;
 
-        // 底部固定的「输出」区（不属于某个文件，是全局设置）
-        egui::TopBottomPanel::bottom("out_section")
-            .frame(
-                egui::Frame::none()
-                    .fill(tint(BG, 214))
-                    .inner_margin(egui::Margin::symmetric(0.0, 6.0)),
-            )
-            .show_inside(ui, |ui| {
-                ui.set_width(ui.available_width());
-                animating |= self.output_section(ui);
-            });
-
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -1710,56 +1711,21 @@ impl App {
         }
     }
 
-    /// 右侧面板底部的「输出」区。
-    /// 折叠时只有一行，展开后是预设 + 参数——不弹新界面。
-    fn output_section(&mut self, ui: &mut egui::Ui) -> bool {
+    /// 最右一列：输出设置。不属于某个文件，是全局的。
+    fn output_panel(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.set_width(ui.available_width());
         let mut changed = false;
 
-        let (rect, resp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 30.0),
-            egui::Sense::click(),
+        ui.label(RichText::new("输出").size(11.0).color(DIM));
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
+                .size(12.0)
+                .color(ACCENT),
         );
-        let p = ui.painter();
-        if resp.hovered() {
-            p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 10));
-        }
-        p.text(
-            rect.left_center() + egui::vec2(4.0, 0.0),
-            egui::Align2::LEFT_CENTER,
-            "输出",
-            egui::FontId::proportional(10.0),
-            DIM,
-        );
-        p.text(
-            rect.left_center() + egui::vec2(38.0, 0.0),
-            egui::Align2::LEFT_CENTER,
-            format!("{} · {}", self.target.name, self.knob_summary()),
-            egui::FontId::proportional(10.5),
-            ACCENT,
-        );
-        let c = rect.right_center() - egui::vec2(12.0, 0.0);
-        let tri = if self.out_open {
-            vec![
-                c + egui::vec2(-4.0, 2.0),
-                c + egui::vec2(4.0, 2.0),
-                c + egui::vec2(0.0, -3.0),
-            ]
-        } else {
-            vec![
-                c + egui::vec2(-4.0, -2.0),
-                c + egui::vec2(4.0, -2.0),
-                c + egui::vec2(0.0, 3.0),
-            ]
-        };
-        p.add(egui::Shape::convex_polygon(tri, DIM, Stroke::NONE));
-        if resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if resp.clicked() {
-            self.out_open = !self.out_open;
-        }
+        ui.add_space(12.0);
 
-        if !self.out_open {
+        if false {
             return changed;
         }
 
@@ -2352,8 +2318,8 @@ fn main() -> eframe::Result<()> {
     };
 
     let mut viewport = egui::ViewportBuilder::default()
-            .with_inner_size([1060.0, 660.0])
-            .with_min_inner_size([960.0, 560.0])
+            .with_inner_size([1270.0, 680.0])
+            .with_min_inner_size([1180.0, 560.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_title("格式转换器");
