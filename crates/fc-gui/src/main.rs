@@ -109,6 +109,8 @@ struct Item {
     hovered: bool,
     progress_t: f32,
     analysis: Analysis,
+    tags: fc_core::Tags,
+    cover: Option<egui::TextureHandle>,
 }
 
 impl Item {
@@ -121,6 +123,13 @@ impl Item {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default()
     }
+}
+
+/// 后台读完标签/封面后回传
+struct MediaMsg {
+    idx: usize,
+    tags: fc_core::Tags,
+    cover: Option<(Vec<u8>, u32, u32)>,
 }
 
 enum Msg {
@@ -160,6 +169,9 @@ struct App {
     /// 频谱分析结果通道
     analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>)>,
     analysis_rx: Receiver<(usize, Result<QualityReport, String>)>,
+    /// 标签/封面回传（后台线程读，主线程建纹理）
+    media_tx: std::sync::mpsc::Sender<MediaMsg>,
+    media_rx: Receiver<MediaMsg>,
     /// 设置项
     cfg: settings::Settings,
     settings_open: bool,
@@ -181,6 +193,7 @@ impl App {
 
         let target = fc_core::default_target();
         let (atx, arx) = channel();
+        let (mtx, mrx) = channel();
         App {
             tools: fc_core::locate(),
             items: Vec::new(),
@@ -207,6 +220,8 @@ impl App {
             pinned: false,
             analysis_tx: atx,
             analysis_rx: arx,
+            media_tx: mtx,
+            media_rx: mrx,
             cfg: settings::Settings::load(),
             settings_open: false,
             settings_t: 0.0,
@@ -232,6 +247,8 @@ impl App {
                     (None, Some(msg))
                 }
             };
+            let idx = self.items.len();
+            spawn_media_load(&tools, &p, idx, self.media_tx.clone());
             self.items.push(Item {
                 path: p,
                 info,
@@ -243,6 +260,8 @@ impl App {
                 hovered: false,
                 progress_t: 0.0,
                 analysis: Analysis::Idle,
+                tags: fc_core::Tags::default(),
+                cover: None,
             });
         }
         if !self.items.is_empty() && self.selected >= self.items.len() {
@@ -356,6 +375,28 @@ impl App {
         }
     }
 
+    fn poll_media(&mut self, ctx: &egui::Context) {
+        while let Ok(m) = self.media_rx.try_recv() {
+            if let Some(it) = self.items.get_mut(m.idx) {
+                it.tags = m.tags;
+                if let Some((rgba, w, h)) = m.cover {
+                    let img = egui::ColorImage {
+                        size: [w as usize, h as usize],
+                        pixels: rgba
+                            .chunks_exact(4)
+                            .map(|c| Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]))
+                            .collect(),
+                    };
+                    it.cover = Some(ctx.load_texture(
+                        format!("cover_{}", m.idx),
+                        img,
+                        egui::TextureOptions::LINEAR,
+                    ));
+                }
+            }
+        }
+    }
+
     fn poll_analysis(&mut self) {
         while let Ok((idx, res)) = self.analysis_rx.try_recv() {
             if let Some(it) = self.items.get_mut(idx) {
@@ -428,6 +469,7 @@ impl eframe::App for App {
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         self.poll();
         self.poll_analysis();
+        self.poll_media(ctx);
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -555,6 +597,28 @@ impl eframe::App for App {
             ctx.request_repaint();
         }
     }
+}
+
+/// 后台读标签 + 抽封面。封面统一缩到 96x96，够列表用，省内存。
+fn spawn_media_load(
+    tools: &Tools,
+    path: &Path,
+    idx: usize,
+    tx: std::sync::mpsc::Sender<MediaMsg>,
+) {
+    let ffprobe = tools.ffprobe.clone();
+    let ffmpeg = tools.ffmpeg.clone();
+    let p = path.to_path_buf();
+    std::thread::spawn(move || {
+        let tags = fc_core::read_tags(&ffprobe, &p);
+        let cover = fc_core::extract_cover(&ffmpeg, &p).and_then(|bytes| {
+            let img = image::load_from_memory(&bytes).ok()?;
+            let small = img.resize_exact(96, 96, image::imageops::FilterType::Triangle);
+            let rgba = small.to_rgba8();
+            Some((rgba.as_raw().clone(), rgba.width(), rgba.height()))
+        });
+        let _ = tx.send(MediaMsg { idx, tags, cover });
+    });
 }
 
 fn unique_output(input: &Path, ext: &str) -> PathBuf {
@@ -821,6 +885,8 @@ impl App {
                     let spec = self.items[i].spec(self.target);
                     let state = self.items[i].state.clone();
                     let override_id = self.items[i].override_id;
+                    let tags = self.items[i].tags.clone();
+                    let cover = self.items[i].cover.clone();
 
                     // 动效值先算，再画
                     let (sel_t, hov_t) = {
@@ -848,14 +914,17 @@ impl App {
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let row_w = ui.available_width();
+                            cover_thumb(ui, cover.as_ref(), 36.0);
+                            ui.add_space(5.0);
                             ui.vertical(|ui| {
-                                ui.set_max_width((row_w - 186.0).max(120.0));
+                                ui.set_max_width((row_w - 42.0 - 186.0).max(100.0));
+                                let title = tags.display_title(&name);
                                 ui.add(
-                                    egui::Label::new(RichText::new(&name).size(12.5).color(TEXT))
+                                    egui::Label::new(RichText::new(title).size(12.5).color(TEXT))
                                         .wrap_mode(egui::TextWrapMode::Truncate),
                                 );
                                 ui.add_space(2.0);
-                                let sub = match &info {
+                                let sub0 = match &info {
                                     Some(m) => format!(
                                         "{} · {} kbps · {}  →  {}",
                                         m.codec_label(),
@@ -872,6 +941,14 @@ impl App {
                                         format!("{first}…")
                                     }
                                 };
+                                // 有艺术家/专辑就并到技术行前面
+                                let artist = tags.display_sub();
+                                let sub = if artist.is_empty() {
+                                    sub0
+                                } else {
+                                    format!("{artist} · {sub0}")
+                                };
+                                let _ = &name;
                                 ui.add(
                                     egui::Label::new(RichText::new(sub).size(10.0).color(DIM))
                                         .wrap_mode(egui::TextWrapMode::Truncate),
@@ -1407,12 +1484,29 @@ impl App {
 
         ui.label(RichText::new("详情").size(10.5).color(fade(DIM)));
         ui.add_space(8.0);
+        let disp = it.tags.display_title(&it.name());
         ui.add(
-            egui::Label::new(
-                RichText::new(it.name()).size(12.5).color(fade(TEXT)).strong(),
-            )
-            .wrap_mode(egui::TextWrapMode::Truncate),
+            egui::Label::new(RichText::new(&disp).size(12.5).color(fade(TEXT)).strong())
+                .wrap_mode(egui::TextWrapMode::Truncate),
         );
+        let sub = it.tags.display_sub();
+        if !sub.is_empty() {
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(RichText::new(&sub).size(9.5).color(fade(MUTED)))
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+            );
+        }
+        // 文件名单独一行（老 .oma 的文件名本身可能就是线索）
+        if disp != it.name() {
+            ui.add_space(1.0);
+            ui.add(
+                egui::Label::new(
+                    RichText::new(it.name()).size(9.0).color(fade(DIM)),
+                )
+                .wrap_mode(egui::TextWrapMode::Truncate),
+            );
+        }
         ui.add_space(10.0);
 
         if it.info.is_some() {
@@ -1973,6 +2067,32 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
     resp.clicked()
 }
 
+/// 队列行左边的封面缩略图。没有封面就给一个占位方块。
+fn cover_thumb(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    let p = ui.painter();
+    match tex {
+        Some(t) => {
+            p.image(
+                t.id(),
+                rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            p.rect_stroke(rect, Rounding::same(0.0), line(Color32::WHITE, 26));
+        }
+        None => {
+            p.rect_filled(rect, Rounding::same(4.0), tint(Color32::WHITE, 9));
+            // 中间画一个音符形状太费事，用一个小方块占位
+            p.rect_filled(
+                egui::Rect::from_center_size(rect.center(), egui::vec2(10.0, 10.0)),
+                Rounding::same(2.0),
+                tint(Color32::WHITE, 22),
+            );
+        }
+    }
+}
+
 /// 分段选择按钮（位深 / 码率这类互斥选项）
 fn seg_button(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     let b = egui::Button::new(RichText::new(label).size(10.0).color(if on {
@@ -2138,6 +2258,25 @@ fn main() -> eframe::Result<()> {
             std::process::exit(1);
         }
         println!("完成: {output}");
+        return Ok(());
+    }
+
+    // 命令行：打印标签与封面信息（调试用）
+    if args.first().map(|s| s.as_str()) == Some("--tags") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter --tags <文件>");
+            std::process::exit(2);
+        };
+        let tools = fc_core::locate().expect("找不到 ffprobe");
+        let path = Path::new(input);
+        let t = fc_core::read_tags(&tools.ffprobe, path);
+        println!("标题: {}", t.display_title("(无)"));
+        println!("副标题: {}", if t.display_sub().is_empty() { "(无)".into() } else { t.display_sub() });
+        println!("封面: {}", if fc_core::has_cover(&tools.ffprobe, path) { "有" } else { "无" });
+        if let Some(bytes) = fc_core::extract_cover(&tools.ffmpeg, path) {
+            println!("封面字节: {}（{}）", bytes.len(),
+                if bytes.starts_with(&[0xFF, 0xD8]) { "JPEG" } else { "PNG" });
+        }
         return Ok(());
     }
 
