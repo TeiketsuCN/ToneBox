@@ -4,71 +4,78 @@
 
 ---
 
-## 2026-11-08 · 已合并 engine/spectrum，你继续
+## 2026-11-08 · 已合并 lossy-atlas，下一轮分工
 
-**合并完成**：`08ffeb8`（main 已更新，你可以 pull 了）。
+**`engine/lossy-atlas` 已合并**：`e4e8055`（main 已更新，你可以 pull 了）。
 
-**你的 60/60 我自己复跑过**，不是采信你的报告：
-
-```
-样本总数: 60（非 Opus: 52）
-产品口径: 60/60 = 100.0%
-非 Opus 码率命中: 52/52 = 100.0%
-最保守口径: 52/60 = 86.7%
-test result: ok. 1 passed（58.97s）
-```
-
-`reference_values` 也过了（5.2s）。数字对得上。
-
-**你在报告里指出的三处与 Python 版不同，我全部认可**，特别是第二条：
-
-> 阈值表用绝对 Hz，不按 Nyquist 缩放。
-
-这是**我的参考实现里的真 bug**。`scale = nyq / 22050` 会把 48kHz 的 MP3 128k
-从 16.76kHz 缩到 15.4kHz，和 44.1kHz 的 MP3 96k 撞档。
-你不但发现了，还给了实测依据（低通位置近似固定 Hz）——这个判断是对的。
-
-另外两条也合理：
-- Opus 判断提前（Python 版会把某些 Opus 误判成"无损/CD"）
-- 无损编码直接按 codec 判定（不靠"找不到边沿"猜）
-
-**建议你把这三条也补回 `tools/analyze.py`**，让参考实现和 Rust 版对齐，
-否则以后有人拿 Python 版对新样本做交叉验证会被误导。不急，排在百科条目后面也行。
+复跑结果：`cargo build` 通过；有损组现在 16 条（4 个能编码 + 12 个只读），
+`can_encode: false` 的确实没进侧栏。HE-AAC 特判的代码我看了，
+用 `stream.profile` 判断是对的——比猜截止频率靠谱。
 
 ---
 
-### 接下来你的活
+### 下一轮：两条线并行，互不重叠
 
-**按你说的做**：给 `format/lossy.rs` 补只读百科条目，只动 `lossy.rs`，不碰 `mod.rs`。
+**你的线（engine/*）：**
 
-建议补这些（都是 `can_encode: false`，不占侧栏）：
+1. **`tools/analyze.py` 三处对齐**（你自己排的队，现在可以做）
+   - Opus 判断提前
+   - 阈值表改绝对 Hz
+   - 无损按 codec 判定
+   
+   对齐之后参考实现和 Rust 版就一致了，以后交叉验证才有意义。
 
-| 格式 | 说明要点 |
+2. **HE-AAC 真实样本**（可选，看你能不能搞到）
+   现在只验证了 profile 字符串分支，没有真实文件。
+   如果你能弄到 2~3 个 HE-AAC 文件，放进 `samples/he-aac/`，
+   加一条标定用例。搞不到就跳过，别硬造。
+
+**你只能改这些：**
+
+| 路径 | |
 |---|---|
-| AC-3 / E-AC-3 | Dolby，专利需授权；蓝光/影院标准 |
-| WMA / WMA Pro | 微软，v1/v2 已死，Pro 没起来 |
-| Musepack (MPC) | 曾经号称"透明"，2000 年代败给 MP3 |
-| Speex | 语音用，已被 Opus 取代 |
-| AMR-NB / AMR-WB | 手机录音时代，诺基亚遗产 |
-| RealAudio (Cook) | 1997，流媒体时代遗物 |
-| HE-AAC / xHE-AAC | SBR/PS 技术，低码率保带宽——**频谱法对它同样失效** |
-
-最后一条特别重要：**HE-AAC 和 Opus 一样，低码率仍保留全带宽**，
-你的 `analyze` 目前只对 Opus 特判，将来要不要对 HE-AAC 也输出"不可判定"可以一并考虑。
-这个由你判断，我不干涉算法。
+| `crates/fc-analyze/**` | ✅ |
+| `crates/fc-core/src/format/lossy.rs` | ✅ |
+| `tools/analyze.py` | ✅ |
+| `crates/fc-core/src/identify.rs` | ❌ **我新建的文件，别碰** |
+| `crates/fc-core/src/lib.rs` | ❌ 我会加一行 `pub mod identify;` |
+| `crates/fc-gui/**` | ❌ |
 
 ---
 
-### 我这边在做什么
+### 我的线：DRM 指纹识别
 
-把 `fc-analyze` 接进 GUI：右侧详情面板显示"截止频率 / 推测源质量 / 置信度 / 误判说明"。
+**新文件 `crates/fc-core/src/identify.rs`**，目标是把"这文件打不开"变成
+"这是 QQ 音乐的 mflac 加密，付费下载的，无解"。
 
-**不会改你的 API**——`QualityReport` 的五个字段刚好够用。
-如果接的时候发现缺字段，我会在这里提，不会自己动 `fc-analyze`。
+```rust
+pub struct Encrypted {
+    pub platform: &'static str,  // "QQ 音乐"
+    pub format: &'static str,    // "mflac"
+    pub hint: &'static str,      // 一句话说明 + 合法出路
+    pub confidence: f32,
+}
+
+pub fn identify(path: &Path) -> Option<Encrypted>;
+```
+
+判定手段：扩展名 + 魔数（`.ncm` 的 `CTENFDAM`、`.oma` 的 `EA3`+`0x21`）+ 熵值。
+纯识别，**不解密**——这是产品的法律红线。
+
+**边界**：我需要动 `lib.rs` 加一行 `pub mod identify;`。
+如果你那会儿也在改 `lib.rs`，先留言说一声，我们错开。
 
 ---
 
-### 一个流程上的事
+### 一个提醒
 
-我把 git 身份配到了仓库本地（`dev-a` / `a@local`），之前每次提交都要带 `-c`，麻烦。
-你那边如果也要配，用你自己的名字，别用我的。
+你上次报告里提到「16 个真实 ATRAC，但任务书写 14 个」——
+是我写错了，`tools/calibrate.py` 的真值表是准的。你按 16 个跑是对的。
+
+---
+
+### 进程
+
+两条线都不碰对方文件，**可以同时开工**。
+我这边做完 `identify` 会先自测（拿我机器上那两个 `.mflac` 当样本），
+再接进 GUI，然后留言说一声。你那边搞定就推 `engine/*`。
