@@ -2778,18 +2778,18 @@ impl App {
         let mut changed = false;
         let auto_on = self.cfg.opts.sample_rate.is_none();
         let effective = fc_core::output_rate(self.target, &self.cfg.opts);
-        // Dolby 的「自动」其实就是 48k：直接高亮 48k，
-        // 别让「自动」和实际输出对不上（摘要里写的是 48k）。
-        let show_auto = !(auto_on && effective.is_some());
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("采样率").size(9.5).color(MUTED));
-            if show_auto && seg_button(ui, "自动", auto_on) {
+            // 「自动」永远在第一个位置，不按状态显示/隐藏——
+            // 藏起来的话，点完它自己消失，看起来就像 bug（AC-3 上踩过）。
+            if seg_button(ui, "自动", auto_on) {
                 self.cfg.opts.sample_rate = None;
                 changed = true;
             }
             for &v in choices {
-                // 高亮"实际会输出的值"：配置里可能是 96k，但当前格式只支持到 48k
-                let on = effective == Some(v);
+                // 只有显式选过档位才高亮；自动状态下高亮留给「自动」。
+                // 配置里可能是 96k、但当前格式只支持到 48k，所以看的是实际输出值。
+                let on = !auto_on && effective == Some(v);
                 if seg_button(ui, &fmt_rate(v), on) {
                     self.cfg.opts.sample_rate = Some(v);
                     changed = true;
