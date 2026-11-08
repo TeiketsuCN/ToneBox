@@ -266,6 +266,11 @@ impl App {
         egui::Area::new(egui::Id::new("settings_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(area.min + egui::vec2(0.0, offset))
+            // 不让 egui 自动把 Area 挪进屏幕：窗口矮的时候内容比屏幕高，
+            // 默认的 constrain 会把整个 Area **往上顶到 y=0**，盖住标题栏
+            // （表现就是标题栏按钮点不到、但窗口还能拖；按 Esc 关掉设置就好）。
+            // 内容溢出交给内部的 ScrollArea，位置永远钉在标题栏下面。
+            .constrain(false)
             .show(ctx, |ui| {
                 egui::Frame::none()
                     // 和主界面同一套"玻璃"：半透明底 + 壁纸透过来。
@@ -279,10 +284,15 @@ impl App {
                     })
                     .inner_margin(egui::Margin::symmetric(28.0, 18.0))
                     .show(ui, |ui| {
-                        // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2），否则 Area 会比区域大，
-                        // egui 会把它往上顶到 y=0、盖住标题栏，关闭/最小化按钮就点不到了。
-                        ui.set_min_size(egui::vec2(area.width() - 56.0, area.height() - 36.0));
-                        ui.set_max_width(area.width() - 56.0);
+                        // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2）。
+                        // min 和 max **都要卡**：只给 min 的话，窗口缩到小/中/大时
+                        // 设置内容比窗口高，Area 会被撑大并往上顶、盖住标题栏
+                        // ——标题栏是原生命中区，盖住后按钮点不到，但拖窗口还正常。
+                        let content_w = (area.width() - 56.0).max(240.0);
+                        let content_h = (area.height() - 36.0).max(220.0);
+                        ui.set_min_size(egui::vec2(content_w, content_h));
+                        ui.set_max_width(content_w);
+                        ui.set_max_height(content_h);
                         // 顶部 44px 是原生标题栏命中区（HTCAPTION），
                         // 放在那里的按钮点不到，所以内容整体下移避开。
                                         ui.add_space(TITLEBAR_H);
@@ -296,7 +306,9 @@ impl App {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 let col_w = ((ui.available_width() - 28.0) / 2.0).max(240.0);
-                                let col_h = ui.available_height().max(620.0);
+                                // 不再强制 620 高：窗口矮的时候那会把内容顶出可视区，
+                                // 也会让 Area 比窗口还高。给可用高度，超出由 ScrollArea 滚。
+                                let col_h = ui.available_height().max(220.0);
                                 ui.horizontal_top(|ui| {
                                     ui.allocate_ui_with_layout(
                                         egui::vec2(col_w, col_h),
