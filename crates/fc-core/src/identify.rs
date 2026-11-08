@@ -23,8 +23,15 @@ pub struct Encrypted {
     pub advice: &'static str,
     /// 0.0 ~ 1.0
     pub confidence: f32,
-    /// 这个置信度是怎么来的（逐条列出，界面直接显示）
-    pub evidence: Vec<String>,
+    /// 这个置信度是怎么来的：每条带加减分，界面按顺序列出来
+    pub evidence: Vec<Evidence>,
+}
+
+/// 一条识别证据：`delta` 表示这一条给的总分（正数=加分；负数=扣分）
+#[derive(Debug, Clone)]
+pub struct Evidence {
+    pub delta: f32,
+    pub reason: String,
 }
 
 /// 已知的加密扩展名表
@@ -200,8 +207,15 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
                          音质取决于回录链路，但这是不碰 DRM 的唯一办法——很多老玩家现在就是这么做的。",
                 confidence: 0.97,
                 evidence: vec![
-                    "文件头 'EA3' 魔数匹配（索尼 OMA/ATRAC 容器）".to_string(),
-                    "第 4 字节 = 0x21，是 OpenMG 的加密标记（0x01 才是无 DRM）".to_string(),
+                    Evidence {
+                        delta: 80.0,
+                        reason: "文件头 'EA3' 魔数匹配（索尼 OMA/ATRAC 容器）".to_string(),
+                    },
+                    Evidence {
+                        delta: 17.0,
+                        reason: "第 4 字节 = 0x21，是 OpenMG 的加密标记（0x01 才是无 DRM）"
+                            .to_string(),
+                    },
                 ],
             });
         }
@@ -225,11 +239,16 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
             format: "ncm",
             hint: "网易云音乐会员下载的 NCM 加密文件。密钥在客户端，文件本身不含解密信息。",
             advice: ADVICE_CLIENT,
-            confidence: 0.98,
+            confidence: 0.90,
             evidence: vec![
-                "文件头 8 字节 = 'CTENFDAM'，是网易云 NCM 容器的固定魔数".to_string(),
-                format!("头部熵 {h:.2}（NCM 的元数据段之后就是加密载荷）"),
-                "魔数不看扩展名，改名成 .flac 也一样能认出来".to_string(),
+                Evidence {
+                    delta: 70.0,
+                    reason: "文件头 8 字节 = 'CTENFDAM'，是网易云 NCM 容器的固定魔数".to_string(),
+                },
+                Evidence {
+                    delta: 20.0,
+                    reason: format!("头部熵 {h:.2}（NCM 的元数据段之后就是加密载荷）"),
+                },
             ],
         });
     }
@@ -246,11 +265,17 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
                 format: "QMC（mflac / mgg）",
                 hint: "QQ 音乐会员下载的 QMC 加密文件。密钥在客户端，文件本身不含解密信息。",
                 advice: ADVICE_CLIENT,
-                confidence: 0.96,
+                confidence: 0.90,
                 evidence: vec![
-                    "文件末尾 2 KB 内有 'musicex' 标记，是 QMC 容器的结尾结构".to_string(),
-                    format!("文件头不是已知音频魔数，头部熵 {h:.2}（加密载荷）"),
-                    "这条不依赖扩展名：改名成 .flac 也照样能认出来".to_string(),
+                    Evidence {
+                        delta: 60.0,
+                        reason: "文件末尾 2 KB 内有 'musicex' 标记，是 QMC 容器的结尾结构"
+                            .to_string(),
+                    },
+                    Evidence {
+                        delta: 30.0,
+                        reason: format!("文件头不是已知音频魔数，头部熵 {h:.2}（加密载荷）"),
+                    },
                 ],
             });
         }
@@ -270,28 +295,38 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
         // 只凭名字，**不给高置信度**：扩展名可以随便改，必须降级并说明
         let by_ext = *hit == ext;
         let h = entropy(&head);
-        let mut confidence: f32 = if by_ext { 0.45 } else { 0.30 };
         let mut evidence = vec![
-            format!(
-                "{}里出现了 '{}' 这个标记（扩展名{}）",
-                if by_ext { "扩展名" } else { "文件名" },
-                hit,
-                if by_ext { "直接命中" } else { "只是包含" }
-            ),
-            "文件头不是任何已知音频容器魔数".to_string(),
-            format!("头部熵 {h:.2}：高熵只能说明像加密或压缩数据，区分不了两者"),
-            "名字可以随便改，所以这一条只算弱证据".to_string(),
+            Evidence {
+                delta: if by_ext { 30.0 } else { 20.0 },
+                reason: format!(
+                    "{}里出现了 '{}'（名字可以随便改，只算弱证据）",
+                    if by_ext { "扩展名" } else { "文件名" },
+                    hit
+                ),
+            },
+            Evidence {
+                delta: 15.0,
+                reason: "文件头不是任何已知音频容器魔数".to_string(),
+            },
         ];
         if h > 7.5 {
-            confidence = (confidence + 0.08).min(0.60);
-            evidence.push("熵 > 7.5，内容确实不像未压缩音频 → +8%".to_string());
+            evidence.push(Evidence {
+                delta: 8.0,
+                reason: format!("头部熵 {h:.2}，内容确实不像未压缩音频"),
+            });
+        } else {
+            evidence.push(Evidence {
+                delta: 0.0,
+                reason: format!("头部熵 {h:.2}，不够高，可能只是把别的文件改了名"),
+            });
         }
+        let score: f32 = evidence.iter().map(|e| e.delta).sum();
         return Some(Encrypted {
             platform,
             format,
             hint,
             advice,
-            confidence,
+            confidence: (score / 100.0).clamp(0.0, 0.99),
             evidence,
         });
     }
@@ -314,9 +349,18 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
                          如果是从网盘转来的，原文件名里通常有线索。",
                 confidence: if h > 7.85 { 0.75 } else { 0.55 },
                 evidence: vec![
-                    "扩展名是音频，但文件头不是任何已知音频魔数".to_string(),
-                    format!("头部熵 {h:.2}（越高越像加密/压缩数据）"),
-                    "没有命中已知平台的魔数或尾部标记，所以只能说\"疑似加密\"".to_string(),
+                    Evidence {
+                        delta: 40.0,
+                        reason: "扩展名是音频，但文件头不是任何已知音频魔数".to_string(),
+                    },
+                    Evidence {
+                        delta: 20.0,
+                        reason: format!("头部熵 {h:.2}（越高越像加密/压缩数据）"),
+                    },
+                    Evidence {
+                        delta: 0.0,
+                        reason: "没有命中已知平台的魔数或尾部标记，只能说「疑似加密」".to_string(),
+                    },
                 ],
             });
         }
@@ -372,7 +416,9 @@ mod tests {
         let p = tmp("t.ncm", &b);
         let r = identify(&p).expect("应该识别出 NCM");
         assert_eq!(r.platform, "网易云音乐");
-        assert!(r.confidence > 0.9);
+        // 现在是"证据求和"：魔数 70 + 高熵 20 = 90
+        assert!(r.confidence >= 0.89);
+        assert_eq!(r.evidence.iter().map(|e| e.delta).sum::<f32>(), 90.0);
     }
 
     #[test]

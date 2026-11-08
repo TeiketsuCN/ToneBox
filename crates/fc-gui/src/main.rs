@@ -378,12 +378,20 @@ impl App {
         style.visuals.widgets.inactive.bg_stroke = line(Color32::WHITE, 26);
         style.visuals.widgets.hovered.bg_stroke = line(ACCENT, 90);
         style.visuals.widgets.active.bg_stroke = line(ACCENT, 130);
-        style.spacing.scroll.bar_width = 4.0;
-        style.spacing.scroll.bar_inner_margin = 2.0;
-        style.spacing.scroll.bar_outer_margin = 2.0;
-        style.visuals.widgets.inactive.bg_fill = tint(Color32::WHITE, 26);
-        style.visuals.widgets.hovered.bg_fill = tint(Color32::WHITE, 55);
-        style.visuals.widgets.active.bg_fill = tint(Color32::WHITE, 80);
+        // 滚动条：平时完全隐藏（不挡内容），鼠标进到那一栏才浮出来
+        style.spacing.scroll = egui::style::ScrollStyle::floating();
+        style.spacing.scroll.foreground_color = false;
+        style.spacing.scroll.bar_width = 5.0;
+        style.spacing.scroll.floating_width = 2.5;
+        style.spacing.scroll.dormant_handle_opacity = 0.0;
+        style.spacing.scroll.active_handle_opacity = 0.35;
+        style.spacing.scroll.interact_handle_opacity = 0.8;
+        style.spacing.scroll.dormant_background_opacity = 0.0;
+        style.spacing.scroll.active_background_opacity = 0.0;
+        style.spacing.scroll.interact_background_opacity = 0.0;
+        style.visuals.widgets.inactive.bg_fill = Color32::from_gray(70);
+        style.visuals.widgets.hovered.bg_fill = Color32::from_gray(100);
+        style.visuals.widgets.active.bg_fill = Color32::from_gray(130);
         cc.egui_ctx.set_style(style);
 
         let target = fc_core::default_target();

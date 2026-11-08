@@ -149,11 +149,11 @@ impl App {
                     apply_preset = Some(i);
                 }
                 resp.context_menu(|ui| {
-                    if ui.button("重命名").clicked() {
+                    if menu_btn(ui, "重命名") {
                         rename_preset = Some(i);
                         ui.close_menu();
                     }
-                    if ui.button("删除").clicked() {
+                    if menu_btn(ui, "删除") {
                         delete_preset = Some(i);
                         ui.close_menu();
                     }
@@ -903,6 +903,18 @@ impl App {
 ///
 /// 顺手把「选这个值要注意什么」画在下面——AC-3 的 48kHz、WMA 的老播放器上限
 /// 这类信息比一个数字有用得多。
+/// 弹窗里的文字按钮：透明底，别用默认灰块
+pub(crate) fn menu_btn(ui: &mut egui::Ui, label: &str) -> bool {
+    ui.add(
+        egui::Button::new(RichText::new(label).size(10.5).color(TEXT))
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .rounding(Rounding::same(6.0))
+            .min_size(egui::vec2(96.0, 24.0)),
+    )
+    .clicked()
+}
+
 pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
     let mut changed = false;
     field_row(ui, "码率", |ui| {

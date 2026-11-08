@@ -309,7 +309,21 @@ impl App {
             });
             ui.add_space(6.0);
             for ev in &enc.evidence {
-                para(ui, &format!("· {ev}"), 9.0, tint(TEXT, 190));
+                ui.horizontal(|ui| {
+                    let (sym, col) = if ev.delta >= 0.0 {
+                        ("+", Color32::from_rgb(110, 220, 140))
+                    } else {
+                        ("−", Color32::from_rgb(230, 120, 110))
+                    };
+                    ui.label(
+                        RichText::new(format!("{sym}{:.0}%", ev.delta.abs()))
+                            .size(9.5)
+                            .color(col)
+                            .strong(),
+                    );
+                    ui.add_space(6.0);
+                    para(ui, &ev.reason, 9.0, tint(TEXT, 195));
+                });
                 ui.add_space(1.0);
             }
             ui.add_space(4.0);
