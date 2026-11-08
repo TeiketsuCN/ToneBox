@@ -14,6 +14,8 @@ use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod health;
+
 use anyhow::{anyhow, bail, Context, Result};
 use fc_core::{locate, MediaInfo};
 use rustfft::num_complex::Complex;

@@ -184,6 +184,19 @@ impl App {
                                 row(ui, "判定", "无损源码");
                             });
                     } else {
+                        // 内容体检判定为"异常/测试信号/噪声"时，频谱判档没有意义：
+                        // 静音文件也能"频谱到 22.1kHz"，不能因此说它是无损
+                        let bad = it
+                            .health
+                            .as_ref()
+                            .map(|h| {
+                                !matches!(
+                                    h.verdict,
+                                    fc_analyze::health::Verdict::Normal
+                                        | fc_analyze::health::Verdict::Uncertain
+                                )
+                            })
+                            .unwrap_or(false);
                         para(ui, "质量评估", 10.0, DIM);
                         ui.add_space(6.0);
                         egui::Grid::new("quality_grid")
@@ -204,7 +217,11 @@ impl App {
                                 } else {
                                     r.estimate.clone()
                                 };
-                                row(ui, "推测源质量", &est);
+                                if bad {
+                                    row(ui, "推测源质量", "内容异常，不评估");
+                                } else {
+                                    row(ui, "推测源质量", &est);
+                                }
 
                                 ui.label(RichText::new("置信度").size(9.5).color(DIM));
                                 let (rect, _) = ui.allocate_exact_size(
@@ -219,7 +236,12 @@ impl App {
                                 );
                                 let mut f = rect;
                                 f.set_width(
-                                    rect.width() * (r.confidence as f32).clamp(0.0, 1.0),
+                                    rect.width()
+                                        * if bad {
+                                            0.0
+                                        } else {
+                                            (r.confidence as f32).clamp(0.0, 1.0)
+                                        },
                                 );
                                 p.rect_filled(
                                     f,
@@ -227,9 +249,13 @@ impl App {
                                     if r.confidence > 0.6 { ACCENT } else { WARN },
                                 );
                                 ui.label(
-                                    RichText::new(format!("{:.0}%", r.confidence * 100.0))
-                                        .size(9.0)
-                                        .color(DIM),
+                                    RichText::new(if bad {
+                                        "—".to_string()
+                                    } else {
+                                        format!("{:.0}%", r.confidence * 100.0)
+                                    })
+                                    .size(9.0)
+                                    .color(DIM),
                                 );
                                 ui.end_row();
                                 if let Some(l) = it.lufs {
@@ -238,7 +264,36 @@ impl App {
                             });
 
                         // 置信度是怎么算出来的：一条条列出来，别只给个数字
-                        if !r.confidence_notes.is_empty() {
+                        // 内容体检：静音/削波/噪声/测试信号
+                        if let Some(h) = &it.health {
+                            ui.add_space(12.0);
+                            let (icon, vcol) = match h.verdict {
+                                fc_analyze::health::Verdict::Normal => ("✓", ACCENT),
+                                fc_analyze::health::Verdict::Uncertain => ("?", WARN),
+                                _ => ("✗", DANGER),
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(icon).size(11.0).color(vcol).strong());
+                                para(ui, h.verdict.label(), 10.0, vcol);
+                            });
+                            ui.add_space(4.0);
+                            for c in &h.checks {
+                                let col = match c.severity {
+                                    fc_analyze::health::Severity::Ok => tint(TEXT, 150),
+                                    fc_analyze::health::Severity::Warn => WARN,
+                                    fc_analyze::health::Severity::Bad => DANGER,
+                                };
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new(c.name).size(9.5).color(tint(TEXT, 140)),
+                                    );
+                                    ui.add_space(8.0);
+                                    ui.label(RichText::new(&c.value).size(9.5).color(col));
+                                });
+                            }
+                        }
+
+                        if !r.confidence_notes.is_empty() && !bad {
                             ui.add_space(6.0);
                             for n in &r.confidence_notes {
                                 ui.horizontal(|ui| {

@@ -163,6 +163,8 @@ pub(crate) struct Item {
     lufs: Option<fc_core::loudness::Loudness>,
     /// 读不出来时，如果认出是加密格式，把识别结果留着给详情页显示
     encrypted: Option<fc_core::Encrypted>,
+    /// 内容体检（静音/削波/噪声/测试信号……）
+    health: Option<fc_analyze::health::Health>,
     tags: fc_core::Tags,
     cover: Option<egui::TextureHandle>,
     /// 单文件标题覆盖（空 = 沿用源标签）
@@ -281,8 +283,8 @@ pub(crate) struct App {
     /// 窗口是否置顶
     pinned: bool,
     /// 频谱分析结果通道
-    analysis_tx: std::sync::mpsc::Sender<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
-    analysis_rx: Receiver<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
+    analysis_tx: std::sync::mpsc::Sender<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>, Option<fc_analyze::health::Health>)>,
+    analysis_rx: Receiver<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>, Option<fc_analyze::health::Health>)>,
     /// 标签/封面回传（后台线程读，主线程建纹理）
     media_tx: std::sync::mpsc::Sender<MediaMsg>,
     media_rx: Receiver<MediaMsg>,
@@ -568,6 +570,7 @@ impl App {
                 analysis: Analysis::Idle,
                 lufs: None,
                 encrypted,
+                health: None,
                 tags: fc_core::Tags::default(),
                 cover: None,
                 title_ov: None,
@@ -811,13 +814,18 @@ impl App {
         let tx = self.analysis_tx.clone();
         let ctx = ctx.clone();
         let ffmpeg = self.tools.as_ref().map(|t| t.ffmpeg.clone());
+        let tools = self.tools.clone();
         std::thread::spawn(move || {
             let res = fc_analyze::analyze(&path, &info).map_err(|e| format!("{e:#}"));
             // 响度要解整轨，跟着这次分析一起做，别让用户再等一次
             let loud = ffmpeg
                 .as_ref()
                 .and_then(|f| fc_analyze::loudness(f, &path).ok());
-            let _ = tx.send((path.clone(), res, loud));
+            // 内容体检：静音/削波/噪声/测试信号，一次整轨解码搞定
+            let health = tools
+                .as_ref()
+                .and_then(|t| fc_analyze::health::analyze(t, &path).ok());
+            let _ = tx.send((path.clone(), res, loud, health));
             ctx.request_repaint();
         });
     }
@@ -902,7 +910,7 @@ impl App {
     }
 
     fn poll_analysis(&mut self) {
-        while let Ok((path, res, loud)) = self.analysis_rx.try_recv() {
+        while let Ok((path, res, loud, health)) = self.analysis_rx.try_recv() {
             if let Some(it) = self.items.iter_mut().find(|it| it.path == path) {
                 it.analysis = match res {
                     Ok(r) => Analysis::Done(r),
@@ -911,6 +919,7 @@ impl App {
                 if loud.is_some() {
                     it.lufs = loud;
                 }
+                it.health = health;
             }
         }
     }
@@ -1558,8 +1567,12 @@ pub(crate) fn apply_backdrop() -> bool {
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    // GUI 模式才做单实例检查；--convert 是命令行，允许多开
-    if args.first().map(|s| s.as_str()) != Some("--convert") && single::already_running() {
+    // 只有 GUI 模式做单实例检查；任何 --xxx 命令行模式都允许多开
+    let cli_mode = args
+        .first()
+        .map(|s| s.starts_with("--"))
+        .unwrap_or(false);
+    if !cli_mode && single::already_running() {
         single::activate_existing();
         return Ok(());
     }
@@ -1653,6 +1666,36 @@ fn main() -> eframe::Result<()> {
                 println!("{}", e.full_text());
             }
             None => println!("不是加密文件（或不在已知格式库里）"),
+        }
+        return Ok(());
+    }
+
+    // 命令行：内容体检（测试用，也方便脚本批跑）
+    if args.first().map(|s| s.as_str()) == Some("--health") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter --health <文件>");
+            std::process::exit(2);
+        };
+        let tools = fc_core::locate().expect("找不到 ffmpeg");
+        match fc_analyze::health::analyze(&tools, Path::new(input)) {
+            Ok(h) => {
+                for c in &h.checks {
+                    let mark = match c.severity {
+                        fc_analyze::health::Severity::Ok => "OK  ",
+                        fc_analyze::health::Severity::Warn => "WARN",
+                        fc_analyze::health::Severity::Bad => "BAD ",
+                    };
+                    println!("{mark} {:<10} {}", c.name, c.value);
+                }
+                println!();
+                println!(
+                    "结论: {}（时长 {:.1}s，onset {:.2}/s）",
+                    h.verdict.label(),
+                    h.duration_s,
+                    h.onset_rate
+                );
+            }
+            Err(e) => eprintln!("{e:#}"),
         }
         return Ok(());
     }
