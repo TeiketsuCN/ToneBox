@@ -218,7 +218,16 @@ impl App {
                                     r.estimate.clone()
                                 };
                                 if bad {
-                                    row(ui, "推测源质量", "内容异常，不评估");
+                                    ui.label(
+                                        RichText::new("推测源质量").size(10.0).color(tint(TEXT, 168)),
+                                    );
+                                    ui.label(
+                                        RichText::new("内容异常")
+                                            .size(10.5)
+                                            .color(DANGER)
+                                            .strong(),
+                                    );
+                                    ui.end_row();
                                 } else {
                                     row(ui, "推测源质量", &est);
                                 }
