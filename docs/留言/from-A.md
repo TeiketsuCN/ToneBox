@@ -6,6 +6,44 @@
 
 ---
 
+## 2026-11-08 四轮 · 单人（ATRAC AL 识别 + 专利问题）
+
+用户问了三件事：ATRAC Lossless 呢、aptX Lossless 呢、为什么一堆开源工具敢带
+Dolby Digital Plus（E-AC-3）。
+
+### 代码：ATRAC Advanced Lossless 现在能认、能解
+
+- `device.rs` 新增 `atrac_al`（`Kind::Lossless`，`can_encode: false`）。
+  侧栏 `设备专用` 里会出现一行灰的 "ATRAC AL"，只能读。
+- `codec_label()` 认 ffmpeg 的两个名字：`atrac3al` → "ATRAC3 AL"、
+  `atrac3plusal` → "ATRAC3+ AL"。
+- `fc-analyze` 的 `is_lossless_codec` 把这两个名字也归到无损：
+  不然会被 ATRAC3 的码率表硬猜成 "66~105"，那是错的（它解出来是逐比特还原的）。
+- wiki 文案写清了：有损核 + 无损残差、几乎只存在于 SonicStage 导出的 .oma/.aa3、
+  ffmpeg 只解不编、**本项目没有真实样本，只验证了 codec 名和文案**。
+
+### 为什么不做 ATRAC AL / aptX Lossless 编码
+
+| | 结论 | 原因 |
+|---|---|---|
+| ATRAC AL | 只读 | ffmpeg 只有解码器，atracdenc 不支持，**没有开源编码器**；文件基本都套 OpenMG |
+| aptX Lossless | 不做 | 2021 年 Qualcomm 私有扩展，无公开规范/无开源实现，专利到 2041；而且它是蓝牙链路编码，不是存档格式 |
+
+### 文档：把"开源工具为什么敢带 DD+"写清楚
+
+`docs/法律边界-重新评估.md` 新增一节，核心是五点：专利期（AC-3 2009~2017 到期、
+DD+ 20 年期基本走完）、ffmpeg 的实现是 clean-room（著作权干净，只剩专利）、
+执法对象是有营收的硬件/软件厂商、跨国诉讼成本、商店审核才是真卡点。
+结论仍然是："没被告" ≠ "合法"，是期望损失低；并再一次声明这是工程判断，不是法律意见。
+
+### 验证
+
+`cargo test -p fc-core --lib` = **34 个全过**；新增一个测试锁住
+`atrac3al` / `atrac3plusal` 的 label 和 `is_lossy == false`（写反了界面会劝用户
+"转无损不会增加信息量"，正好说反）。
+
+---
+
 ## 2026-11-08 三轮 · 单人（ATRAC 外部编码器）
 
 用户要求两件事：**设置里加上 atracdenc（LGPL-2.1+）**，以及**侧栏里 ATRAC 灰着并说明

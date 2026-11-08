@@ -228,6 +228,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 21 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ 完成（`rate_choices` / `output_rate`） |
 | 22 | 转换前的质量风险提示（降码率 / 无损转有损 / 升采样 / 抄大容器） | ✅ 完成（`quality_warnings`，详情面板卡片） |
 | 23 | ATRAC1/3/3+ 输出（走外部的 atracdenc，不随包） | ✅ 完成（`external.rs` + 侧栏灰态 + 设置页检测/重新检测） |
+| 24 | ATRAC Advanced Lossless 识别（只解码，按无损处理） | ✅ 完成（`atrac3al` / `atrac3plusal` 的 label 与分析口径） |
 
 ### 已踩的坑（写下来省得重踩）
 

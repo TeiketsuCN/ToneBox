@@ -41,7 +41,7 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 四栏：**输出格式（216） · 队列 · 详情（300） · 输出（272）**，窗口 1302×700。
 
 - **侧栏**：无损 9 + 有损 8（MP3/Opus/Vorbis/MP2/AAC/AC-3/E-AC-3/WMA）+ 只读格式（暗色）
-  + 设备专用（**ATRAC1 / ATRAC3 / ATRAC3+ 装了外部的 atracdenc 才能选**，ATRAC9 只读）。
+  + 设备专用（**ATRAC1 / ATRAC3 / ATRAC3+ 装了外部的 atracdenc 才能选**；ATRAC AL、ATRAC9 只读）。
   点开显示三行小字说明；缺编码器/缺外部工具的格式名画横线，悬停说明缺什么。
 - **结果**：**缺少编码器的格式名中间画横线**并提示"你的机器上似乎没有这个编码器"。
 - **队列**：36×36 封面 + 标签标题 + `艺术家 · 专辑 · MP3 · 323 kbps · 3:40`。
