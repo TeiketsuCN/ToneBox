@@ -249,7 +249,7 @@ impl App {
                     )
                 })
             {
-                para(ui, fc_core::rate_note(self.target), 8.5, DIM);
+                // 只在真的升/降采样时由质量提示出警报；不再常驻一句说明
             }
             shown.extend_from_slice(here);
         }

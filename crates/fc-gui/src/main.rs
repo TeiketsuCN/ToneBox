@@ -289,6 +289,8 @@ pub(crate) struct App {
     wiki_filter: String,
     /// 当前页：转换 / 音乐库
     page: Page,
+    /// 切页动画进度 0~1（1 = 静止）
+    page_t: f32,
     lib_tab: LibTab,
     lib_entries: Vec<LibEntry>,
     lib_scanning: bool,
@@ -443,6 +445,7 @@ impl App {
             wiki_sel: "flac",
             wiki_filter: String::new(),
             page: Page::Convert,
+            page_t: 1.0,
             lib_tab: LibTab::Songs,
             lib_entries: cached_lib,
             lib_scanning: false,
@@ -1030,6 +1033,42 @@ impl eframe::App for App {
                         animating |= self.library_view(ui, ctx);
                     }
                 });
+
+            // 切页：从左往右揭开新页面（一个渐变的遮罩扫过去）
+            animating |= approach(&mut self.page_t, 1.0, self.dt, 9.0);
+            if self.page_t < 0.999 {
+                animating = true;
+                let p = ctx.layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    egui::Id::new("page_wipe"),
+                ));
+                let scr = ctx.screen_rect();
+                let x0 = LEFT_W + inset;
+                let y0 = TITLEBAR_H;
+                let w = (scr.right() - x0).max(1.0);
+                let edge = x0 + w * self.page_t;
+                let soft = (w * 0.16).max(28.0);
+                // 用 Mesh 做水平渐变，比一条条矩形干净（不会有竖条纹）
+                let xs = [
+                    x0,
+                    (edge - soft).clamp(x0, scr.right()),
+                    (edge + soft).clamp(x0, scr.right()),
+                    scr.right(),
+                ];
+                let alphas = [0u8, 0, 236, 236];
+                let mut mesh = egui::Mesh::default();
+                for (i, x) in xs.iter().enumerate() {
+                    let c = tint(BG, alphas[i]);
+                    mesh.colored_vertex(egui::pos2(*x, y0), c);
+                    mesh.colored_vertex(egui::pos2(*x, scr.bottom()), c);
+                }
+                for i in 0..3u32 {
+                    let b = i * 2;
+                    mesh.add_triangle(b, b + 1, b + 2);
+                    mesh.add_triangle(b + 1, b + 3, b + 2);
+                }
+                p.add(egui::Shape::mesh(mesh));
+            }
 
             // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。

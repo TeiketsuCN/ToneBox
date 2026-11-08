@@ -26,6 +26,9 @@ impl App {
         let mut animating = false;
 
         if rail_big(ui, "音乐库", self.page == Page::Library) {
+            if self.page != Page::Library {
+                self.page_t = 0.0;
+            }
             self.page = Page::Library;
             // 不自动扫描：结果在配置里，用户点「重新扫描」才更新
             if self.lib_entries.is_empty()
@@ -36,6 +39,9 @@ impl App {
             }
         }
         if rail_big(ui, "输出", self.page == Page::Convert) {
+            if self.page != Page::Convert {
+                self.page_t = 0.0;
+            }
             self.page = Page::Convert;
         }
         ui.add_space(10.0);
