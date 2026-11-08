@@ -13,7 +13,9 @@ $ErrorActionPreference = 'Stop'
 $AppDir   = 'D:\Apps\FormatConverter'
 $Version  = '0.1.0'
 $ExeName  = 'format-converter.exe'
-$Display  = '格式转换器'
+$Display  = 'tonebox'
+# 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
+$OldDisplay = '格式转换器'
 
 Write-Host "== 1/4 构建 release ==" -ForegroundColor Cyan
 # cargo 往 stderr 写 warning，配合 $ErrorActionPreference='Stop' 会被当成错误中断，
@@ -44,7 +46,7 @@ if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
     Write-Host "警告：没有 vendor\ffmpeg，安装后需另外装 ffmpeg（跑 tools\fetch-ffmpeg.ps1）"
 }
 @"
-格式转换器 $Version
+tonebox $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
 源码: D:\FormatConverter
 "@ | Set-Content -Path "$AppDir\version.txt" -Encoding UTF8
@@ -62,6 +64,13 @@ foreach ($lnk in $targets) {
   $s.Description      = $Display
   $s.Save()
   Write-Host "  $lnk"
+}
+# 老名字的桌面/开始菜单快捷方式删掉，避免重名两个
+foreach ($lnk in @(
+  (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk")
+)) {
+  if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Write-Host "  已删除旧快捷方式 $lnk" }
 }
 
 Write-Host "== 4/4 注册卸载项 ==" -ForegroundColor Cyan

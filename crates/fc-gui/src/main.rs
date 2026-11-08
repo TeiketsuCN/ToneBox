@@ -79,6 +79,11 @@ const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
 const BG: Color32 = Color32::from_rgb(14, 16, 22);
 
+// ── 品牌 ────────────────────────────────────────────────
+/// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
+/// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
+pub const APP_NAME: &str = "tonebox";
+
 // ── 布局规范 ────────────────────────────────────────────
 // 面板宽度必须是常量，内容宽度在面板内锁死。
 // 所有长文本一律显式 wrap，任何元素都不允许横向溢出把窗口边缘切掉。
@@ -741,7 +746,7 @@ impl eframe::App for App {
         if !self.backdrop_done && self.frames > 3 {
             self.backdrop_done = apply_backdrop();
             #[cfg(windows)]
-            frame::install("格式转换器");
+            frame::install(APP_NAME);
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
@@ -1098,20 +1103,32 @@ impl App {
                 .send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed));
         }
 
-        // 左边：标题 + 副标题
+        // 左边：logo + 名字（原来的两行文字去掉）
+        let logo = egui::Rect::from_min_size(
+            egui::pos2(full.left() + 9.0, full.center().y - 12.0),
+            egui::vec2(24.0, 24.0),
+        );
+        ui.painter()
+            .rect_filled(logo, Rounding::same(7.0), ACCENT);
+        // 里面三条"电平条"：一眼能看出是音频工具
+        for (fx, fh) in [(0.30, 0.40), (0.50, 0.64), (0.70, 0.30)] {
+            let bx = logo.left() + logo.width() * fx;
+            let h = logo.height() * fh;
+            ui.painter().rect_filled(
+                egui::Rect::from_center_size(
+                    egui::pos2(bx, logo.center().y),
+                    egui::vec2(2.6, h),
+                ),
+                Rounding::same(1.3),
+                BG,
+            );
+        }
         ui.painter().text(
-            full.left_center() + egui::vec2(8.0, -6.0),
+            egui::pos2(logo.right() + 10.0, full.center().y),
             egui::Align2::LEFT_CENTER,
-            "格式转换器",
+            APP_NAME,
             egui::FontId::proportional(13.5),
             TEXT,
-        );
-        ui.painter().text(
-            full.left_center() + egui::vec2(8.0, 8.0),
-            egui::Align2::LEFT_CENTER,
-            "转换 · 质量判断 · 格式解释",
-            egui::FontId::proportional(9.0),
-            DIM,
         );
 
         // 右边：图钉 / 最小化 / 最大化 / 关闭
@@ -2366,6 +2383,7 @@ impl App {
                                     .num_columns(2)
                                     .spacing([16.0, 6.0])
                                     .show(ui, |ui| {
+                                        row(ui, "程序", APP_NAME);
                                         row(ui, "版本", "0.1.0");
                                         row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
                                         row(ui, "音频解码", "ffmpeg 子进程");
@@ -4790,7 +4808,7 @@ fn apply_backdrop() -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
 
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
-    let title: Vec<u16> = "格式转换器\0".encode_utf16().collect();
+    let title: Vec<u16> = format!("{APP_NAME}\0").encode_utf16().collect();
     unsafe {
         let hwnd: HWND = FindWindowW(std::ptr::null(), title.as_ptr());
         if hwnd.is_null() {
@@ -4965,7 +4983,7 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([1212.0, 600.0])
             .with_decorations(false)
             .with_transparent(true)
-            .with_title("格式转换器");
+            .with_title(APP_NAME);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
@@ -4975,7 +4993,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "格式转换器",
+        APP_NAME,
         options,
         Box::new(move |cc| {
             let mut app = App::new(cc);

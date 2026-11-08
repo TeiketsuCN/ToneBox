@@ -2,7 +2,8 @@
 $ErrorActionPreference = 'SilentlyContinue'
 
 $AppDir  = 'D:\Apps\FormatConverter'
-$Display = '格式转换器'
+$Display = 'tonebox'
+ = '格式转换器'
 
 Get-Process -Name 'format-converter','格式转换器' | Stop-Process -Force
 Start-Sleep -Milliseconds 500
@@ -10,7 +11,9 @@ Start-Sleep -Milliseconds 500
 # 快捷方式
 foreach ($lnk in @(
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$Display.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "$Display.lnk")
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$Display.lnk"),
+  (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk")
 )) {
   if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force }
 }
