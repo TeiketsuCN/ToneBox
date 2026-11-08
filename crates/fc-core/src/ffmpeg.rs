@@ -87,6 +87,9 @@ struct Stream {
     channels: Option<u32>,
     bit_rate: Option<String>,
     duration: Option<String>,
+    /// FLAC / ALAC / PCM 的真实位深（ffprobe 给的是字符串）
+    bits_per_raw_sample: Option<String>,
+    bits_per_sample: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -106,6 +109,15 @@ pub struct MediaInfo {
     pub bitrate_kbps: u64,
     pub duration_s: f64,
     pub size_bytes: u64,
+    /// 位深。无损才有意义（16 / 24 / 32），有损一般为 None。
+    pub bits: Option<u32>,
+}
+
+impl MediaInfo {
+    /// 位深标签：24 -> "24 bit"；不知道就空串
+    pub fn bits_label(&self) -> String {
+        self.bits.map(|b| format!("{b} bit")).unwrap_or_default()
+    }
 }
 
 impl MediaInfo {
@@ -216,6 +228,22 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         ));
     }
 
+    // 位深：优先 ffprobe 的 bits_per_raw_sample（FLAC/ALAC 会给），
+    // 其次 bits_per_sample，最后按 PCM 的 codec 名兜底
+    let bits = st
+        .bits_per_raw_sample
+        .as_deref()
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|b| *b > 0)
+        .or_else(|| st.bits_per_sample.filter(|b| *b > 0))
+        .or_else(|| match st.codec_name.as_deref() {
+            Some("pcm_s16le") | Some("pcm_s16be") => Some(16),
+            Some("pcm_s24le") | Some("pcm_s24be") => Some(24),
+            Some("pcm_s32le") | Some("pcm_s32be") => Some(32),
+            Some("pcm_f32le") | Some("pcm_f32be") => Some(32),
+            _ => None,
+        });
+
     Ok(MediaInfo {
         codec: st.codec_name.clone().unwrap_or_default(),
         container: fmt.format_name.clone().unwrap_or_default(),
@@ -224,6 +252,7 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         bitrate_kbps: parse_u64(&fmt.bit_rate) / 1000,
         duration_s,
         size_bytes: parse_u64(&fmt.size),
+        bits,
     })
 }
 

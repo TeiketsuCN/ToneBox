@@ -684,6 +684,7 @@ mod tests {
             bitrate_kbps: kbps as u64,
             duration_s: 120.0,
             size_bytes: 0,
+            bits: Some(16),
         }
     }
 
@@ -916,6 +917,7 @@ mod tests {
             bitrate_kbps: 900,
             duration_s: 60.0,
             size_bytes: 0,
+            bits: Some(16),
         };
         let mut o = ConvertOptions::default();
         o.ac3_bitrate = 448;

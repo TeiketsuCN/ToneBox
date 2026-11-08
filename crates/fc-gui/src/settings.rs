@@ -91,6 +91,31 @@ impl Profile {
     }
 }
 
+/// 音乐库扫描结果的一条缓存。持久化到 config.json，
+/// 这样每次启动不用重扫（用户自己点「重新扫描」时才更新）。
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct CachedTrack {
+    pub path: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub album: String,
+    #[serde(default)]
+    pub genre: String,
+    #[serde(default)]
+    pub duration_s: f64,
+    #[serde(default)]
+    pub codec: String,
+    #[serde(default)]
+    pub bits: Option<u32>,
+    #[serde(default)]
+    pub sample_rate: u32,
+    #[serde(default)]
+    pub bitrate_kbps: u64,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Settings {
     pub bg_mode: BgMode,
@@ -132,6 +157,9 @@ pub struct Settings {
     /// 单独加进音乐库的文件（不在任何库文件夹里也能听）
     #[serde(default)]
     pub library_files: Vec<String>,
+    /// 上次扫描的结果（用户手动扫描后才更新）
+    #[serde(default)]
+    pub library_cache: Vec<CachedTrack>,
     /// 用户配置列表
     #[serde(default)]
     pub profiles: Vec<Profile>,
@@ -157,6 +185,7 @@ impl Default for Settings {
             ui_scale: 1.0,
             library_dirs: Vec::new(),
             library_files: Vec::new(),
+            library_cache: Vec::new(),
             profiles: Vec::new(),
             active_profile: 0,
         }

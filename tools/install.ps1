@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $AppDir   = 'D:\Apps\FormatConverter'
 $Version  = '0.1.0'
 $ExeName  = 'format-converter.exe'
-$Display  = 'tonebox'
+$Display  = 'ToneBox'
 # 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
 $OldDisplay = '格式转换器'
 
@@ -46,7 +46,7 @@ if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
     Write-Host "警告：没有 vendor\ffmpeg，安装后需另外装 ffmpeg（跑 tools\fetch-ffmpeg.ps1）"
 }
 @"
-tonebox $Version
+ToneBox $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
 源码: D:\FormatConverter
 "@ | Set-Content -Path "$AppDir\version.txt" -Encoding UTF8
@@ -68,7 +68,9 @@ foreach ($lnk in $targets) {
 # 老名字的桌面/开始菜单快捷方式删掉，避免重名两个
 foreach ($lnk in @(
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk")
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk"),
+  (Join-Path ([Environment]::GetFolderPath('Desktop'))  "tonebox.lnk"),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "tonebox.lnk")
 )) {
   if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Write-Host "  已删除旧快捷方式 $lnk" }
 }

@@ -61,6 +61,9 @@ struct LibEntry {
     genre: String,
     duration_s: f64,
     codec: String,
+    bits: Option<u32>,
+    sample_rate: u32,
+    bitrate_kbps: u64,
 }
 
 enum LibMsg {
@@ -82,7 +85,7 @@ const BG: Color32 = Color32::from_rgb(14, 16, 22);
 // ── 品牌 ────────────────────────────────────────────────
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
-pub const APP_NAME: &str = "tonebox";
+pub const APP_NAME: &str = "ToneBox";
 
 // ── 布局规范 ────────────────────────────────────────────
 // 面板宽度必须是常量，内容宽度在面板内锁死。
@@ -334,6 +337,28 @@ impl App {
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(cfg.ui_scale);
+        // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
+        let cached_lib: Vec<LibEntry> = cfg
+            .library_cache
+            .iter()
+            .map(|c| LibEntry {
+                path: PathBuf::from(&c.path),
+                title: c.title.clone(),
+                artist: c.artist.clone(),
+                album: c.album.clone(),
+                genre: c.genre.clone(),
+                duration_s: c.duration_s,
+                codec: c.codec.clone(),
+                bits: c.bits,
+                sample_rate: c.sample_rate,
+                bitrate_kbps: c.bitrate_kbps,
+            })
+            .collect();
+        let cached_status = if cached_lib.is_empty() {
+            "还没有扫描".to_string()
+        } else {
+            format!("上次扫描：{} 首", cached_lib.len())
+        };
         App {
             tools,
             items: Vec::new(),
@@ -382,10 +407,10 @@ impl App {
             wiki_filter: String::new(),
             page: Page::Convert,
             lib_tab: LibTab::Songs,
-            lib_entries: Vec::new(),
+            lib_entries: cached_lib,
             lib_scanning: false,
             lib_total: 0,
-            lib_status: "还没有扫描".into(),
+            lib_status: cached_status,
             lib_filter: String::new(),
             lib_selected: None,
             lib_last_click: (None, -10.0),
@@ -840,7 +865,7 @@ impl eframe::App for App {
                     )
                     .show(ctx, |ui| {
                         // 开始转换钉在最下面——这一列的终点就是它
-                        egui::TopBottomPanel::bottom("out_start")
+                        egui::TopBottomPanel::bottom("out_start").resizable(false)
                             .frame(
                                 egui::Frame::none()
                                     .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
@@ -873,7 +898,7 @@ impl eframe::App for App {
             }
 
             // 播放栏：常驻。做成"浮起来的一块玻璃"，不要贴着窗口底边
-            egui::TopBottomPanel::bottom("player")
+            egui::TopBottomPanel::bottom("player").resizable(false)
                 .exact_height(80.0)
                 .frame(egui::Frame::none().inner_margin(egui::Margin {
                     left: 14.0,
@@ -884,7 +909,6 @@ impl eframe::App for App {
                 .show(ctx, |ui| {
                     egui::Frame::none()
                         .fill(tint(BG, 176))
-                        .stroke(line(Color32::WHITE, 20))
                         .rounding(Rounding::same(14.0))
                         .shadow(egui::epaint::Shadow {
                             offset: egui::vec2(0.0, 3.0),
@@ -965,7 +989,9 @@ impl eframe::App for App {
             self.settings_panel(ctx);
         }
 
-        if self.lib_scanning {
+        // 扫描 / 封面还在后台跑时，界面得自己醒过来取结果，
+        // 否则没鼠标事件就一直停在占位图上
+        if self.lib_scanning || !self.lib_cover_pending.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(150));
         }
         if animating {
@@ -1177,12 +1203,12 @@ impl App {
 
         if rail_big(ui, "音乐库", self.page == Page::Library) {
             self.page = Page::Library;
-            // 第一次进库、已经有文件夹但还没扫过：自动扫一次
-            if !self.lib_scanning
-                && self.lib_entries.is_empty()
+            // 不自动扫描：结果在配置里，用户点「重新扫描」才更新
+            if self.lib_entries.is_empty()
+                && !self.lib_scanning
                 && (!self.cfg.library_dirs.is_empty() || !self.cfg.library_files.is_empty())
             {
-                self.scan_library();
+                self.lib_status = "点「重新扫描」扫一遍音乐库".into();
             }
         }
         if rail_big(ui, "输出", self.page == Page::Convert) {
@@ -1191,7 +1217,7 @@ impl App {
         ui.add_space(10.0);
 
         // 底部合规提示固定（两页都在）
-        egui::TopBottomPanel::bottom("rail_footer")
+        egui::TopBottomPanel::bottom("rail_footer").resizable(false)
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 6.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -1203,7 +1229,7 @@ impl App {
             });
 
         // 用户配置：在合规提示上面，两页都在
-        egui::TopBottomPanel::bottom("rail_profiles")
+        egui::TopBottomPanel::bottom("rail_profiles").resizable(false)
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -1294,19 +1320,35 @@ impl App {
                 rect.right_center() - egui::vec2(12.0, 0.0),
                 egui::vec2(20.0, 20.0),
             );
-            let edit = ui.interact(er, ui.id().with(("prof_edit", i)), egui::Sense::click());
-            p.text(
-                er.center(),
-                egui::Align2::CENTER_CENTER,
-                "改",
-                egui::FontId::proportional(10.0),
-                if edit.hovered() { TEXT } else { DIM },
-            );
+            let edit = ui.interact(er, ui.id().with(("prof_more", i)), egui::Sense::click());
+            // 三个点自己画：字体里没有 "⋯" 的字形，文字会变豆腐块
+            let dot_c = if edit.hovered() { TEXT } else { DIM };
+            for dx in [-4.0f32, 0.0, 4.0] {
+                p.circle_filled(er.center() + egui::vec2(dx, 0.0), 1.3, dot_c);
+            }
+            let popup_id = egui::Id::new(("prof_popup", i));
             if edit.clicked() {
-                start_rename = Some(i);
+                ui.memory_mut(|m| m.toggle_popup(popup_id));
             } else if resp.clicked() {
                 switch_to = Some(i);
             }
+            egui::popup::popup_below_widget(
+                ui,
+                popup_id,
+                &edit,
+                egui::popup::PopupCloseBehavior::CloseOnClickOutside,
+                |ui| {
+                    ui.set_min_width(104.0);
+                    if ui.button("重命名").clicked() {
+                        start_rename = Some(i);
+                        ui.memory_mut(|m| m.close_popup());
+                    }
+                    if ui.button("删除这套").clicked() {
+                        remove = Some(i);
+                        ui.memory_mut(|m| m.close_popup());
+                    }
+                },
+            );
             resp.context_menu(|ui| {
                 if ui.button("重命名").clicked() {
                     start_rename = Some(i);
@@ -1726,7 +1768,9 @@ impl App {
                             cover_thumb(ui, cover.as_ref(), 36.0);
                             ui.add_space(5.0);
                             ui.vertical(|ui| {
-                                ui.set_max_width((row_w - 42.0 - 186.0).max(100.0));
+                                // 右边要放：状态 + ··· + ×，有音质标识还要再宽一点
+                                let q_w = if info.as_ref().and_then(quality_of).is_some() { 58.0 } else { 0.0 };
+                                ui.set_max_width((row_w - 42.0 - 186.0 - q_w).max(100.0));
                                 let title = tags.display_title(&name);
                                 ui.add(
                                     egui::Label::new(RichText::new(title).size(12.5).color(TEXT))
@@ -1734,13 +1778,27 @@ impl App {
                                 );
                                 ui.add_space(2.0);
                                 let sub0 = match &info {
-                                    Some(m) => format!(
-                                        "{} · {} kbps · {}  →  {}",
-                                        m.codec_label(),
-                                        m.bitrate_kbps,
-                                        fmt_duration(m.duration_s),
-                                        spec.name
-                                    ),
+                                    Some(m) => {
+                                        // 数值音质：编码 · 采样率/位深 · 码率 · 时长 → 目标
+                                        // 用 44.1k/16bit 这种紧凑写法，一行放得下
+                                        let mut parts: Vec<String> =
+                                            vec![m.codec_label().to_string()];
+                                        if m.sample_rate > 0 {
+                                            match m.bits {
+                                                Some(b) => parts.push(format!(
+                                                    "{}/{}bit",
+                                                    fmt_k(m.sample_rate),
+                                                    b
+                                                )),
+                                                None => parts.push(fmt_khz(m.sample_rate)),
+                                            }
+                                        }
+                                        if m.bitrate_kbps > 0 {
+                                            parts.push(format!("{}kbps", m.bitrate_kbps));
+                                        }
+                                        parts.push(fmt_duration(m.duration_s));
+                                        format!("{}  →  {}", parts.join(" · "), spec.name)
+                                    }
                                     None => {
                                         let e = error
                                             .clone()
@@ -1765,31 +1823,30 @@ impl App {
                             });
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                // 顺序按 right_to_left 的摆放来写：先写的在最右边
+                                ui.set_min_width(ui.available_width());
                                 ui.spacing_mut().button_padding = egui::vec2(6.0, 2.0);
-                                match &state {
-                                    State::Pending => {
-                                        ui.label(RichText::new("待转换").size(10.0).color(MUTED));
-                                    }
-                                    State::Running(p) => {
-                                        ui.add(
-                                            egui::ProgressBar::new(*p)
-                                                .desired_width(78.0)
-                                                .fill(ACCENT),
-                                        );
-                                    }
-                                    State::Done(_, sz) => {
-                                        ui.label(
-                                            RichText::new(format!("✓ {}", fmt_size(*sz)))
-                                                .size(10.0)
-                                                .color(ACCENT),
-                                        );
-                                    }
-                                    State::Failed(_) => {
-                                        ui.label(RichText::new("✗").size(11.0).color(DANGER));
-                                    }
+                                // 行里这两个小按钮不要底色：默认的浅色方块在深色行上很扎眼，
+                                // 只留字符本身，悬停时给一点点提亮。
+                                let vis = ui.visuals_mut();
+                                vis.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                                vis.widgets.hovered.weak_bg_fill = tint(Color32::WHITE, 16);
+                                vis.widgets.active.weak_bg_fill = tint(Color32::WHITE, 26);
+                                vis.widgets.inactive.bg_fill = Color32::TRANSPARENT;
+                                vis.widgets.hovered.bg_fill = tint(Color32::WHITE, 16);
+                                vis.widgets.active.bg_fill = tint(Color32::WHITE, 26);
+                                vis.widgets.inactive.bg_stroke = Stroke::NONE;
+                                vis.widgets.hovered.bg_stroke = Stroke::NONE;
+                                vis.widgets.active.bg_stroke = Stroke::NONE;
+
+                                // ① 删除 ×（最右）
+                                let del_resp =
+                                    ui.small_button(RichText::new("×").size(11.0).color(DIM));
+                                if del_resp.clicked() {
+                                    remove = Some(i);
                                 }
 
-                                // 选过格式就把「···」换成格式名，用户一眼能看到这行要转成什么
+                                // ② 单曲格式菜单 ···（选过格式就显示格式名）
                                 let pick = override_id
                                     .and_then(fc_core::by_id)
                                     .map(|f| f.name.to_string());
@@ -1818,10 +1875,36 @@ impl App {
                                     },
                                 );
 
-                                let del_resp =
-                                    ui.small_button(RichText::new("×").size(11.0).color(DIM));
-                                if del_resp.clicked() {
-                                    remove = Some(i);
+                                // ③ 状态
+                                match &state {
+                                    State::Pending => {
+                                        ui.label(RichText::new("待转换").size(10.0).color(MUTED));
+                                    }
+                                    State::Running(p) => {
+                                        ui.add(
+                                            egui::ProgressBar::new(*p)
+                                                .desired_width(78.0)
+                                                .fill(ACCENT),
+                                        );
+                                    }
+                                    State::Done(_, sz) => {
+                                        ui.label(
+                                            RichText::new(format!("✓ {}", fmt_size(*sz)))
+                                                .size(10.0)
+                                                .color(ACCENT),
+                                        );
+                                    }
+                                    State::Failed(_) => {
+                                        ui.label(RichText::new("✗").size(11.0).color(DANGER));
+                                    }
+                                }
+
+                                // ④ 音质标识（Hi-Res 会呼吸、CD 会转）
+                                if let Some(m) = &info {
+                                    if let Some(q) = quality_of(m) {
+                                        ui.add_space(4.0);
+                                        animating |= quality_badge(ui, q);
+                                    }
                                 }
                                 btn_zone = Some(menu_resp.response.rect.union(del_resp.rect));
                             });
@@ -2560,6 +2643,27 @@ impl App {
             return animating;
         }
 
+        // 有文件夹但还没扫过：给一个明确的入口，别让列表空着让人以为坏了
+        if self.lib_entries.is_empty() && !self.lib_scanning && self.lib_tab != LibTab::Folders {
+            let mut go = false;
+            card(ui, WARN, |ui| {
+                para(ui, "还没扫描过音乐库", 11.5, WARN);
+                ui.add_space(4.0);
+                para(
+                    ui,
+                    "扫描结果会记在配置里，以后打开直接显示；加了新歌再扫一遍就行。",
+                    9.5,
+                    MUTED,
+                );
+                ui.add_space(8.0);
+                go = lib_button(ui, "开始扫描", true);
+            });
+            if go {
+                self.scan_library();
+            }
+            return animating;
+        }
+
         if self.lib_tab == LibTab::Folders {
             animating |= self.library_folders(ui);
             return animating;
@@ -2918,6 +3022,9 @@ impl App {
                     genre: tags.genre.unwrap_or_default(),
                     duration_s: info.duration_s,
                     codec: info.codec_label().to_string(),
+                    bits: info.bits,
+                    sample_rate: info.sample_rate,
+                    bitrate_kbps: info.bitrate_kbps,
                 };
                 let _ = tx.send(LibMsg::Entry(entry));
             }
@@ -2933,6 +3040,24 @@ impl App {
                 LibMsg::Done => {
                     self.lib_scanning = false;
                     self.lib_status = format!("扫描完成：{} 首", self.lib_entries.len());
+                    // 结果写进配置：下次启动直接铺出来，不用再扫
+                    self.cfg.library_cache = self
+                        .lib_entries
+                        .iter()
+                        .map(|e| settings::CachedTrack {
+                            path: e.path.to_string_lossy().to_string(),
+                            title: e.title.clone(),
+                            artist: e.artist.clone(),
+                            album: e.album.clone(),
+                            genre: e.genre.clone(),
+                            duration_s: e.duration_s,
+                            codec: e.codec.clone(),
+                            bits: e.bits,
+                            sample_rate: e.sample_rate,
+                            bitrate_kbps: e.bitrate_kbps,
+                        })
+                        .collect();
+                    self.cfg.save();
                 }
             }
         }
@@ -2964,6 +3089,11 @@ impl App {
 
     /// 音乐库里双击一首歌：不在队列里就先加进去（顺便读标签/封面），然后播
     fn play_path(&mut self, path: PathBuf, _ctx: &egui::Context) {
+        if !path.exists() {
+            // 缓存里记着的文件可能已经被移走/删掉，明确告诉用户，别静默失败
+            self.lib_status = format!("文件不在了：{}", path.display());
+            return;
+        }
         if !self.items.iter().any(|i| i.path == path) {
             self.add_files(vec![path.clone()]);
         }
@@ -3356,6 +3486,10 @@ impl App {
         if let Some(m) = &it.info {
             ui.horizontal(|ui| {
                 chip(ui, m.codec_label(), ACCENT);
+                if let Some(q) = quality_of(m) {
+                    ui.add_space(6.0);
+                    animating |= quality_badge(ui, q);
+                }
             });
             ui.add_space(10.0);
 
@@ -3368,6 +3502,9 @@ impl App {
                     }
                     if m.sample_rate > 0 {
                         row(ui, "采样率", &format!("{} Hz", m.sample_rate));
+                    }
+                    if let Some(b) = m.bits {
+                        row(ui, "位深", &format!("{b} bit"));
                     }
                     if m.channels > 0 {
                         row(ui, "声道", &format!("{}", m.channels));
@@ -4567,6 +4704,141 @@ fn spawn_lib_cover(
         });
         let _ = tx.send((path, payload));
     });
+}
+
+/// 音质档位：列表/详情里的小标识
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Quality {
+    HiRes,
+    Cd,
+    Hq,
+    Std,
+    Lq,
+}
+
+fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
+    if m.codec.is_empty() || m.sample_rate == 0 {
+        return None;
+    }
+    if !m.is_lossy() {
+        // 无损：>44.1k 或 >16bit 就算 Hi-Res，44.1/16 是 CD
+        let bits = m.bits.unwrap_or(16);
+        return Some(if m.sample_rate > 44100 || bits > 16 {
+            Quality::HiRes
+        } else {
+            Quality::Cd
+        });
+    }
+    let kb = m.bitrate_kbps;
+    Some(if kb >= 192 {
+        Quality::Hq
+    } else if kb >= 96 {
+        Quality::Std
+    } else {
+        Quality::Lq
+    })
+}
+
+/// 画一个音质标识，返回 true 表示这一帧有动画（需要继续重绘）
+fn quality_badge(ui: &mut egui::Ui, q: Quality) -> bool {
+    let t = ui.input(|i| i.time);
+    let (label, w) = match q {
+        Quality::HiRes => ("Hi-Res", 50.0),
+        Quality::Cd => ("CD", 36.0),
+        Quality::Hq => ("HQ", 28.0),
+        Quality::Std => ("STD", 32.0),
+        Quality::Lq => ("LQ", 28.0),
+    };
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+    let p = ui.painter();
+    let font = egui::FontId::proportional(8.5);
+    // 动画交给 20fps 的重绘，不用整窗口 60fps 空转
+    if matches!(q, Quality::HiRes | Quality::Cd) {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
+    }
+    match q {
+        Quality::HiRes => {
+            // 金色呼吸 + 一条从左扫到右的高光
+            let pulse = 0.5 + 0.5 * (t * 2.2).sin() as f32;
+            let gold = Color32::from_rgb(255, 208, 122);
+            p.rect_filled(rect, Rounding::same(8.0), tint(gold, (24.0 + 20.0 * pulse) as u8));
+            p.rect_stroke(
+                rect,
+                Rounding::same(8.0),
+                Stroke::new(1.0, tint(gold, (110.0 + 60.0 * pulse) as u8)),
+            );
+            // 高光只在圆角内
+            let clip = p.with_clip_rect(rect.shrink(1.0));
+            let sweep = ((t * 0.55) % 1.0) as f32;
+            let bx = rect.left() - 14.0 + sweep * (rect.width() + 28.0);
+            clip.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(bx, rect.top()), egui::vec2(10.0, rect.height())),
+                Rounding::same(5.0),
+                tint(Color32::WHITE, 34),
+            );
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                font,
+                Color32::from_rgb(255, 226, 168),
+            );
+            false
+        }
+        Quality::Cd => {
+            // 一张小 CD：银底 + 中心孔 + 一条转动的反光
+            p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 16));
+            p.rect_stroke(
+                rect,
+                Rounding::same(8.0),
+                Stroke::new(1.0, tint(Color32::WHITE, 70)),
+            );
+            let disc = egui::pos2(rect.left() + 9.0, rect.center().y);
+            p.circle_filled(disc, 5.5, Color32::from_rgb(206, 216, 228));
+            p.circle_filled(disc, 1.6, BG);
+            let ang = (t * 2.4) as f32;
+            let tip = disc + egui::vec2(ang.cos() * 4.2, ang.sin() * 4.2);
+            p.line_segment([disc, tip], Stroke::new(1.4, tint(Color32::WHITE, 190)));
+            p.text(
+                egui::pos2(rect.left() + 18.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                label,
+                font,
+                MUTED,
+            );
+            false
+        }
+        Quality::Hq | Quality::Std | Quality::Lq => {
+            let c = match q {
+                Quality::Hq => ACCENT,
+                Quality::Std => MUTED,
+                _ => DIM,
+            };
+            p.rect_filled(rect, Rounding::same(8.0), tint(c, 16));
+            p.rect_stroke(rect, Rounding::same(8.0), Stroke::new(1.0, tint(c, 60)));
+            p.text(rect.center(), egui::Align2::CENTER_CENTER, label, font, c);
+            false
+        }
+    }
+}
+
+/// 采样率写法：44100 -> "44.1 kHz"，48000 -> "48 kHz"
+fn fmt_khz(sr: u32) -> String {
+    if sr % 1000 == 0 {
+        format!("{} kHz", sr / 1000)
+    } else {
+        format!("{:.1} kHz", sr as f64 / 1000.0)
+    }
+}
+
+/// 更短的采样率写法：44100 -> "44.1k"，给列表里省地方
+fn fmt_k(sr: u32) -> String {
+    if sr % 1000 == 0 {
+        format!("{}k", sr / 1000)
+    } else {
+        format!("{:.1}k", sr as f64 / 1000.0)
+    }
 }
 
 /// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。
