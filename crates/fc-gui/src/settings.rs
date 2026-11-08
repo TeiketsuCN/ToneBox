@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 /// 界面缩放档位。只影响显示，不影响转换结果。
 pub const SCALES: [f32; 4] = [0.9, 1.0, 1.1, 1.2];
 
+fn default_bg_color() -> [u8; 3] {
+    [20, 22, 30]
+}
+
 fn default_ui_scale() -> f32 {
     1.0
 }
@@ -26,6 +30,8 @@ pub enum BgMode {
     Wallpaper,
     /// 纯色
     Solid,
+    /// 渐变
+    Gradient,
     /// 关闭（最省显卡）
     Off,
 }
@@ -35,11 +41,12 @@ impl BgMode {
         match self {
             BgMode::Wallpaper => "壁纸模糊",
             BgMode::Solid => "纯色",
+            BgMode::Gradient => "渐变",
             BgMode::Off => "关闭",
         }
     }
-    pub fn all() -> [BgMode; 3] {
-        [BgMode::Wallpaper, BgMode::Solid, BgMode::Off]
+    pub fn all() -> [BgMode; 4] {
+        [BgMode::Wallpaper, BgMode::Solid, BgMode::Gradient, BgMode::Off]
     }
 }
 
@@ -73,6 +80,10 @@ pub struct Profile {
     pub output_mode: OutputMode,
     #[serde(default)]
     pub output_dir: String,
+    #[serde(default = "default_bg_color")]
+    pub bg_color: [u8; 3],
+    #[serde(default)]
+    pub bg_gradient: u8,
     #[serde(default)]
     pub loudness: Option<f32>,
     #[serde(default)]
@@ -95,6 +106,8 @@ impl Profile {
             opts: s.opts.clone(),
             output_mode: s.output_mode,
             output_dir: s.output_dir.clone(),
+            bg_color: s.bg_color,
+            bg_gradient: s.bg_gradient,
             loudness: s.loudness,
             write_tags: s.write_tags,
             meta_artist: s.meta_artist.clone(),
@@ -136,6 +149,12 @@ pub struct CachedTrack {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Settings {
     pub bg_mode: BgMode,
+    /// 纯色背景的颜色
+    #[serde(default = "default_bg_color")]
+    pub bg_color: [u8; 3],
+    /// 渐变背景用第几套配色（见 bg::GRADIENTS）
+    #[serde(default)]
+    pub bg_gradient: u8,
     /// 壁纸压暗程度（0~255），数值越大越暗
     pub dim: u8,
     /// 选中文件就自动做频谱分析
@@ -192,6 +211,8 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             bg_mode: BgMode::Wallpaper,
+            bg_color: default_bg_color(),
+            bg_gradient: 0,
             dim: 96,
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
@@ -267,6 +288,8 @@ impl Settings {
         self.opts = p.opts;
         self.output_mode = p.output_mode;
         self.output_dir = p.output_dir;
+        self.bg_color = p.bg_color;
+        self.bg_gradient = p.bg_gradient;
         self.loudness = p.loudness;
         self.write_tags = p.write_tags;
         self.meta_artist = p.meta_artist;

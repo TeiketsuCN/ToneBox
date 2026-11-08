@@ -151,19 +151,19 @@ impl App {
             ui.add_space(14.0);
             match &it.analysis {
                 Analysis::Idle | Analysis::Running => {
-                    para(ui, "正在分析频谱…", 9.5, DIM);
+                    para(ui, "正在分析频谱…", 10.0, DIM);
                 }
                 Analysis::Failed(e) => {
                     ui.vertical(|ui| {
                         para(ui, "频谱分析失败", 11.0, DANGER);
                         ui.add_space(4.0);
-                        para(ui, e, 9.0, MUTED);
+                        para(ui, e, 9.5, MUTED);
                     });
                 }
                 Analysis::Done(r) => {
                     if let Some(d) = &r.dsd {
                         // DSD 不走"截止频率推码率"那套：只报格式事实，别给一个假的置信度
-                        para(ui, "质量评估", 9.5, DIM);
+                        para(ui, "质量评估", 10.0, DIM);
                         ui.add_space(6.0);
                         let tier = if d.tier > 0 {
                             format!("DSD{}", d.tier)
@@ -183,7 +183,7 @@ impl App {
                                 row(ui, "判定", "无损源码");
                             });
                     } else {
-                        para(ui, "质量评估", 9.5, DIM);
+                        para(ui, "质量评估", 10.0, DIM);
                         ui.add_space(6.0);
                         egui::Grid::new("quality_grid")
                             .num_columns(2)
@@ -241,7 +241,7 @@ impl App {
                         ui.add_space(8.0);
                         ui.vertical(|ui| {
                             for c in &r.caveats {
-                                para(ui, &format!("· {c}"), 9.0, MUTED);
+                                para(ui, &format!("· {c}"), 9.5, tint(TEXT, 200));
                                 ui.add_space(2.0);
                             }
                         });
@@ -258,7 +258,7 @@ impl App {
             ui.vertical(|ui| {
                 para(ui, "读不出来", 11.5, DANGER);
                 ui.add_space(5.0);
-                para(ui, e, 9.5, MUTED);
+                para(ui, e, 10.0, MUTED);
             });
         }
 

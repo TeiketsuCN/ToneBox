@@ -18,6 +18,18 @@ use crate::output::*;
 use crate::library::*;
 use crate::overlays::*;
 
+/// 配置列表里 ⋯ 菜单的按钮：透明底、左对齐，别用 egui 默认那个灰块
+fn menu_button(ui: &mut egui::Ui, label: &str) -> bool {
+    ui.add(
+        egui::Button::new(RichText::new(label).size(10.5).color(TEXT))
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .rounding(Rounding::same(6.0))
+            .min_size(egui::vec2(96.0, 24.0)),
+    )
+    .clicked()
+}
+
 impl App {
 
     /// 左侧导航：两个大项（音乐库 / 输出），点开哪个就显示哪一块
@@ -149,22 +161,22 @@ impl App {
                 egui::popup::PopupCloseBehavior::CloseOnClickOutside,
                 |ui| {
                     ui.set_min_width(104.0);
-                    if ui.button("重命名").clicked() {
+                    if menu_button(ui, "重命名") {
                         start_rename = Some(i);
                         ui.memory_mut(|m| m.close_popup());
                     }
-                    if ui.button("删除这套").clicked() {
+                    if menu_button(ui, "删除这套") {
                         remove = Some(i);
                         ui.memory_mut(|m| m.close_popup());
                     }
                 },
             );
             resp.context_menu(|ui| {
-                if ui.button("重命名").clicked() {
+                if menu_button(ui, "重命名") {
                     start_rename = Some(i);
                     ui.close_menu();
                 }
-                if ui.button("删除这套配置").clicked() {
+                if menu_button(ui, "删除这套配置") {
                     remove = Some(i);
                     ui.close_menu();
                 }

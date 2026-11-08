@@ -176,7 +176,9 @@ pub(crate) fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, 
         } else {
             tint(Color32::WHITE, 26)
         };
-        p.rect_filled(rect, Rounding::same(6.0), bg);
+        // 高亮只占按钮中间一小块，圆角，不是整格方块
+        let hl = egui::Rect::from_center_size(rect.center(), egui::vec2(26.0, 24.0));
+        p.rect_filled(hl, Rounding::same(8.0), bg);
     }
     let c = rect.center();
     let col = if resp.hovered() && kind == TitleBtn::Close {

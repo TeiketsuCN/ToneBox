@@ -42,7 +42,14 @@ impl WallpaperBg {
     }
 
     /// 画在最底层。窗口移动时 UV 跟着走，所以背景"贴着桌面"。
-    pub fn paint_mode(&self, ctx: &egui::Context, mode: crate::settings::BgMode, dim: u8) {
+    pub fn paint_mode(
+        &self,
+        ctx: &egui::Context,
+        mode: crate::settings::BgMode,
+        dim: u8,
+        solid: [u8; 3],
+        gradient: u8,
+    ) {
         let screen = ctx.screen_rect();
         let painter = ctx.layer_painter(egui::LayerId::background());
 
@@ -53,7 +60,16 @@ impl WallpaperBg {
             return;
         }
         if mode == BgMode::Solid {
-            painter.rect_filled(screen, 0.0, Color32::from_rgb(20, 22, 30));
+            painter.rect_filled(
+                screen,
+                0.0,
+                Color32::from_rgb(solid[0], solid[1], solid[2]),
+            );
+            return;
+        }
+        if mode == BgMode::Gradient {
+            let (a, b) = gradient_colors(gradient);
+            paint_gradient(&painter, screen, a, b);
             return;
         }
 
@@ -239,4 +255,29 @@ fn reg_wallpaper() -> Option<PathBuf> {
 #[cfg(not(windows))]
 fn reg_wallpaper() -> Option<PathBuf> {
     None
+}
+
+/// 渐变壁纸的几套配色。都压得比较暗，保证字看得清。
+pub const GRADIENTS: [(&str, Color32, Color32); 4] = [
+    ("极光", Color32::from_rgb(10, 18, 32), Color32::from_rgb(26, 92, 88)),
+    ("暮色", Color32::from_rgb(22, 12, 32), Color32::from_rgb(86, 38, 52)),
+    ("青瓷", Color32::from_rgb(10, 24, 22), Color32::from_rgb(20, 58, 64)),
+    ("石墨", Color32::from_rgb(16, 16, 20), Color32::from_rgb(44, 44, 54)),
+];
+
+pub fn gradient_colors(i: u8) -> (Color32, Color32) {
+    let (_, a, b) = GRADIENTS[(i as usize).min(GRADIENTS.len() - 1)];
+    (a, b)
+}
+
+/// 左上 → 右下的双色渐变（网格顶点色，光滑无带状）
+fn paint_gradient(painter: &egui::Painter, rect: Rect, a: Color32, b: Color32) {
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), a);
+    mesh.colored_vertex(rect.right_top(), b);
+    mesh.colored_vertex(rect.left_bottom(), a);
+    mesh.colored_vertex(rect.right_bottom(), b);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(1, 3, 2);
+    painter.add(egui::Shape::mesh(mesh));
 }

@@ -153,8 +153,8 @@ pub(crate) fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool 
     } else {
         line(Color32::WHITE, 18)
     })
-    .rounding(Rounding::same(8.0))
-    .min_size(egui::vec2(0.0, 24.0));
+    .rounding(Rounding::same(7.0))
+    .min_size(egui::vec2(0.0, 22.0));
     ui.add(b).clicked()
 }
 
@@ -202,6 +202,11 @@ pub(crate) fn bar_slider(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32, tic
 }
 
 /// 带标题的小滑杆（压缩等级 / 质量）
+/// 不带标签的档位滑杆（标签由 field_row 统一摆）
+pub(crate) fn level_slider_inline(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32) -> bool {
+    bar_slider(ui, v, min, max, true)
+}
+
 pub(crate) fn level_slider(ui: &mut egui::Ui, label: &str, v: &mut i32, min: i32, max: i32) -> bool {
     ui.horizontal(|ui| {
         ui.label(RichText::new(label).size(9.5).color(MUTED));
@@ -330,8 +335,8 @@ pub(crate) fn seg_button(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     }))
     .fill(if on { ACCENT } else { tint(Color32::WHITE, 8) })
     .stroke(if on { Stroke::NONE } else { line(Color32::WHITE, 18) })
-    .rounding(Rounding::same(8.0))
-    .min_size(egui::vec2(0.0, 24.0));
+    .rounding(Rounding::same(7.0))
+    .min_size(egui::vec2(0.0, 22.0));
     ui.add(b).clicked()
 }
 
@@ -373,9 +378,10 @@ pub(crate) fn para(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
 }
 
 pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
-    ui.label(RichText::new(key).size(9.5).color(DIM));
+    // 详情/输出的数值行：标签够亮、数值更大一点，长时间看着不累
+    ui.label(RichText::new(key).size(10.0).color(tint(TEXT, 168)));
     ui.add(
-        egui::Label::new(RichText::new(value).size(10.0).color(TEXT))
+        egui::Label::new(RichText::new(value).size(10.5).color(TEXT))
             .wrap_mode(egui::TextWrapMode::Wrap),
     );
     ui.end_row();

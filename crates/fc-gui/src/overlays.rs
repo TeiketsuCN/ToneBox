@@ -18,6 +18,16 @@ use crate::detail::*;
 use crate::output::*;
 use crate::library::*;
 
+/// 纯色背景可选的颜色（都偏暗，保证文字对比）
+pub(crate) const SOLIDS: [[u8; 3]; 6] = [
+    [20, 22, 30],
+    [16, 18, 20],
+    [18, 26, 24],
+    [28, 18, 22],
+    [20, 20, 34],
+    [12, 12, 14],
+];
+
 impl App {
 
     /// 格式百科：左边列表，右边长文。B 写的 29 条长文案就展示在这里。
@@ -46,34 +56,7 @@ impl App {
                         ui.set_max_width(area.width() - 56.0);
                         ui.add_space(TITLEBAR_H);
 
-                        // 顶栏
-                        let back_rect =
-                            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(78.0, 30.0));
-                        let back = ui.interact(
-                            back_rect,
-                            ui.id().with("wiki_back"),
-                            egui::Sense::click(),
-                        );
-                        ui.painter().rect_filled(
-                            back_rect,
-                            Rounding::same(8.0),
-                            if back.hovered() {
-                                tint(Color32::WHITE, 22)
-                            } else {
-                                tint(Color32::WHITE, 12)
-                            },
-                        );
-                        ui.painter().text(
-                            back_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "← 返回",
-                            egui::FontId::proportional(11.0),
-                            TEXT,
-                        );
-                        if back.clicked() {
-                            self.wiki_open = false;
-                        }
-
+                        // 顶栏：不要返回键了，点齿轮或 Esc 退出
                         ui.horizontal(|ui| {
                             ui.add_space(88.0);
                             ui.label(RichText::new("格式百科").size(15.0).color(TEXT).strong());
@@ -268,7 +251,7 @@ impl App {
         );
         // 整页做"从下往上滑入 / 往下滑出"：滑出时主界面从上面露出来，
         // 不会像以前那样滑 22px 就突然消失
-        let offset = (1.0 - t) * area.height();
+        let offset = 0.0;
 
         let mut changed = false;
 
@@ -300,40 +283,8 @@ impl App {
                         // 放在那里的按钮点不到，所以内容整体下移避开。
                                         ui.add_space(TITLEBAR_H);
 
-                        // 顶栏
-                        // 返回：用显式矩形做命中区，避免按钮布局和视觉位置对不上
-                        let back_rect = egui::Rect::from_min_size(
-                            ui.cursor().min,
-                            egui::vec2(78.0, 30.0),
-                        );
-                        let back = ui.interact(
-                            back_rect,
-                            ui.id().with("settings_back"),
-                            egui::Sense::click(),
-                        );
-                        ui.painter().rect_filled(
-                            back_rect,
-                            Rounding::same(8.0),
-                            if back.hovered() {
-                                tint(Color32::WHITE, 22)
-                            } else {
-                                tint(Color32::WHITE, 12)
-                            },
-                        );
-                        ui.painter().text(
-                            back_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "← 返回",
-                            egui::FontId::proportional(11.0),
-                            TEXT,
-                        );
-                        if back.clicked() {
-                            self.settings_open = false;
-                        }
-                        ui.horizontal(|ui| {
-                            ui.add_space(88.0);
-                            ui.label(RichText::new("设置").size(15.0).color(TEXT).strong());
-                        });
+                        // 顶栏：不要返回键了，点齿轮或 Esc 退出
+                        ui.label(RichText::new("设置").size(15.0).color(TEXT).strong());
                         ui.add_space(18.0);
 
                         egui::ScrollArea::vertical()
@@ -379,6 +330,76 @@ impl App {
                                         }
                                     }
                                 });
+
+                                if self.cfg.bg_mode == settings::BgMode::Solid {
+                                    ui.add_space(8.0);
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(64.0);
+                                        for c in SOLIDS {
+                                            let on = self.cfg.bg_color == c;
+                                            let col = Color32::from_rgb(c[0], c[1], c[2]);
+                                            let (rect, resp) = ui.allocate_exact_size(
+                                                egui::vec2(20.0, 20.0),
+                                                egui::Sense::click(),
+                                            );
+                                            let p = ui.painter();
+                                            p.rect_filled(rect, Rounding::same(6.0), col);
+                                            if on {
+                                                p.rect_stroke(
+                                                    rect.expand(2.0),
+                                                    Rounding::same(7.0),
+                                                    Stroke::new(1.5, ACCENT),
+                                                );
+                                            }
+                                            if resp.hovered() {
+                                                ui.ctx().set_cursor_icon(
+                                                    egui::CursorIcon::PointingHand,
+                                                );
+                                            }
+                                            if resp.clicked() {
+                                                self.cfg.bg_color = c;
+                                                changed = true;
+                                            }
+                                        }
+                                    });
+                                }
+                                if self.cfg.bg_mode == settings::BgMode::Gradient {
+                                    ui.add_space(8.0);
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(64.0);
+                                        for (i, (name, _, _)) in
+                                            crate::bg::GRADIENTS.iter().enumerate()
+                                        {
+                                            let on = self.cfg.bg_gradient as usize == i;
+                                            if ui
+                                                .add(
+                                                    egui::Button::new(RichText::new(*name).size(
+                                                        10.5,
+                                                    ).color(if on {
+                                                        Color32::from_rgb(10, 26, 24)
+                                                    } else {
+                                                        MUTED
+                                                    }))
+                                                    .fill(if on {
+                                                        ACCENT
+                                                    } else {
+                                                        tint(Color32::WHITE, 10)
+                                                    })
+                                                    .stroke(if on {
+                                                        Stroke::NONE
+                                                    } else {
+                                                        line(Color32::WHITE, 20)
+                                                    })
+                                                    .rounding(Rounding::same(8.0)),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.cfg.bg_gradient = i as u8;
+                                                changed = true;
+                                            }
+                                        }
+                                    });
+                                }
 
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {

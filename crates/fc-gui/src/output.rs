@@ -18,6 +18,31 @@ use crate::detail::*;
 use crate::library::*;
 use crate::overlays::*;
 
+/// 输出栏所有行的标签列宽：控件都从这条竖线开始，看起来才齐。
+const LABEL_W: f32 = 58.0;
+
+/// 输出栏的一行：固定宽度标签 + 右侧控件
+pub(crate) fn field_row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(LABEL_W, 22.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.label(egui::RichText::new(label).size(10.0).color(MUTED));
+            },
+        );
+        add(ui);
+    });
+}
+
+/// 缩进到控件列的提示/警告（和上面的控件对齐，不破坏整列的竖线）
+pub(crate) fn hint_below(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
+    ui.horizontal(|ui| {
+        ui.add_space(LABEL_W);
+        out_hint(ui, text, color);
+    });
+}
+
 impl App {
 
     /// 最右一列：输出设置。不属于某个文件，是全局的。
@@ -204,6 +229,9 @@ impl App {
         ui.add_space(8.0);
 
         // 参数
+        // 整列的行距和按钮内边距统一，别让每行看起来高度不一样
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
+        ui.spacing_mut().button_padding = egui::vec2(9.0, 3.0);
         let knobs = fc_core::knobs_for(self.target);
         if knobs.is_empty() {
             para(ui, "这个格式没有可调参数。", 9.0, DIM);
@@ -237,7 +265,7 @@ impl App {
             };
             for kind in here {
                 for w in warnings.iter().filter(|w| w.kind == *kind) {
-                    out_hint(ui, &w.body, WARN);
+                    hint_below(ui, &w.body, WARN);
                 }
             }
             // 采样率方向已经有具体提示了，就别再重复一行通用说明
@@ -255,7 +283,7 @@ impl App {
         }
         // 兜底：这个格式没有对应旋钮时，别把提示悄悄吞掉
         for w in warnings.iter().filter(|w| !shown.contains(&w.kind)) {
-            out_hint(ui, &w.body, WARN);
+            hint_below(ui, &w.body, WARN);
         }
         // 外部编码器：让用户知道这一步不是 ffmpeg 干的
         if let Some(name) = fc_core::external_encoder(self.target.id) {
@@ -270,8 +298,7 @@ impl App {
 
         // 响度归一化：和旋钮分开一行，因为它是"处理"不是"编码参数"
         ui.add_space(10.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("响度").size(9.5).color(MUTED));
+        field_row(ui, "响度", |ui| {
             let opts: [(&str, Option<f32>); 4] = [
                 ("关", None),
                 ("-14", Some(-14.0)),
@@ -287,7 +314,7 @@ impl App {
             }
         });
         if self.cfg.loudness.is_some() {
-            para(ui, "按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。", 8.5, DIM);
+            hint_below(ui, "按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。", DIM);
         }
 
         ui.add_space(14.0);
@@ -686,20 +713,20 @@ impl App {
         use fc_core::{BitDepth, Knob};
         let mut changed = false;
         match k {
-            Knob::FlacLevel => {
+            Knob::FlacLevel => field_row(ui, "压缩等级", |ui| {
                 let mut v = self.cfg.opts.flac_level as i32;
-                if level_slider(ui, "压缩等级", &mut v, 0, 12) {
+                if level_slider_inline(ui, &mut v, 0, 12) {
                     self.cfg.opts.flac_level = v as u8;
                     changed = true;
                 }
-            }
-            Knob::VorbisQuality => {
+            }),
+            Knob::VorbisQuality => field_row(ui, "质量", |ui| {
                 let mut v = self.cfg.opts.vorbis_q as i32;
-                if level_slider(ui, "质量", &mut v, 0, 10) {
+                if level_slider_inline(ui, &mut v, 0, 10) {
                     self.cfg.opts.vorbis_q = v as u8;
                     changed = true;
                 }
-            }
+            }),
             Knob::BitDepth => {
                 let depths = fc_core::bit_depths_for(self.target);
                 // 换格式后原来的位深可能不在可选范围里：落到 24（有的话）或第一项
@@ -711,8 +738,7 @@ impl App {
                     };
                     changed = true;
                 }
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("位深").size(9.5).color(MUTED));
+                field_row(ui, "位深", |ui| {
                     for d in depths {
                         let label = match d {
                             BitDepth::Auto => "自动",
@@ -771,8 +797,7 @@ impl App {
         } else {
             effective
         };
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("采样率").size(9.5).color(MUTED));
+        field_row(ui, "采样率", |ui| {
             // 「自动」永远在第一个位置，不按状态显示/隐藏——
             // 藏起来的话，点完它自己消失，看起来就像 bug（AC-3 上踩过）。
             if seg_button(ui, "自动", auto_on) {
@@ -805,8 +830,7 @@ impl App {
 /// 这类信息比一个数字有用得多。
 pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
     let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new("码率").size(9.5).color(MUTED));
+    field_row(ui, "码率", |ui| {
         for &v in fc_core::bitrate_choices(id) {
             let on = *val == v;
             if seg_button(ui, &format!("{v}"), on) {
@@ -816,7 +840,7 @@ pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
         }
     });
     if let Some(note) = fc_core::by_id(id).and_then(fc_core::knob_note) {
-        para(ui, note, 8.5, DIM);
+        hint_below(ui, note, DIM);
     }
     changed
 }

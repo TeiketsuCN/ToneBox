@@ -958,7 +958,13 @@ impl eframe::App for App {
         }
 
         // 背景画在最底层
-        self.bg.paint_mode(ctx, self.cfg.bg_mode, self.cfg.dim);
+        self.bg.paint_mode(
+            ctx,
+            self.cfg.bg_mode,
+            self.cfg.dim,
+            self.cfg.bg_color,
+            self.cfg.bg_gradient,
+        );
 
         // 最大化时系统会把窗口撑到工作区外 8px，UI 这边补回来
         #[cfg(windows)]
@@ -990,7 +996,8 @@ impl eframe::App for App {
         // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。
         // 设置页动画期间主界面要画在下面（不然滑动会露出壁纸的"闪屏"）；
         // 动画快结束时（t>=0.9，设置页已经盖满）再隐起来，切换点上没有可见变化
-        let main_visible = !self.settings_open || self.settings_t < 0.9;
+        // 设置页是整页切换，不做滑动动画——之前那套"滑入滑出"就是闪的来源
+        let main_visible = !self.settings_open;
         let mut do_start = false;
 
         if main_visible {
@@ -1179,16 +1186,11 @@ impl eframe::App for App {
         }
 
         // 设置覆盖层（最后画，盖住一切）
-        animating |= approach(
-            &mut self.settings_t,
-            if self.settings_open { 1.0 } else { 0.0 },
-            self.dt,
-            16.0,
-        );
+        self.settings_t = if self.settings_open { 1.0 } else { 0.0 };
         if self.wiki_open {
             self.wiki_page(ctx);
         }
-        if self.settings_t > 0.001 {
+        if self.settings_open {
             self.settings_panel(ctx);
         }
         // 通知面板最后画：它在铃铛下面，得盖住内容
