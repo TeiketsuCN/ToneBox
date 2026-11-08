@@ -283,7 +283,10 @@ pub fn quality_warnings(
     // 采样率方向：升采样只在用户显式选了更高档时提醒（Dolby 自动上 48k 是规范，不吓人）；
     // 降采样只要实际输出更低就提醒——这是真的在丢高频。DSD 的采样率是字节率，不参与比较。
     if !src_dsd {
-        if let (Some(out_rate), true) = (output_rate(spec, o), src.sample_rate > 0) {
+        // 没有采样率旋钮的编码器也可能是锁死的（Opus 48k / ATRAC 44.1k），
+        // 提示要按它实际会输出的采样率算，但不能因此给 ffmpeg 加 -ar。
+        let out_rate = output_rate(spec, o).or_else(|| fixed_rate(spec.id));
+        if let (Some(out_rate), true) = (out_rate, src.sample_rate > 0) {
             let can_pick_rate = !rate_choices(spec.id).is_empty();
             if out_rate > src.sample_rate && can_pick_rate && o.sample_rate.is_some() {
                 out.push(QualityWarning {
@@ -596,9 +599,7 @@ pub fn fixed_rate(id: &str) -> Option<u32> {
 
 pub fn output_rate(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
     if rate_choices(spec.id).is_empty() {
-        // 没有旋钮不代表不做重采样：Opus 锁 48k、ATRAC 锁 44.1k，
-        // 源不是这个采样率的时候确实会被重采样，提示里必须算进去。
-        return fixed_rate(spec.id);
+        return None;
     }
     match o.sample_rate {
         Some(r) => Some(snap_rate(spec.id, r)),
