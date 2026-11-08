@@ -258,11 +258,15 @@ fn reg_wallpaper() -> Option<PathBuf> {
 }
 
 /// 渐变壁纸的几套配色。都压得比较暗，保证字看得清。
-pub const GRADIENTS: [(&str, Color32, Color32); 4] = [
+pub const GRADIENTS: [(&str, Color32, Color32); 8] = [
     ("极光", Color32::from_rgb(10, 18, 32), Color32::from_rgb(26, 92, 88)),
     ("暮色", Color32::from_rgb(22, 12, 32), Color32::from_rgb(86, 38, 52)),
     ("青瓷", Color32::from_rgb(10, 24, 22), Color32::from_rgb(20, 58, 64)),
     ("石墨", Color32::from_rgb(16, 16, 20), Color32::from_rgb(44, 44, 54)),
+    ("深海", Color32::from_rgb(8, 14, 30), Color32::from_rgb(16, 46, 74)),
+    ("紫罗兰", Color32::from_rgb(22, 14, 36), Color32::from_rgb(64, 40, 84)),
+    ("落日", Color32::from_rgb(30, 14, 18), Color32::from_rgb(92, 52, 40)),
+    ("森林", Color32::from_rgb(10, 22, 16), Color32::from_rgb(28, 58, 36)),
 ];
 
 pub fn gradient_colors(i: u8) -> (Color32, Color32) {

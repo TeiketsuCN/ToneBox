@@ -418,7 +418,15 @@ impl App {
             .unwrap_or_default();
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
-        cc.egui_ctx.set_zoom_factor(BASE_ZOOM * cfg.ui_scale);
+        cc.egui_ctx.set_zoom_factor(BASE_ZOOM);
+        // 开局按配置里的窗口尺寸对齐一次（窗口是固定尺寸，只能靠命令改）
+        {
+            let (w, h) = cfg.window.size_px();
+            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                w / BASE_ZOOM,
+                h / BASE_ZOOM,
+            )));
+        }
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
         let cached_lib: Vec<LibEntry> = cfg
             .library_cache
@@ -1076,7 +1084,7 @@ impl eframe::App for App {
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
         #[cfg(windows)]
-        frame::set_ui_scale(BASE_ZOOM * self.cfg.ui_scale);
+        frame::set_ui_scale(BASE_ZOOM);
         self.poll();
         self.poll_analysis();
 
@@ -1753,6 +1761,8 @@ fn main() -> eframe::Result<()> {
         })
     };
 
+    // 启动时按配置里的窗口尺寸开窗（设置页里改了就立刻改窗口）
+    let (win_w, win_h) = settings::Settings::load().window.size_px();
     let mut viewport = egui::ViewportBuilder::default()
             .with_inner_size([1562.0 * BASE_ZOOM, 700.0 * BASE_ZOOM])
             .with_min_inner_size([1330.0 * BASE_ZOOM, 600.0 * BASE_ZOOM])

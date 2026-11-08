@@ -14,17 +14,48 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// 界面缩放档位。只影响显示，不影响转换结果。
-pub const SCALES: [f32; 4] = [0.9, 1.0, 1.1, 1.2];
 
 fn default_bg_color() -> [u8; 3] {
     [20, 22, 30]
 }
 
-fn default_ui_scale() -> f32 {
-    1.0
+/// 窗口大小。固定尺寸，切换时直接改窗口，不做界面缩放，
+/// 这样布局永远按设计宽度排，不会拉歪。
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum WindowSize {
+    /// 小（1800×780）—— 1080p 的机器
+    Compact,
+    /// 中（1874×840，默认）
+    #[default]
+    Normal,
+    /// 大（2000×900）—— 2K 屏
+    Large,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+impl WindowSize {
+    pub fn label(self) -> &'static str {
+        match self {
+            WindowSize::Compact => "小",
+            WindowSize::Normal => "中",
+            WindowSize::Large => "大",
+        }
+    }
+    /// 返回 (宽, 高)，单位是物理像素。
+    /// 五列固定宽度合计 1339px；歌曲列表的每一行还要放封面+标题+徽章，
+    /// 低于 1800 就会挤在一起。
+    pub fn size_px(self) -> (f32, f32) {
+        match self {
+            WindowSize::Compact => (1800.0, 780.0),
+            WindowSize::Normal => (1874.0, 840.0),
+            WindowSize::Large => (2000.0, 900.0),
+        }
+    }
+    pub fn all() -> [WindowSize; 3] {
+        [WindowSize::Compact, WindowSize::Normal, WindowSize::Large]
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum BgMode {
     /// 壁纸模糊（默认）
     Wallpaper,
@@ -185,8 +216,9 @@ pub struct Settings {
     pub write_tags: bool,
     /// 界面缩放（1.0 = 100%）。用 egui 的 zoom factor 实现，文字和控件一起放大，
     /// 否则我们那些写死的 `.size(9.5)` 根本不会变。
-    #[serde(default = "default_ui_scale")]
-    pub ui_scale: f32,
+    /// 窗口大小：固定尺寸，靠这个切换（不再做界面缩放）
+    #[serde(default)]
+    pub window: WindowSize,
     /// 音乐库文件夹（绝对路径）。用户自己挑，扫出来的文件不落盘、每次启动可重扫。
     #[serde(default)]
     pub library_dirs: Vec<String>,
@@ -223,7 +255,7 @@ impl Default for Settings {
             meta_cover: String::new(),
             loudness: None,
             write_tags: false,
-            ui_scale: 1.0,
+            window: WindowSize::Large,
             library_dirs: Vec::new(),
             library_files: Vec::new(),
             library_cache: Vec::new(),

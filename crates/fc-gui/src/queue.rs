@@ -107,6 +107,8 @@ impl App {
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let row_w = ui.available_width();
+                            // 窄窗口（小分辨率）时行里放不下徽章，省掉它，别和标题叠在一起
+                            let narrow = row_w < 400.0;
                             let thumb = cover_thumb(ui, cover.as_ref(), 36.0);
                         if encrypted {
                             paint_lock(ui.painter(), thumb);
@@ -121,7 +123,8 @@ impl App {
                                             .map(|q| quality_width(ui.ctx(), q, m.bitrate_kbps))
                                     })
                                     .unwrap_or(0.0);
-                                ui.set_max_width((row_w - 42.0 - 186.0 - q_w).max(100.0));
+                                let reserve = if narrow { 130.0 } else { 186.0 + q_w };
+                                ui.set_max_width((row_w - 42.0 - reserve).max(100.0));
                                 let title = tags.display_title(&name);
                                 ui.add(
                                     egui::Label::new(RichText::new(title).size(12.5).color(TEXT))
@@ -258,11 +261,13 @@ impl App {
                                     }
                                 }
 
-                                // ④ 音质标识（Hi-Res 会呼吸、CD 会转）
-                                if let Some(m) = &info {
-                                    if let Some(q) = quality_of(m) {
-                                        ui.add_space(4.0);
-                                        animating |= quality_badge(ui, q, m.bitrate_kbps);
+                                // ④ 音质标识（Hi-Res 会呼吸、CD 会转）；窄行里不画
+                                if !narrow {
+                                    if let Some(m) = &info {
+                                        if let Some(q) = quality_of(m) {
+                                            ui.add_space(4.0);
+                                            animating |= quality_badge(ui, q, m.bitrate_kbps);
+                                        }
                                     }
                                 }
                                 btn_zone = Some(menu_resp.response.rect.union(del_resp.rect));

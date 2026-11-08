@@ -19,13 +19,17 @@ use crate::output::*;
 use crate::library::*;
 
 /// 纯色背景可选的颜色（都偏暗，保证文字对比）
-pub(crate) const SOLIDS: [[u8; 3]; 6] = [
+pub(crate) const SOLIDS: [[u8; 3]; 10] = [
     [20, 22, 30],
     [16, 18, 20],
     [18, 26, 24],
     [28, 18, 22],
     [20, 20, 34],
     [12, 12, 14],
+    [24, 18, 30],
+    [14, 20, 28],
+    [26, 20, 16],
+    [18, 22, 26],
 ];
 
 impl App {
@@ -333,7 +337,7 @@ impl App {
 
                                 if self.cfg.bg_mode == settings::BgMode::Solid {
                                     ui.add_space(8.0);
-                                    ui.horizontal(|ui| {
+                                    ui.horizontal_wrapped(|ui| {
                                         ui.add_space(64.0);
                                         for c in SOLIDS {
                                             let on = self.cfg.bg_color == c;
@@ -365,7 +369,7 @@ impl App {
                                 }
                                 if self.cfg.bg_mode == settings::BgMode::Gradient {
                                     ui.add_space(8.0);
-                                    ui.horizontal(|ui| {
+                                    ui.horizontal_wrapped(|ui| {
                                         ui.add_space(64.0);
                                         for (i, (name, _, _)) in
                                             crate::bg::GRADIENTS.iter().enumerate()
@@ -412,25 +416,30 @@ impl App {
                                     }
                                 });
 
-                                // 界面缩放：字号是写死在各个控件里的，所以这里用 egui 的
-                                // 全局 zoom（文字 + 控件一起放大），而不是只改字体
+                                // 窗口大小：固定尺寸，切档位直接改窗口，不做界面缩放。
+                                // 缩放会让内容比窗口先变大，五列必然挤坏。
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("界面缩放").size(10.5).color(MUTED));
+                                    ui.label(RichText::new("窗口大小").size(10.5).color(MUTED));
                                     ui.add_space(12.0);
-                                    for s in settings::SCALES {
-                                        let on = (self.cfg.ui_scale - s).abs() < 0.001;
-                                        let label = format!("{}%", (s * 100.0).round() as i32);
-                                        if seg_button(ui, &label, on) {
-                                            self.cfg.ui_scale = s;
-                                            ui.ctx().set_zoom_factor(BASE_ZOOM * s);
+                                    for m in settings::WindowSize::all() {
+                                        let on = self.cfg.window == m;
+                                        if seg_button(ui, m.label(), on) {
+                                            self.cfg.window = m;
+                                            let (w, h) = m.size_px();
+                                            // InnerSize 会再乘一次全局 zoom，先除掉
+                                            ui.ctx().send_viewport_cmd(
+                                                egui::ViewportCommand::InnerSize(
+                                                    egui::vec2(w / BASE_ZOOM, h / BASE_ZOOM),
+                                                ),
+                                            );
                                             changed = true;
                                         }
                                     }
                                 });
                                 ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("放大的是整个界面（文字和控件一起）；窗口小的时候建议 100%")
+                                    RichText::new("窗口固定尺寸：小 1800×780，中 1874×840，大 2000×900")
                                         .size(9.0)
                                         .color(DIM),
                                 );
