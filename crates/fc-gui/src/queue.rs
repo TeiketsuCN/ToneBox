@@ -36,10 +36,7 @@ impl App {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
             if lib_button(ui, "添加文件", true) {
-                if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("音频 / 视频", INPUT_EXTS)
-                    .pick_files()
-                {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     self.add_files(paths);
                 }
             }
@@ -325,18 +322,18 @@ impl App {
                 let pad = ((avail - 190.0) * 0.5).max(10.0);
                 ui.add_space(pad);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("把音频 / 视频文件拖到这里").size(15.0).color(TEXT));
+                    ui.label(RichText::new("把你认为有音乐的文件拖进来").size(15.0).color(TEXT));
                     ui.add_space(5.0);
                     ui.label(
                         RichText::new(
-                            "可以一次拖多个 · MP3 / FLAC / WAV / M4A / OGG / Opus / ATRAC",
+                            "可以一次拖多个 · 不限后缀，按文件内容识别",
                         )
                         .size(10.5)
                         .color(MUTED),
                     );
                     ui.add_space(3.0);
                     ui.label(
-                        RichText::new("MKV / MP4 / MOV / AVI / WEBM… 也行：只提取第一条音轨")
+                        RichText::new("视频只取第一条音轨；认不出来的会告诉你为什么")
                             .size(9.5)
                             .color(DIM),
                     );
@@ -352,10 +349,7 @@ impl App {
                 });
             });
         if do_pick {
-            if let Some(paths) = rfd::FileDialog::new()
-                .add_filter("音频 / 视频", INPUT_EXTS)
-                .pick_files()
-            {
+            if let Some(paths) = rfd::FileDialog::new().pick_files() {
                 self.add_files(paths);
             }
         }
