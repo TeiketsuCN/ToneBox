@@ -208,20 +208,22 @@ impl App {
             egui::Sense::click_and_drag(),
         );
         let p = ui.painter();
-        p.rect_filled(wrect, Rounding::same(8.0), tint(Color32::WHITE, 6));
+        // 波形左右各收 12px，不顶到播放栏边缘
+        let wave_rect = wrect.shrink2(egui::vec2(12.0, 0.0));
+        p.rect_filled(wave_rect, Rounding::same(8.0), tint(Color32::WHITE, 6));
         let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
         if let Some(chans) = wave {
             let lanes = chans.len().max(1);
             let lane_h = (wave_h - 6.0) / lanes as f32;
             for (ci, data) in chans.iter().enumerate() {
-                let cy = wrect.top() + 3.0 + lane_h * (ci as f32 + 0.5);
+                let cy = wave_rect.top() + 3.0 + lane_h * (ci as f32 + 0.5);
                 let half = (lane_h * 0.42).max(2.0);
                 let n = data.len().max(1);
                 for (i, (mn, mx)) in data.iter().enumerate() {
-                    let x = wrect.left() + wrect.width() * (i as f32 + 0.5) / n as f32;
+                    let x = wave_rect.left() + wave_rect.width() * (i as f32 + 0.5) / n as f32;
                     let y0 = cy - mx.clamp(-1.0, 1.0) * half;
                     let y1 = cy - mn.clamp(-1.0, 1.0) * half;
-                    let played = x <= wrect.left() + wrect.width() * frac;
+                    let played = x <= wave_rect.left() + wave_rect.width() * frac;
                     let col = if played { accent() } else { tint(Color32::WHITE, 90) };
                     p.line_segment(
                         [egui::pos2(x, y0), egui::pos2(x, y1.max(y0 + 1.0))],
@@ -229,14 +231,14 @@ impl App {
                     );
                 }
             }
-            let px = wrect.left() + wrect.width() * frac;
+            let px = wave_rect.left() + wave_rect.width() * frac;
             p.line_segment(
-                [egui::pos2(px, wrect.top() + 2.0), egui::pos2(px, wrect.bottom() - 2.0)],
+                [egui::pos2(px, wave_rect.top() + 2.0), egui::pos2(px, wave_rect.bottom() - 2.0)],
                 Stroke::new(1.4, Color32::WHITE),
             );
         } else {
             p.text(
-                wrect.center(),
+                wave_rect.center(),
                 Align2::CENTER_CENTER,
                 if display.map(|i| self.items[i].encrypted.is_some()).unwrap_or(false) {
                     "加密文件：只识别，不解码也不播放"
@@ -275,7 +277,7 @@ impl App {
         } else if has_player && (wresp.clicked() || wresp.dragged()) {
             if let Some(pp) = wresp.interact_pointer_pos() {
                 seek = Some(
-                    ((pp.x - wrect.left()) / wrect.width()).clamp(0.0, 1.0) as f64 * dur,
+                    ((pp.x - wave_rect.left()) / wave_rect.width()).clamp(0.0, 1.0) as f64 * dur,
                 );
             }
         }
@@ -349,10 +351,12 @@ impl App {
             }
             let p = ui.painter();
             let hc = hrect.center();
-            let hcol = tint(
-                Color32::WHITE,
-                if hresp.hovered() || hresp.dragged() { 150 } else { 70 },
-            );
+            // 右侧拉伸把手常亮（强调色），不藏起来
+            let hcol = if hresp.hovered() || hresp.dragged() {
+                accent()
+            } else {
+                tint(accent(), 190)
+            };
             p.line_segment(
                 [
                     egui::pos2(hc.x - 4.0, hc.y - 4.0),

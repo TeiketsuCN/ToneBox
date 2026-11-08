@@ -1521,6 +1521,12 @@ impl eframe::App for App {
                 self.bar_pos = Some((bx, by));
             }
             self.bar_draw_pos = (bx, by);
+            // 收窄后背景全透明，不再压一层深色
+            let bar_fill = if bar_w < BAR_W - 1.0 {
+                Color32::TRANSPARENT
+            } else {
+                tint(BG, 150)
+            };
             egui::Area::new(egui::Id::new("player_float"))
                 .order(egui::Order::Middle)
                 .fixed_pos(egui::pos2(bx, by))
@@ -1528,7 +1534,7 @@ impl eframe::App for App {
                     ui.set_width(bar_w);
                     egui::Frame::none()
                         // 半透明玻璃（列表已经在上面收住，不会有文字透过来）
-                        .fill(tint(BG, 150))
+                        .fill(bar_fill)
                         .rounding(Rounding::same(14.0))
                         // 悬浮：底部一圈柔和阴影，和下面的面板分开
                         .shadow(egui::epaint::Shadow {

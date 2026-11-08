@@ -474,31 +474,14 @@ impl App {
                 egui::pos2(x, y - 7.5),
                 egui::vec2(w, 15.0),
             );
-            if label == "英伟达" {
-                // 绿框白字：只描边，不铺色
-                p.rect_filled(pill, Rounding::same(4.0), tint(C_NVIDIA, 10));
-                p.rect_stroke(
-                    pill,
-                    Rounding::same(4.0),
-                    Stroke::new(1.1, C_NVIDIA),
-                );
-                p.text(
-                    pill.center(),
-                    Align2::CENTER_CENTER,
-                    &label,
-                    FontId::proportional(8.5),
-                    Color32::WHITE,
-                );
-            } else {
-                p.rect_filled(pill, Rounding::same(4.0), tint(col, 40));
-                p.text(
-                    pill.center(),
-                    Align2::CENTER_CENTER,
-                    &label,
-                    FontId::proportional(8.5),
-                    blend(col, Color32::WHITE, 0.45),
-                );
-            }
+            p.rect_filled(pill, Rounding::same(4.0), tint(col, 40));
+            p.text(
+                pill.center(),
+                Align2::CENTER_CENTER,
+                &label,
+                FontId::proportional(8.5),
+                blend(col, Color32::WHITE, 0.45),
+            );
             x += w + 6.0;
         }
 
