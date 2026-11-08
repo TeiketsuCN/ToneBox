@@ -93,13 +93,12 @@ impl App {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("引擎和设备").size(14.0).color(TEXT).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if tiny_text_button(ui, "重新检测") {
-                            self.devices_loaded = false;
-                            self.audio_devices.clear();
-                            self.devices_error = None;
-                        }
-                    });
+                    ui.add_space(12.0);
+                    if tiny_text_button(ui, "重新检测") {
+                        self.devices_loaded = false;
+                        self.audio_devices.clear();
+                        self.devices_error = None;
+                    }
                 });
                 ui.add_space(4.0);
 
@@ -221,20 +220,25 @@ impl App {
                             .strong(),
                     );
                     ui.add_space(6.0);
+                    ui.label(RichText::new(state).size(8.5).color(col));
+                    ui.add_space(8.0);
                     ui.label(RichText::new(prof.role).size(8.5).color(DIM));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(state).size(8.5).color(col));
-                    });
                 });
             }
             ui.add_space(3.0);
             ui.horizontal(|ui| {
                 ui.add_space(28.0);
-                para(
-                    ui,
-                    "实际编解码（SBC / AAC / aptX / LDAC）由耳机和驱动协商，Windows 不公开；这里报的是蓝牙协议。",
-                    8.0,
-                    DIM,
+                ui.allocate_ui_with_layout(
+                    egui::vec2(760.0, 0.0),
+                    Layout::top_down(Align::LEFT),
+                    |ui| {
+                        para(
+                            ui,
+                            "实际编解码（SBC / AAC / aptX / LDAC）由耳机和驱动协商，Windows 不公开；这里报的是蓝牙协议。",
+                            8.0,
+                            DIM,
+                        );
+                    },
                 );
             });
             ui.add_space(6.0);
@@ -269,30 +273,61 @@ impl App {
         }
     }
 
-    /// 引擎子页：播放选项、当前输出、引擎与 HiFi 状态
+    /// 引擎子页：播放选项、当前输出、引擎与输出能力
     fn codec_engine(&mut self, ui: &mut egui::Ui) {
+        // 引擎页内容限宽：说明文字按 780 换行，不横着拉满整个窗口
+        ui.set_max_width(780.0);
         ui.label(RichText::new("播放").size(10.0).color(DIM));
         ui.add_space(6.0);
         let mut rg = self.cfg.replaygain;
-        if transparent_toggle(ui, &mut rg, "播放时应用 ReplayGain（读文件的 gain 标签）") {
+        if transparent_toggle(ui, &mut rg, "播放时应用 ReplayGain（按文件里的响度标签调整）") {
             self.cfg.replaygain = rg;
             self.cfg.save();
         }
-        pose_hint(
-            ui,
-            "只对带 REPLAYGAIN_TRACK_GAIN 标签的文件生效；没有标签就不加不减。",
-        );
-        ui.add_space(6.0);
         let mut ex = self.cfg.exclusive_output;
         if transparent_toggle(ui, &mut ex, "独占输出（WASAPI 直通，绕过系统混音）") {
             self.cfg.exclusive_output = ex;
             self.cfg.save();
         }
-        pose_hint(
-            ui,
-            "独占时按源采样率输出、队列里的 s32 字节直通声卡；音量与 ReplayGain 不生效。\
-             设备被占用会自动退回共享。",
+
+        // ReplayGain 是啥：用大白话讲清楚，不堆术语
+        ui.add_space(6.0);
+        ui.allocate_ui_with_layout(
+            egui::vec2(780.0, 0.0),
+            Layout::top_down(Align::LEFT),
+            |ui| {
+                para(ui, "ReplayGain 是什么？", 9.0, MUTED);
+                para(
+                    ui,
+                    "同一张专辑里，歌和歌的响度经常不一样：有的母带压得响，有的轻。",
+                    8.5,
+                    DIM,
+                );
+                para(
+                    ui,
+                    "ReplayGain 是文件里的一条标签，写着「这首歌该降/升多少 dB，才能和别的歌一样响」。",
+                    8.5,
+                    DIM,
+                );
+                para(
+                    ui,
+                    "打开后，播放时会按标签把音量调平，不改文件本身；没有这条标签的歌不受影响。",
+                    8.5,
+                    DIM,
+                );
+                para(
+                    ui,
+                    "这里读的是单曲增益（REPLAYGAIN_TRACK_GAIN），不是整张专辑一起调的那种。",
+                    8.5,
+                    DIM,
+                );
+                pose_hint(
+                    ui,
+                    "独占输出为了原样把数据送给声卡，不应用 ReplayGain；需要调响度时用共享输出。",
+                );
+            },
         );
+
         if let Some(p) = &self.player {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -323,9 +358,9 @@ impl App {
             });
 
         ui.add_space(14.0);
-        ui.label(RichText::new("HiFi 输出").size(10.0).color(DIM));
+        ui.label(RichText::new("输出能力").size(10.0).color(DIM));
         ui.add_space(6.0);
-        egui::Grid::new("codec_hifi")
+        egui::Grid::new("codec_out_caps")
             .num_columns(2)
             .spacing([14.0, 5.0])
             .show(ui, |ui| {
@@ -335,8 +370,8 @@ impl App {
                     "关（用共享输出）"
                 });
                 row(ui, "采样率", "独占时按源采样率；共享时由 Windows 混音格式决定");
-                row(ui, "整数直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
-                row(ui, "无缝播放", "未做：要先有队列连播（现在是单文件试听）");
+                row(ui, "数据直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
+                row(ui, "连续播放", "未做：要先有队列连播（现在是单文件试听）");
                 row(ui, "DSD", "解成 PCM 播放；DoP/原生 DSD 未做");
                 row(ui, "ASIO", "未支持（需要 ASIO SDK 和驱动）");
             });
@@ -411,9 +446,9 @@ impl App {
         // 第二行：类型 + 厂商/用途角标；格式靠右
         let y = rect.top() + 42.0;
         let mut x = text_x;
-        // NVIDIA 显卡音频直接标 NVIDIA（用户要求不写中文）
+        // NVIDIA 显卡音频：类型保持中文"显示器HDMI音频输出"，右边角标绿框白字「英伟达」
         let kind = if dev.is_nvidia {
-            "NVIDIA"
+            "显示器HDMI音频输出"
         } else {
             dev.kind.label()
         };
@@ -439,14 +474,31 @@ impl App {
                 egui::pos2(x, y - 7.5),
                 egui::vec2(w, 15.0),
             );
-            p.rect_filled(pill, Rounding::same(4.0), tint(col, 40));
-            p.text(
-                pill.center(),
-                Align2::CENTER_CENTER,
-                &label,
-                FontId::proportional(8.5),
-                blend(col, Color32::WHITE, 0.45),
-            );
+            if label == "英伟达" {
+                // 绿框白字：只描边，不铺色
+                p.rect_filled(pill, Rounding::same(4.0), tint(C_NVIDIA, 10));
+                p.rect_stroke(
+                    pill,
+                    Rounding::same(4.0),
+                    Stroke::new(1.1, C_NVIDIA),
+                );
+                p.text(
+                    pill.center(),
+                    Align2::CENTER_CENTER,
+                    &label,
+                    FontId::proportional(8.5),
+                    Color32::WHITE,
+                );
+            } else {
+                p.rect_filled(pill, Rounding::same(4.0), tint(col, 40));
+                p.text(
+                    pill.center(),
+                    Align2::CENTER_CENTER,
+                    &label,
+                    FontId::proportional(8.5),
+                    blend(col, Color32::WHITE, 0.45),
+                );
+            }
             x += w + 6.0;
         }
 
@@ -477,6 +529,9 @@ fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
     }
     if d.is_camera {
         out.push(("摄像头".to_string(), C_CAMERA));
+    }
+    if d.is_nvidia {
+        out.push(("英伟达".to_string(), C_NVIDIA));
     }
     if d.kind == fc_player::devices::Kind::Usb {
         out.push(("独立声卡".to_string(), C_USB));
