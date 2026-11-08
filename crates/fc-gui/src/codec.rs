@@ -251,7 +251,7 @@ impl App {
             // 冲刺动效：数据带沿轨道向右冲，A2DP 在用时速度更快
             let active = g.profiles.iter().any(|p| p.active && p.name == "A2DP");
             let (track, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width() - 4.0, 30.0),
+                egui::vec2((ui.available_width() - 4.0).min(1096.0), 30.0),
                 egui::Sense::hover(),
             );
             paint_sprint(ui.painter(), track, t, C_BT, active);
@@ -377,8 +377,10 @@ impl App {
         selectable: bool,
     ) -> bool {
         let h = 64.0;
+        // 限制行宽：设备名在左、标记在右，别把水印甩到窗口最右边
+        let w = ui.available_width().min(1100.0);
         let (rect, resp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), h),
+            egui::vec2(w, h),
             if selectable {
                 egui::Sense::click()
             } else {
@@ -388,12 +390,32 @@ impl App {
         let p = ui.painter();
         // 透明底：只画图标/文字，不整行铺色
         let color = device_color(dev);
+
+        // 软件当前选中的设备：背景给一个"插头 + 闪电"水印，表示信号从这里出
+        if selectable && selected {
+            let anchor = (rect.left() + 380.0).min(rect.right() - 140.0);
+            let wm = egui::Rect::from_center_size(
+                egui::pos2(anchor + 60.0, rect.center().y),
+                egui::vec2(120.0, 62.0),
+            );
+            paint_plug_bolt(p, wm, accent(), 55);
+        }
+
         let icon = egui::Rect::from_min_size(
             egui::pos2(rect.left() + 8.0, rect.center().y - 22.0),
             egui::vec2(44.0, 44.0),
         );
         let t = ui.input(|i| i.time) as f32;
         paint_device_icon(p, icon, dev, color, t);
+
+        // 系统默认设备：图标底下一个小 USB 插头带线
+        if dev.is_default {
+            let pr = egui::Rect::from_min_size(
+                egui::pos2(rect.left() + 10.0, rect.bottom() - 15.0),
+                egui::vec2(42.0, 12.0),
+            );
+            paint_plug(p, pr, tint(accent(), 210));
+        }
 
         // 选择圆点
         let dot_c = egui::pos2(icon.right() + 16.0, rect.center().y);
@@ -491,7 +513,7 @@ fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
         out.push(("摄像头".to_string(), C_CAMERA));
     }
     if d.kind == fc_player::devices::Kind::Usb {
-        out.push(("独立声卡?".to_string(), C_USB));
+        out.push(("独立声卡".to_string(), C_USB));
     }
     if d.is_bluetooth {
         out.push(("蓝牙".to_string(), C_BT));
@@ -518,23 +540,33 @@ fn paint_device_icon(
     use fc_player::devices::Kind;
     // 底：半透明圆角块，深蓝/金色会更有存在感
     let pulse = if d.kind == Kind::Usb {
-        0.55 + 0.45 * (t * 2.2).sin().abs()
+        0.5 + 0.5 * (t * 2.2).sin().abs()
     } else {
         1.0
     };
-    p.rect_filled(rect, Rounding::same(11.0), tint(color, (26.0 * pulse) as u8));
+    p.rect_filled(rect, Rounding::same(11.0), tint(color, (34.0 * pulse) as u8));
     p.rect_stroke(
         rect,
         Rounding::same(11.0),
-        Stroke::new(1.0, tint(color, (80.0 * pulse) as u8)),
+        Stroke::new(1.2, tint(color, (95.0 * pulse) as u8)),
     );
-    // USB 声卡：外圈呼吸光（"黄金色动态"）
+    // USB 声卡：两圈向外扩散的呼吸光 + 绕图标转的金色小点
     if d.kind == Kind::Usb {
-        p.rect_stroke(
-            rect.expand(2.0 + 3.0 * pulse),
-            Rounding::same(13.0),
-            Stroke::new(1.2, tint(color, (60.0 * pulse) as u8)),
-        );
+        for k in 0..2 {
+            let phase = ((t * 1.1 + k as f32 * 0.5) % 1.0).clamp(0.0, 1.0);
+            let grow = 3.0 + phase * 9.0;
+            p.rect_stroke(
+                rect.expand(grow),
+                Rounding::same(11.0 + grow * 0.35),
+                Stroke::new(1.5, tint(color, ((1.0 - phase) * 75.0) as u8)),
+            );
+        }
+        for i in 0..3 {
+            let a = t * 1.8 + i as f32 * 2.094;
+            let pos = rect.center()
+                + egui::vec2(a.cos(), a.sin()) * (rect.width() * 0.62 + 2.0);
+            p.circle_filled(pos, 1.7, tint(color, 150));
+        }
     }
 
     let c = rect.center();
@@ -664,6 +696,83 @@ fn paint_device_icon(
             p.circle_filled(c, 2.5, color);
         }
     }
+}
+
+/// 小 USB 插头 + 一段线（行底部表示"系统默认"）
+fn paint_plug(p: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let body = egui::Rect::from_min_size(
+        egui::pos2(rect.left(), rect.center().y - 4.5),
+        egui::vec2(12.0, 9.0),
+    );
+    p.rect_stroke(body, Rounding::same(2.0), Stroke::new(1.2, color));
+    // 口里两个触点
+    let y = body.center().y;
+    p.line_segment(
+        [egui::pos2(body.left() + 3.5, y), egui::pos2(body.left() + 5.0, y)],
+        Stroke::new(1.0, color),
+    );
+    p.line_segment(
+        [egui::pos2(body.left() + 7.0, y), egui::pos2(body.left() + 8.5, y)],
+        Stroke::new(1.0, color),
+    );
+    // 线：轻微波浪
+    p.add(egui::Shape::line(
+        vec![
+            egui::pos2(body.right(), y),
+            egui::pos2(body.right() + 4.0, y - 2.2),
+            egui::pos2(body.right() + 8.0, y + 2.2),
+            egui::pos2(body.right() + 12.0, y - 1.0),
+            egui::pos2(rect.right(), y),
+        ],
+        Stroke::new(1.2, color),
+    ));
+}
+
+/// 大号"插头 + 闪电"水印（软件选中的输出设备背景）
+fn paint_plug_bolt(p: &egui::Painter, rect: egui::Rect, color: Color32, alpha: u8) {
+    let body = egui::Rect::from_min_size(
+        egui::pos2(rect.left(), rect.center().y - rect.height() * 0.28),
+        egui::vec2(rect.width() * 0.5, rect.height() * 0.56),
+    );
+    p.rect_stroke(
+        body,
+        Rounding::same(6.0),
+        Stroke::new(2.0, tint(color, alpha)),
+    );
+    // 口里两个触点
+    let y = body.center().y;
+    p.line_segment(
+        [egui::pos2(body.left() + 8.0, y), egui::pos2(body.left() + 12.0, y)],
+        Stroke::new(1.6, tint(color, alpha)),
+    );
+    p.line_segment(
+        [
+            egui::pos2(body.left() + 17.0, y),
+            egui::pos2(body.left() + 21.0, y),
+        ],
+        Stroke::new(1.6, tint(color, alpha)),
+    );
+    // 闪电：插头中间一个 zigzag
+    let c = body.center();
+    p.add(egui::Shape::line(
+        vec![
+            egui::pos2(c.x + 3.0, c.y - 17.0),
+            egui::pos2(c.x - 4.0, c.y - 2.0),
+            egui::pos2(c.x + 1.0, c.y - 2.0),
+            egui::pos2(c.x - 3.0, c.y + 17.0),
+        ],
+        Stroke::new(2.4, tint(color, alpha)),
+    ));
+    // 线：插头右侧拖出去
+    p.add(egui::Shape::line(
+        vec![
+            egui::pos2(body.right(), y),
+            egui::pos2(body.right() + 8.0, y - 5.0),
+            egui::pos2(body.right() + 16.0, y + 5.0),
+            egui::pos2(rect.right(), y),
+        ],
+        Stroke::new(2.0, tint(color, alpha)),
+    ));
 }
 
 /// 协议状态文字 + 颜色
