@@ -231,6 +231,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 24 | ATRAC Advanced Lossless 识别（只解码，按无损处理） | ✅ 完成（`atrac3al` / `atrac3plusal` 的 label 与分析口径） |
 | 25 | 设置入口挪到标题栏 + 设置页玻璃化 + 界面缩放 | ✅ 完成（图钉左边的滑杆图标；`tint(BG,148)`；90~120%） |
 | 26 | 播放栏常驻「队列+详情」两栏、显示封面、点封面看大图 | ✅ 完成（播放栏重做 + `cover_overlay`） |
+| 27 | 左侧分「音乐库 / 输出」两页 + 音乐库（歌曲/专辑/风格/艺术家/库） | ✅ 完成（`Page` / `LibTab` / `scan_library`） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -319,6 +320,14 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
   （`content_w = 可用宽度 - 88`），用 `allocate_ui_with_layout` 把内容区锁宽，剩下的留给音量。
 - **放大看封面要重新抽原图**：队列里的缩略图统一缩到 96×96，直接放大会明显糊。
   点开时后台跑一次 `extract_cover` + 缩放到 1000px，先显示缩略图、到了再替换。
+- **音乐库扫描很慢**：每首歌要起两次 ffprobe（`probe` 拿时长/编码、`read_tags` 拿标签），
+  68 首约 5 秒。所以扫描必须放后台线程，先回传总数（`LibMsg::Count`）进度才有分母，
+  并且顺手 `request_repaint_after(150ms)`，否则界面不动。
+- **列表行不要用 `add_sized` + Label 拼**：`add_sized` 会把文字居中，而且行高会被标签换行撑破。
+  音乐库的行是用 painter 画的（`paint_clipped` + `layout` + `with_clip_rect`），行高固定 42。
+- **输入框的样子不在 `TextEdit` 参数里**：底色是 `visuals.extreme_bg_color`、边框是
+  `widgets.{inactive,hovered,active}.bg_stroke`、圆角是 `widgets.*.rounding`。
+  只在单个控件上改没用，统一在 `App::new` 的 style 里改一次。
 
 ---
 
