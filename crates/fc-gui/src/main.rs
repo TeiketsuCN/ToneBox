@@ -298,6 +298,8 @@ struct App {
     notices_open: bool,
     /// 铃铛这一帧的矩形（通知面板要判断"点外面关闭"时避开它）
     bell_rect: egui::Rect,
+    /// 「删除源文件」已经按住了多少秒（0..3），松手清零
+    delete_hold: f32,
     /// 捐赠收款码（放在程序目录，runtime 读取，改名即可换）
     donate_wechat: Option<egui::TextureHandle>,
     donate_alipay: Option<egui::TextureHandle>,
@@ -456,6 +458,7 @@ impl App {
             notices: Vec::new(),
             notices_open: false,
             bell_rect: egui::Rect::NOTHING,
+            delete_hold: 0.0,
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
@@ -4362,14 +4365,7 @@ impl App {
         {
             changed = true;
         }
-        if ui
-            .radio_value(
-                &mut self.cfg.delete_source,
-                true,
-                RichText::new("删除源文件").size(10.0).color(MUTED),
-            )
-            .changed()
-        {
+        if self.delete_source_row(ui) {
             changed = true;
         }
         if self.cfg.delete_source {
@@ -4611,6 +4607,97 @@ impl App {
             self.cfg.save();
         }
 
+        changed
+    }
+
+    /// 「删除源文件」不是普通单选：必须长按 3 秒才生效。
+    /// 按住时右侧走倒计时、圆点转一圈把进度画出来，松手就取消。
+    fn delete_source_row(&mut self, ui: &mut egui::Ui) -> bool {
+        let dt = self.dt;
+        let selected = self.cfg.delete_source;
+        let mut changed = false;
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 22.0),
+            egui::Sense::click_and_drag(),
+        );
+        let holding = resp.is_pointer_button_down_on() && !selected;
+
+        if holding {
+            self.delete_hold = (self.delete_hold + dt).min(3.0);
+        } else if self.delete_hold > 0.0 {
+            self.delete_hold = 0.0;
+        }
+        if holding && self.delete_hold >= 3.0 {
+            self.cfg.delete_source = true;
+            self.delete_hold = 0.0;
+            changed = true;
+        }
+
+        let p = ui.painter();
+        let c = egui::pos2(rect.left() + 8.0, rect.center().y);
+        let r = 6.0;
+        p.circle_stroke(
+            c,
+            r,
+            Stroke::new(
+                1.2,
+                if selected {
+                    tint(DANGER, 210)
+                } else if holding {
+                    WARN
+                } else {
+                    tint(Color32::WHITE, 70)
+                },
+            ),
+        );
+        if holding {
+            let frac = (self.delete_hold / 3.0).clamp(0.0, 1.0);
+            if frac > 0.01 {
+                let n = ((48.0 * frac) as usize).max(2);
+                let pts: Vec<egui::Pos2> = (0..=n)
+                    .map(|i| {
+                        let a = -std::f32::consts::FRAC_PI_2
+                            + std::f32::consts::TAU * frac * (i as f32 / n as f32);
+                        c + egui::vec2(a.cos(), a.sin()) * (r - 0.2)
+                    })
+                    .collect();
+                p.add(egui::Shape::line(pts, Stroke::new(2.0, WARN)));
+            }
+            // 圆点跟着按住时长长大
+            p.circle_filled(c, r * 0.55 * frac, tint(WARN, 230));
+        } else if selected {
+            p.circle_filled(c, r * 0.55, DANGER);
+        }
+        p.text(
+            egui::pos2(c.x + r + 7.0, c.y),
+            egui::Align2::LEFT_CENTER,
+            "删除源文件",
+            egui::FontId::proportional(10.0),
+            if selected { DANGER } else { MUTED },
+        );
+        let hint = if selected {
+            "已选择".to_string()
+        } else if holding {
+            format!("{:.1}s", (3.0 - self.delete_hold).max(0.0))
+        } else {
+            "长按 3 秒".to_string()
+        };
+        p.text(
+            egui::pos2(rect.right() - 2.0, c.y),
+            egui::Align2::RIGHT_CENTER,
+            hint,
+            egui::FontId::proportional(9.0),
+            if selected {
+                DANGER
+            } else if holding {
+                WARN
+            } else {
+                DIM
+            },
+        );
+        if holding {
+            ui.ctx().request_repaint();
+        }
         changed
     }
 
