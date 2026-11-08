@@ -36,41 +36,56 @@ impl App {
         // 行间距自己控制，别让默认 spacing 把总高度顶出 BAR_H
         ui.spacing_mut().item_spacing.y = 0.0;
 
-        // ── 顶部拖拽条：上下拉伸播放栏，双击复位 ──
-        // 只给"拉高"是有原因的：波形是整个栏里唯一能伸缩的部分，
-        // 封面/走带/进度条的高度都是定死的（见 BAR_CHROME）。
+        // ── 顶部拖拽条：整条播放栏可自由拖动；双击回到默认贴底位置 ──
+        // 高度改由右下角拉伸（波形是唯一能伸缩的部分，见 BAR_CHROME）。
         let (hrect, hresp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 6.0),
+            egui::vec2(ui.available_width(), 10.0),
             egui::Sense::click_and_drag(),
         );
         if hresp.hovered() || hresp.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
         if hresp.dragged() {
-            // 往上拖是变高，所以减掉 dy；drag_delta 是每帧位移
-            self.bar_h = (self.bar_h - hresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
+            let (bx, by) = self.bar_pos.unwrap_or(self.bar_draw_pos);
+            self.bar_pos = Some((
+                bx + hresp.drag_delta().x,
+                by + hresp.drag_delta().y,
+            ));
+        }
+        if hresp.drag_stopped() {
+            if let Some((x, y)) = self.bar_pos {
+                self.cfg.bar_x = x;
+                self.cfg.bar_y = y;
+                self.cfg.save();
+            }
         }
         if hresp.double_clicked() {
+            // 双击复位：位置回默认贴底，高度回默认
+            self.bar_pos = None;
             self.bar_h = BAR_H;
-        }
-        if hresp.drag_stopped() || hresp.double_clicked() {
+            self.cfg.bar_x = -1.0;
+            self.cfg.bar_y = -1.0;
             self.cfg.bar_height = self.bar_h;
             self.cfg.save();
         }
-        // 抓手：中间一小段横线，悬停时亮一点，告诉用户这里能拖
+        // 抓手：中间一小段横线 + 三个点，提示这里能拖
         let gp = ui.painter();
-        let grab = egui::Rect::from_center_size(
-            hrect.center(),
-            egui::vec2(34.0, 2.5),
-        );
+        let grab = egui::Rect::from_center_size(hrect.center(), egui::vec2(44.0, 2.5));
         gp.rect_filled(
             grab,
             Rounding::same(1.5),
             tint(
                 Color32::WHITE,
-                if hresp.hovered() || hresp.dragged() { 110 } else { 55 },
+                if hresp.hovered() || hresp.dragged() { 120 } else { 60 },
             ),
         );
+        for i in -1..=1 {
+            gp.circle_filled(
+                egui::pos2(hrect.center().x + i as f32 * 7.0, hrect.center().y),
+                1.2,
+                tint(Color32::WHITE, 120),
+            );
+        }
 
         let display = self
             .player_for
@@ -297,6 +312,35 @@ impl App {
                 p.set_volume(v);
             }
         }
+        // 右下角：上下拉伸高度（顶部留给自由拖动）
+        let bar_rect = ui.min_rect();
+        let corner = egui::Rect::from_min_size(
+            egui::pos2(bar_rect.right() - 16.0, bar_rect.bottom() - 16.0),
+            egui::vec2(16.0, 16.0),
+        );
+        let cresp = ui.interact(corner, ui.id().with("bar_h_resize"), egui::Sense::drag());
+        if cresp.hovered() || cresp.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        if cresp.dragged() {
+            self.bar_h = (self.bar_h + cresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
+        }
+        if cresp.drag_stopped() {
+            self.cfg.bar_height = self.bar_h;
+            self.cfg.save();
+        }
+        let hot = cresp.hovered() || cresp.dragged();
+        for i in 0..3 {
+            let off = i as f32 * 4.0;
+            ui.painter().line_segment(
+                [
+                    egui::pos2(corner.left() + 4.0 + off, corner.bottom() - 3.0),
+                    egui::pos2(corner.right() - 3.0, corner.top() + 4.0 + off),
+                ],
+                Stroke::new(1.0, tint(Color32::WHITE, if hot { 120 } else { 55 })),
+            );
+        }
+
         if let Some(p) = self.player.as_mut() {
             if toggle {
                 p.toggle();

@@ -293,6 +293,10 @@ pub(crate) struct App {
     accent_now: Color32,
     /// 播放栏当前高度（逻辑点）。顶部拖拽条改它，松手写进配置。
     bar_h: f32,
+    /// 播放栏手动拖到的位置；None = 自动贴底
+    bar_pos: Option<(f32, f32)>,
+    /// 本帧播放栏实际画在哪（拖拽时作为基准）
+    bar_draw_pos: (f32, f32),
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
     blurb_t: f32,
@@ -505,6 +509,12 @@ impl App {
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
             bar_h: cfg.bar_height.clamp(BAR_H_MIN, BAR_H_MAX),
+            bar_pos: if cfg.bar_x >= 0.0 && cfg.bar_y >= 0.0 {
+                Some((cfg.bar_x, cfg.bar_y))
+            } else {
+                None
+            },
+            bar_draw_pos: (0.0, 0.0),
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
             blurb_t: 1.0,
@@ -1451,30 +1461,37 @@ impl eframe::App for App {
                 p.add(egui::Shape::mesh(mesh));
             }
 
-            // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
+            // 悬浮播放栏：不占布局，所有页面都在、宽度一致；可以拖到任意位置。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
-            // 「引擎和设备」是空页面：没在播的时候不摆播放栏（保持空旷），
-            // 真在播/暂停时仍然显示，否则用户切过来就没法暂停了。
-            if self.page != Page::Engine || self.player.is_some() {
             let screen = ctx.screen_rect();
             let bar_h = self.bar_h;
-            // 左右各缩进一点，不贴满两栏（用户要"短一点"）
             let bar_pad = 26.0;
-            let bar_w = if self.page == Page::Convert {
-                // 只盖住歌曲列表这一栏，不伸进详情/输出
-                (screen.width() - LEFT_W - RIGHT_W - OUT_W - TASK_W - inset * 2.0
-                    - bar_pad * 2.0)
-                    .max(200.0)
-            } else {
-                (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0).max(240.0)
-            };
-            let bar_pos = egui::pos2(
+            // 三个大页共用一个宽度：切页时播放栏不跳
+            let bar_w = (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0)
+                .min(1100.0)
+                .max(240.0);
+            let default_pos = egui::pos2(
                 LEFT_W + inset + bar_pad,
                 screen.bottom() - bar_h - BAR_MARGIN - inset,
             );
+            let (mut bx, mut by) = self
+                .bar_pos
+                .unwrap_or((default_pos.x, default_pos.y));
+            bx = bx.clamp(
+                screen.left() + 4.0,
+                (screen.right() - bar_w - 4.0).max(screen.left() + 4.0),
+            );
+            by = by.clamp(
+                TITLEBAR_H + 4.0,
+                (screen.bottom() - bar_h - 4.0).max(TITLEBAR_H + 4.0),
+            );
+            if self.bar_pos.is_some() {
+                self.bar_pos = Some((bx, by));
+            }
+            self.bar_draw_pos = (bx, by);
             egui::Area::new(egui::Id::new("player_float"))
                 .order(egui::Order::Middle)
-                .fixed_pos(bar_pos)
+                .fixed_pos(egui::pos2(bx, by))
                 .show(ctx, |ui| {
                     ui.set_width(bar_w);
                     egui::Frame::none()
@@ -1494,7 +1511,6 @@ impl eframe::App for App {
                             self.player_bar(ui);
                         });
                 });
-            }
         }
         if do_add_task {
             self.add_task();

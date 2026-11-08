@@ -24,6 +24,11 @@ fn default_bar_h() -> f32 {
     164.0
 }
 
+/// 播放栏没有手动拖过时，用负数表示"自动贴底"
+fn default_bar_pos() -> f32 {
+    -1.0
+}
+
 /// 窗口大小。固定尺寸，切换时直接改窗口，不做界面缩放，
 /// 这样布局永远按设计宽度排，不会拉歪。
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
@@ -205,6 +210,11 @@ pub struct Settings {
     /// 播放栏高度（逻辑点，含顶部拖拽条）。用户拖过就记住，下次启动沿用。
     #[serde(default = "default_bar_h")]
     pub bar_height: f32,
+    /// 播放栏左上角位置（逻辑点）。< 0 = 自动贴底。
+    #[serde(default = "default_bar_pos")]
+    pub bar_x: f32,
+    #[serde(default = "default_bar_pos")]
+    pub bar_y: f32,
     /// 播放输出设备（WASAPI 友好名）。空 = 系统默认输出。
     #[serde(default)]
     pub audio_out_device: String,
@@ -273,6 +283,8 @@ impl Default for Settings {
             bg_gradient: 0,
             dim: 96,
             bar_height: default_bar_h(),
+            bar_x: default_bar_pos(),
+            bar_y: default_bar_pos(),
             audio_out_device: String::new(),
             replaygain: false,
             exclusive_output: false,

@@ -63,6 +63,24 @@ impl App {
             }
             self.page = Page::Engine;
         }
+        // 「引擎和设备」的子菜单也放在侧栏，和「无损/有损」那些分组一个风格
+        if self.page == Page::Engine {
+            let n_dev = self
+                .audio_devices
+                .iter()
+                .filter(|d| !d.is_bluetooth)
+                .count();
+            let n_bt = self.audio_devices.iter().filter(|d| d.is_bluetooth).count();
+            for (tab, label, count) in [
+                (codec::CodecTab::Devices, "设备", n_dev),
+                (codec::CodecTab::Bluetooth, "蓝牙", n_bt),
+                (codec::CodecTab::Engine, "引擎", 0),
+            ] {
+                if rail_sub_tab(ui, label, count, self.codec_tab == tab) {
+                    self.codec_tab = tab;
+                }
+            }
+        }
         ui.add_space(10.0);
 
         // 百科固定在最下面（用户要求从「输出格式」标题右边挪下来）：
@@ -601,6 +619,48 @@ fn group_header(ui: &mut egui::Ui, title: &str, count: usize, open: bool) -> boo
         egui::FontId::proportional(8.5),
         DIM,
     );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
+/// 「引擎和设备」的子菜单行：缩进 + 小圆点 + 名称 + 数量
+fn rail_sub_tab(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -> bool {
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
+    let p = ui.painter();
+    if on {
+        p.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(rect.left(), rect.top() + 3.0),
+                egui::pos2(rect.left() + 2.0, rect.bottom() - 3.0),
+            ),
+            Rounding::same(1.0),
+            accent(),
+        );
+    }
+    p.circle_filled(
+        egui::pos2(rect.left() + 14.0, rect.center().y),
+        if on { 2.4 } else { 1.8 },
+        if on { accent() } else { tint(Color32::WHITE, 55) },
+    );
+    p.text(
+        egui::pos2(rect.left() + 24.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(9.5),
+        if on { accent() } else { MUTED },
+    );
+    if count > 0 {
+        p.text(
+            egui::pos2(rect.right() - 2.0, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            count.to_string(),
+            egui::FontId::proportional(8.5),
+            DIM,
+        );
+    }
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }

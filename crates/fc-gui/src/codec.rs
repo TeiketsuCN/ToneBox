@@ -79,6 +79,9 @@ impl App {
             }
         }
 
+        // 这个页有 USB 呼吸光/蓝牙冲刺动效：不靠鼠标事件也要持续跑
+        ui.ctx().request_repaint();
+
         egui::ScrollArea::vertical()
             .id_salt("codec_scroll")
             .auto_shrink([false, false])
@@ -95,22 +98,7 @@ impl App {
                         }
                     });
                 });
-                ui.add_space(8.0);
-
-                // 三个子页：设备 / 蓝牙 / 引擎
-                ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (CodecTab::Devices, "设备"),
-                        (CodecTab::Bluetooth, "蓝牙"),
-                        (CodecTab::Engine, "引擎"),
-                    ] {
-                        if codec_tab(ui, label, self.codec_tab == tab) {
-                            self.codec_tab = tab;
-                        }
-                        ui.add_space(4.0);
-                    }
-                });
-                ui.add_space(10.0);
+                ui.add_space(4.0);
 
                 if let Some(e) = &self.devices_error {
                     para(ui, &format!("设备检测失败：{e}"), 9.0, DANGER);
@@ -283,15 +271,7 @@ impl App {
         ui.label(RichText::new("播放").size(10.0).color(DIM));
         ui.add_space(6.0);
         let mut rg = self.cfg.replaygain;
-        if ui
-            .checkbox(
-                &mut rg,
-                RichText::new("播放时应用 ReplayGain（读文件的 gain 标签）")
-                    .size(10.0)
-                    .color(MUTED),
-            )
-            .changed()
-        {
+        if transparent_toggle(ui, &mut rg, "播放时应用 ReplayGain（读文件的 gain 标签）") {
             self.cfg.replaygain = rg;
             self.cfg.save();
         }
@@ -301,15 +281,7 @@ impl App {
         );
         ui.add_space(6.0);
         let mut ex = self.cfg.exclusive_output;
-        if ui
-            .checkbox(
-                &mut ex,
-                RichText::new("独占输出（WASAPI 直通，绕过系统混音）")
-                    .size(10.0)
-                    .color(MUTED),
-            )
-            .changed()
-        {
+        if transparent_toggle(ui, &mut ex, "独占输出（WASAPI 直通，绕过系统混音）") {
             self.cfg.exclusive_output = ex;
             self.cfg.save();
         }
@@ -391,31 +363,12 @@ impl App {
         // 透明底：只画图标/文字，不整行铺色
         let color = device_color(dev);
 
-        // 软件当前选中的设备：背景给一个"插头 + 闪电"水印，表示信号从这里出
-        if selectable && selected {
-            let anchor = (rect.left() + 380.0).min(rect.right() - 140.0);
-            let wm = egui::Rect::from_center_size(
-                egui::pos2(anchor + 60.0, rect.center().y),
-                egui::vec2(120.0, 62.0),
-            );
-            paint_plug_bolt(p, wm, accent(), 55);
-        }
-
         let icon = egui::Rect::from_min_size(
             egui::pos2(rect.left() + 8.0, rect.center().y - 22.0),
             egui::vec2(44.0, 44.0),
         );
         let t = ui.input(|i| i.time) as f32;
         paint_device_icon(p, icon, dev, color, t);
-
-        // 系统默认设备：图标底下一个小 USB 插头带线
-        if dev.is_default {
-            let pr = egui::Rect::from_min_size(
-                egui::pos2(rect.left() + 10.0, rect.bottom() - 15.0),
-                egui::vec2(42.0, 12.0),
-            );
-            paint_plug(p, pr, tint(accent(), 210));
-        }
 
         // 选择圆点
         let dot_c = egui::pos2(icon.right() + 16.0, rect.center().y);
@@ -501,7 +454,7 @@ impl App {
 fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
     let mut out = Vec::new();
     if d.is_default {
-        out.push(("默认".to_string(), accent()));
+        out.push(("默认设备".to_string(), accent()));
     }
     if d.is_steam {
         out.push(("Steam".to_string(), C_STEAM));
@@ -550,7 +503,7 @@ fn paint_device_icon(
         Rounding::same(11.0),
         Stroke::new(1.2, tint(color, (95.0 * pulse) as u8)),
     );
-    // USB 声卡：两圈向外扩散的呼吸光 + 绕图标转的金色小点
+    // USB 声卡：两圈向外扩散的呼吸光
     if d.kind == Kind::Usb {
         for k in 0..2 {
             let phase = ((t * 1.1 + k as f32 * 0.5) % 1.0).clamp(0.0, 1.0);
@@ -560,12 +513,6 @@ fn paint_device_icon(
                 Rounding::same(11.0 + grow * 0.35),
                 Stroke::new(1.5, tint(color, ((1.0 - phase) * 75.0) as u8)),
             );
-        }
-        for i in 0..3 {
-            let a = t * 1.8 + i as f32 * 2.094;
-            let pos = rect.center()
-                + egui::vec2(a.cos(), a.sin()) * (rect.width() * 0.62 + 2.0);
-            p.circle_filled(pos, 1.7, tint(color, 150));
         }
     }
 
@@ -698,83 +645,6 @@ fn paint_device_icon(
     }
 }
 
-/// 小 USB 插头 + 一段线（行底部表示"系统默认"）
-fn paint_plug(p: &egui::Painter, rect: egui::Rect, color: Color32) {
-    let body = egui::Rect::from_min_size(
-        egui::pos2(rect.left(), rect.center().y - 4.5),
-        egui::vec2(12.0, 9.0),
-    );
-    p.rect_stroke(body, Rounding::same(2.0), Stroke::new(1.2, color));
-    // 口里两个触点
-    let y = body.center().y;
-    p.line_segment(
-        [egui::pos2(body.left() + 3.5, y), egui::pos2(body.left() + 5.0, y)],
-        Stroke::new(1.0, color),
-    );
-    p.line_segment(
-        [egui::pos2(body.left() + 7.0, y), egui::pos2(body.left() + 8.5, y)],
-        Stroke::new(1.0, color),
-    );
-    // 线：轻微波浪
-    p.add(egui::Shape::line(
-        vec![
-            egui::pos2(body.right(), y),
-            egui::pos2(body.right() + 4.0, y - 2.2),
-            egui::pos2(body.right() + 8.0, y + 2.2),
-            egui::pos2(body.right() + 12.0, y - 1.0),
-            egui::pos2(rect.right(), y),
-        ],
-        Stroke::new(1.2, color),
-    ));
-}
-
-/// 大号"插头 + 闪电"水印（软件选中的输出设备背景）
-fn paint_plug_bolt(p: &egui::Painter, rect: egui::Rect, color: Color32, alpha: u8) {
-    let body = egui::Rect::from_min_size(
-        egui::pos2(rect.left(), rect.center().y - rect.height() * 0.28),
-        egui::vec2(rect.width() * 0.5, rect.height() * 0.56),
-    );
-    p.rect_stroke(
-        body,
-        Rounding::same(6.0),
-        Stroke::new(2.0, tint(color, alpha)),
-    );
-    // 口里两个触点
-    let y = body.center().y;
-    p.line_segment(
-        [egui::pos2(body.left() + 8.0, y), egui::pos2(body.left() + 12.0, y)],
-        Stroke::new(1.6, tint(color, alpha)),
-    );
-    p.line_segment(
-        [
-            egui::pos2(body.left() + 17.0, y),
-            egui::pos2(body.left() + 21.0, y),
-        ],
-        Stroke::new(1.6, tint(color, alpha)),
-    );
-    // 闪电：插头中间一个 zigzag
-    let c = body.center();
-    p.add(egui::Shape::line(
-        vec![
-            egui::pos2(c.x + 3.0, c.y - 17.0),
-            egui::pos2(c.x - 4.0, c.y - 2.0),
-            egui::pos2(c.x + 1.0, c.y - 2.0),
-            egui::pos2(c.x - 3.0, c.y + 17.0),
-        ],
-        Stroke::new(2.4, tint(color, alpha)),
-    ));
-    // 线：插头右侧拖出去
-    p.add(egui::Shape::line(
-        vec![
-            egui::pos2(body.right(), y),
-            egui::pos2(body.right() + 8.0, y - 5.0),
-            egui::pos2(body.right() + 16.0, y + 5.0),
-            egui::pos2(rect.right(), y),
-        ],
-        Stroke::new(2.0, tint(color, alpha)),
-    ));
-}
-
 /// 协议状态文字 + 颜色
 fn profile_state(p: &fc_player::devices::BtProfile) -> (&'static str, Color32) {
     if p.active {
@@ -886,29 +756,54 @@ fn paint_sprint(
     );
 }
 
-/// 子页标签：透明底，选中项用强调色 + 下划线
-fn codec_tab(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
-    let w = 64.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
-    let p = ui.painter();
-    p.text(
-        rect.center() - egui::vec2(0.0, 2.0),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(10.5),
-        if on { accent() } else { MUTED },
+/// 透明勾选行：不铺底，只画一个方框 + 勾，点击整行切换
+fn transparent_toggle(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width().min(760.0), 26.0),
+        egui::Sense::click(),
     );
-    if on {
-        let y = rect.bottom() - 2.0;
+    let p = ui.painter();
+    let box_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 9.0, rect.center().y),
+        egui::vec2(14.0, 14.0),
+    );
+    p.rect_filled(box_rect, Rounding::same(3.0), Color32::TRANSPARENT);
+    p.rect_stroke(
+        box_rect,
+        Rounding::same(3.0),
+        Stroke::new(1.2, if *on { accent() } else { tint(Color32::WHITE, 70) }),
+    );
+    if *on {
         p.line_segment(
-            [egui::pos2(rect.left() + 10.0, y), egui::pos2(rect.right() - 10.0, y)],
-            Stroke::new(2.0, accent()),
+            [
+                egui::pos2(box_rect.left() + 3.0, box_rect.center().y),
+                egui::pos2(box_rect.center().x, box_rect.bottom() - 4.0),
+            ],
+            Stroke::new(1.8, accent()),
+        );
+        p.line_segment(
+            [
+                egui::pos2(box_rect.center().x, box_rect.bottom() - 4.0),
+                egui::pos2(box_rect.right() - 2.5, box_rect.top() + 4.0),
+            ],
+            Stroke::new(1.8, accent()),
         );
     }
+    p.text(
+        egui::pos2(rect.left() + 24.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(9.5),
+        if *on { TEXT } else { MUTED },
+    );
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    resp.clicked()
+    if resp.clicked() {
+        *on = !*on;
+        return true;
+    }
+    false
 }
 
 fn pose_hint(ui: &mut egui::Ui, text: &str) {
