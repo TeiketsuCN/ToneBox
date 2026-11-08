@@ -1816,7 +1816,13 @@ impl App {
                             ui.add_space(5.0);
                             ui.vertical(|ui| {
                                 // 右边要放：状态 + ··· + ×，有音质标识还要再宽一点
-                                let q_w = if info.as_ref().and_then(quality_of).is_some() { 58.0 } else { 0.0 };
+                                let q_w = info
+                                    .as_ref()
+                                    .and_then(|m| {
+                                        quality_of(m)
+                                            .map(|q| quality_width(ui.ctx(), q, m.bitrate_kbps))
+                                    })
+                                    .unwrap_or(0.0);
                                 ui.set_max_width((row_w - 42.0 - 186.0 - q_w).max(100.0));
                                 let title = tags.display_title(&name);
                                 ui.add(
@@ -1950,7 +1956,7 @@ impl App {
                                 if let Some(m) = &info {
                                     if let Some(q) = quality_of(m) {
                                         ui.add_space(4.0);
-                                        animating |= quality_badge(ui, q);
+                                        animating |= quality_badge(ui, q, m.bitrate_kbps);
                                     }
                                 }
                                 btn_zone = Some(menu_resp.response.rect.union(del_resp.rect));
@@ -3568,7 +3574,7 @@ impl App {
                 chip(ui, m.codec_label(), ACCENT);
                 if let Some(q) = quality_of(m) {
                     ui.add_space(6.0);
-                    animating |= quality_badge(ui, q);
+                    animating |= quality_badge(ui, q, m.bitrate_kbps);
                 }
             });
             ui.add_space(10.0);
@@ -4675,7 +4681,9 @@ fn lib_row(
     } else {
         quality_from(e.lossy, e.sample_rate, e.bits, e.bitrate_kbps)
     };
-    let badge_w = q.map(quality_size).unwrap_or(0.0);
+    let badge_w = q
+        .map(|q| quality_width(ui.ctx(), q, e.bitrate_kbps))
+        .unwrap_or(0.0);
     let text_right = rect.right() - 12.0 - badge_w.max(46.0) - 8.0;
     let text_x = cover_rect.right() + 10.0;
     let title_rect = egui::Rect::from_min_max(
@@ -4712,7 +4720,7 @@ fn lib_row(
             egui::vec2(badge_w, 17.0),
         );
         let t = ui.input(|i| i.time);
-        if paint_quality(ui.painter(), r, q, t) {
+        if paint_quality(ui.painter(), r, q, e.bitrate_kbps, t) {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(45));
         }
@@ -5231,14 +5239,35 @@ fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
     quality_from(m.is_lossy(), m.sample_rate, m.bits, m.bitrate_kbps)
 }
 
-fn quality_size(q: Quality) -> f32 {
+/// 徽章上写什么：无损的格式把"无损"写出来，有损的给码率档
+fn quality_label(q: Quality, kbps: u64) -> String {
     match q {
+        Quality::Dsd => "DSD".to_string(),
+        Quality::HiRes => "Hi-Res 无损".to_string(),
+        Quality::Cd => "CD 无损".to_string(),
+        Quality::Hq | Quality::Std | Quality::Lq => {
+            if kbps > 0 {
+                format!("有损 {kbps}k")
+            } else {
+                "有损".to_string()
+            }
+        }
+    }
+}
+
+/// 徽章宽度按实际文字量出来：中英文混排、多两个字"无损"，写死宽度会溢出或者留一大块白
+fn quality_width(ctx: &egui::Context, q: Quality, kbps: u64) -> f32 {
+    let text = quality_label(q, kbps);
+    let w = ctx.fonts(|f| {
+        f.layout_no_wrap(text, egui::FontId::proportional(8.5), Color32::WHITE)
+            .size()
+            .x
+    });
+    match q {
+        // DSD 左边有一段码流点串，CD 左边有个小光盘，都要额外留位
         Quality::Dsd => 48.0,
-        Quality::HiRes => 56.0,
-        Quality::Cd => 38.0,
-        Quality::Hq => 28.0,
-        Quality::Std => 32.0,
-        Quality::Lq => 28.0,
+        Quality::Cd => 25.0 + w,
+        _ => (w + 14.0).max(30.0),
     }
 }
 
@@ -5275,16 +5304,10 @@ fn rounded_band(rect: egui::Rect, radius: f32, y0: f32, y1: f32) -> Vec<egui::Po
 }
 
 /// 在给定矩形里画标识。返回 true = 有动画（调用方负责请求重绘）。
-fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> bool {
+fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbps: u64, t: f64) -> bool {
     let r = Rounding::same(8.5);
-    let label = match q {
-        Quality::Dsd => "DSD",
-        Quality::HiRes => "Hi-Res",
-        Quality::Cd => "CD",
-        Quality::Hq => "HQ",
-        Quality::Std => "STD",
-        Quality::Lq => "LQ",
-    };
+    let label = quality_label(q, kbps);
+    let label = label.as_str();
     match q {
         Quality::HiRes => {
             // 金属金：上深下亮的渐变 + 呼吸外发光 + 斜向扫光
@@ -5405,13 +5428,11 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> boo
 }
 
 /// 布局里放一个标识（会占位），返回 true 表示这一帧有动画
-fn quality_badge(ui: &mut egui::Ui, q: Quality) -> bool {
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(quality_size(q), 17.0),
-        egui::Sense::hover(),
-    );
+fn quality_badge(ui: &mut egui::Ui, q: Quality, kbps: u64) -> bool {
+    let w = quality_width(ui.ctx(), q, kbps);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 17.0), egui::Sense::hover());
     let t = ui.input(|i| i.time);
-    let anim = paint_quality(ui.painter(), rect, q, t);
+    let anim = paint_quality(ui.painter(), rect, q, kbps, t);
     if anim {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(45));

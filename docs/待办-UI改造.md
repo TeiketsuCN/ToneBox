@@ -238,6 +238,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 31 | 显示名 ToneBox；配置改用 `···` 菜单；队列数值音质 + Hi-Res/CD/HQ 标识；库扫描结果持久化 | ✅ 完成（`quality_badge` / `library_cache`） |
 | 32 | 基准缩放 1.2（旧 120% 变新 100%）；删 DRM 行；Hi-Res 重做 + DSD；用户预设；库行标识；频谱视图 | ✅ 完成（`BASE_ZOOM` / `quality_from` / `UserPreset` / `fc_analyze::spectrum`） |
 | 33 | HDR 模式；压缩等级/暗化换成自绘滑杆；Hi-Res 多出来的小方块 | ✅ 完成（`accent_glow` / `bar_slider`） |
+| 34 | 徽章写明无损/有损：Hi-Res 无损 / CD 无损 / 有损 320k；宽度按文字量算 | ✅ 完成（`quality_label` / `quality_width`） |
 
 ### 已踩的坑（写下来省得重踩）
 
