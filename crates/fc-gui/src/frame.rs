@@ -65,6 +65,15 @@ const TITLE_BUTTONS: f32 = 5.0;
 /// main.rs 里标题栏右边距，命中区要把它一起算进去
 const TITLEBAR_RIGHT_MARGIN: f32 = 10.0;
 
+/// 左上角铃铛的左边界（逻辑坐标），界面每帧同步一次；0 = 还没有铃铛。
+/// 铃铛落在标题栏里，不单独标出来的话点击会被当成"拖窗口"。
+static BELL_LEFT: AtomicU32 = AtomicU32::new(0);
+const BELL_SIZE: f32 = 26.0;
+
+pub fn set_bell_left(x: f32) {
+    BELL_LEFT.store(x.to_bits(), Ordering::Relaxed);
+}
+
 static OLD_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 unsafe extern "system" fn subclass_proc(
@@ -150,6 +159,17 @@ unsafe extern "system" fn subclass_proc(
         let title_h = (TITLEBAR_H * scale) as i32;
         let buttons_w = ((TITLEBAR_H + TITLEBAR_RIGHT_MARGIN) * scale * TITLE_BUTTONS) as i32;
         if pt.y < title_h && pt.x < rc.right - buttons_w {
+            // 左上角铃铛是 egui 画的按钮，得让点击落到客户区
+            let bl = f32::from_bits(BELL_LEFT.load(Ordering::Relaxed));
+            if bl > 0.0 {
+                let x0 = (bl * scale) as i32;
+                let x1 = ((bl + BELL_SIZE) * scale) as i32;
+                let y0 = (((TITLEBAR_H - BELL_SIZE) * 0.5) * scale) as i32;
+                let y1 = (((TITLEBAR_H + BELL_SIZE) * 0.5) * scale) as i32;
+                if pt.x >= x0 && pt.x < x1 && pt.y >= y0 && pt.y < y1 {
+                    return HTCLIENT;
+                }
+            }
             return HTCAPTION;
         }
 

@@ -233,6 +233,15 @@ enum Job {
     },
 }
 
+/// 一条完成/失败通知（标题栏铃铛里的那条）
+#[derive(Clone)]
+struct Notice {
+    ok: bool,
+    title: String,
+    body: String,
+    read: bool,
+}
+
 struct App {
     tools: Option<Tools>,
     items: Vec<Item>,
@@ -284,6 +293,11 @@ struct App {
     settings_t: f32,
     /// 元数据区是否展开（默认收起，第四列放不下那么多控件）
     meta_open: bool,
+    /// 完成/失败通知；标题栏铃铛上的红点看的是未读数量
+    notices: Vec<Notice>,
+    notices_open: bool,
+    /// 铃铛这一帧的矩形（通知面板要判断"点外面关闭"时避开它）
+    bell_rect: egui::Rect,
     /// 捐赠收款码（放在程序目录，runtime 读取，改名即可换）
     donate_wechat: Option<egui::TextureHandle>,
     donate_alipay: Option<egui::TextureHandle>,
@@ -439,6 +453,9 @@ impl App {
             settings_open: false,
             settings_t: 0.0,
             meta_open: false,
+            notices: Vec::new(),
+            notices_open: false,
+            bell_rect: egui::Rect::NOTHING,
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
@@ -775,6 +792,15 @@ impl App {
                     // 转换成功且用户选了「删除源文件」——在标记成功之后删，
                     // 删失败也不影响结果（比如源文件正被别的程序占用）
                     let src = self.items.get(i).map(|it| it.path.clone());
+                    let name = self
+                        .items
+                        .get(i)
+                        .map(|it| it.tags.display_title(&it.name()))
+                        .unwrap_or_default();
+                    let out_name = path
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
                     if let Some(it) = self.items.get_mut(i) {
                         it.state = State::Done(path, size);
                     }
@@ -785,16 +811,172 @@ impl App {
                         }
                     }
                     self.batch_done += 1;
+                    self.push_notice(
+                        true,
+                        "转换完成",
+                        format!("{name} → {out_name} · {}", fmt_size(size)),
+                    );
                 }
                 Msg::Failed(i, e) => {
+                    let name = self
+                        .items
+                        .get(i)
+                        .map(|it| it.tags.display_title(&it.name()))
+                        .unwrap_or_default();
                     if let Some(it) = self.items.get_mut(i) {
-                        it.state = State::Failed(e);
+                        it.state = State::Failed(e.clone());
                     }
                     self.batch_done += 1;
+                    self.push_notice(false, "转换失败", format!("{name}\n{e}"));
                 }
                 Msg::Finished => {
                     self.running = false;
                     self.rx = None;
+                    // 一批多个文件时再补一条汇总，单文件就别重复了
+                    if self.batch_total > 1 {
+                        let fail = self
+                            .items
+                            .iter()
+                            .filter(|i| matches!(i.state, State::Failed(_)))
+                            .count();
+                        let ok = self.batch_total.saturating_sub(fail);
+                        self.push_notice(
+                            fail == 0,
+                            "本批转换结束",
+                            format!("{ok} 个成功，{fail} 个失败"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// 往铃铛里塞一条通知（最多留 50 条）
+    fn push_notice(&mut self, ok: bool, title: &str, body: String) {
+        self.notices.push(Notice {
+            ok,
+            title: title.to_string(),
+            body,
+            read: false,
+        });
+        if self.notices.len() > 50 {
+            self.notices.remove(0);
+        }
+    }
+
+    fn unread_notices(&self) -> usize {
+        self.notices.iter().filter(|n| !n.read).count()
+    }
+
+    /// 标题栏铃铛下面拉出来的通知面板
+    fn notices_overlay(&mut self, ctx: &egui::Context) {
+        if !self.notices_open {
+            return;
+        }
+        let screen = ctx.screen_rect();
+        let w = 330.0f32;
+        let x = self
+            .bell_rect
+            .left()
+            .clamp(screen.left() + 12.0, screen.right() - w - 12.0);
+        let mut panel_rect = egui::Rect::NOTHING;
+        egui::Area::new(egui::Id::new("notices_area"))
+            .fixed_pos(egui::pos2(x, screen.top() + TITLEBAR_H + 6.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                let inner = egui::Frame::none()
+                    .fill(tint(BG, 248))
+                    .stroke(Stroke::new(1.0, tint(Color32::WHITE, 26)))
+                    .rounding(Rounding::same(12.0))
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 6.0),
+                        blur: 20.0,
+                        spread: 0.0,
+                        color: Color32::from_black_alpha(120),
+                    })
+                    .inner_margin(egui::Margin::symmetric(14.0, 12.0))
+                    .show(ui, |ui| {
+                        ui.set_width(w - 28.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("通知").size(12.0).color(TEXT).strong());
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if !self.notices.is_empty()
+                                    && ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new("清空").size(9.0).color(DIM),
+                                            )
+                                            .fill(Color32::TRANSPARENT)
+                                            .stroke(Stroke::NONE),
+                                        )
+                                        .clicked()
+                                {
+                                    self.notices.clear();
+                                }
+                            });
+                        });
+                        ui.add_space(6.0);
+                        if self.notices.is_empty() {
+                            para(
+                                ui,
+                                "还没有通知。转换完成或失败都会在这里记一条。",
+                                9.5,
+                                DIM,
+                            );
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .max_height(320.0)
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    // 新的在上面
+                                    for (i, n) in self.notices.iter().enumerate().rev() {
+                                        if i + 1 < self.notices.len() {
+                                            ui.add_space(3.0);
+                                            let (r, _) = ui.allocate_exact_size(
+                                                egui::vec2(ui.available_width(), 1.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            ui.painter().rect_filled(
+                                                r,
+                                                Rounding::ZERO,
+                                                tint(Color32::WHITE, 14),
+                                            );
+                                            ui.add_space(5.0);
+                                        }
+                                        ui.horizontal(|ui| {
+                                            let (dot, _) = ui.allocate_exact_size(
+                                                egui::vec2(9.0, 15.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            ui.painter().circle_filled(
+                                                dot.center(),
+                                                3.0,
+                                                if n.ok { ACCENT } else { DANGER },
+                                            );
+                                            ui.vertical(|ui| {
+                                                ui.label(
+                                                    RichText::new(&n.title)
+                                                        .size(10.5)
+                                                        .color(if n.ok { ACCENT } else { DANGER }),
+                                                );
+                                                ui.add_space(2.0);
+                                                para(ui, &n.body, 9.0, MUTED);
+                                            });
+                                        });
+                                    }
+                                });
+                        }
+                    });
+                panel_rect = inner.response.rect;
+            });
+
+        // Esc / 点面板外面关掉（铃铛自己不算"外面"，不然点它会把面板又开又关）
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.notices_open = false;
+        } else if ctx.input(|i| i.pointer.any_click()) {
+            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if !panel_rect.contains(pos) && !self.bell_rect.contains(pos) {
+                    self.notices_open = false;
                 }
             }
         }
@@ -927,20 +1109,12 @@ impl eframe::App for App {
                                     .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
                             )
                             .show_inside(ui, |ui| {
-                                if self.running {
-                                    ui.add(
-                                        egui::ProgressBar::new(self.overall())
-                                            .desired_width(ui.available_width())
-                                            .fill(ACCENT),
-                                    );
-                                    ui.add_space(6.0);
-                                }
                                 let can = !self.running
                                     && self.tools.is_some()
                                     && self.items.iter().any(|i| {
                                         i.info.is_some() && matches!(i.state, State::Pending)
                                     });
-                                if start_button(ui, can, self.running) {
+                                if start_button(ui, can, self.running, self.overall()) {
                                     do_start = true;
                                 }
                             });
@@ -1048,6 +1222,8 @@ impl eframe::App for App {
         if self.settings_t > 0.001 {
             self.settings_panel(ctx);
         }
+        // 通知面板最后画：它在铃铛下面，得盖住内容
+        self.notices_overlay(ctx);
 
         // 扫描 / 封面还在后台跑时，界面得自己醒过来取结果，
         // 否则没鼠标事件就一直停在占位图上
@@ -1124,29 +1300,71 @@ fn unique_output_in(input: &Path, ext: &str, cfg: &settings::Settings) -> PathBu
     cand
 }
 
-/// 开始转换按钮（放在第四列最下面——它是这一列的终点）
-fn start_button(ui: &mut egui::Ui, can: bool, running: bool) -> bool {
-    if can {
-        let r = egui::Rect::from_min_size(
-            ui.cursor().min,
-            egui::vec2(ui.available_width(), 36.0),
+/// 开始转换按钮（放在第四列最下面——它是这一列的终点）。
+///
+/// 转换时它自己就是进度条：左边写"转换中 xx%"，右边一条细轨走进度，
+/// 界面上不再另外放一条总进度。
+fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress: f32) -> bool {
+    let sense = if running {
+        egui::Sense::hover()
+    } else {
+        egui::Sense::click()
+    };
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 36.0), sense);
+    let p = ui.painter();
+    let rounding = Rounding::same(10.0);
+
+    if running {
+        p.rect_filled(rect, rounding, tint(ACCENT, 22));
+        p.rect_stroke(rect, rounding, Stroke::new(1.0, tint(ACCENT, 70)));
+        p.text(
+            egui::pos2(rect.left() + 14.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            format!("转换中 {:.0}%", progress.clamp(0.0, 1.0) * 100.0),
+            egui::FontId::proportional(12.0),
+            TEXT,
         );
-        accent_glow(ui.painter(), r, Rounding::same(10.0), 70);
+        let bar_w = (rect.width() * 0.36).clamp(70.0, 120.0);
+        let track = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - 14.0 - bar_w, rect.center().y - 2.5),
+            egui::vec2(bar_w, 5.0),
+        );
+        p.rect_filled(track, Rounding::same(2.5), tint(Color32::WHITE, 26));
+        let mut fill = track;
+        fill.set_width(track.width() * progress.clamp(0.0, 1.0));
+        p.rect_filled(fill, Rounding::same(2.5), ACCENT);
+        return false;
     }
-    let b = egui::Button::new(
-        RichText::new(if running { "转换中…" } else { "开始转换" })
-            .size(13.0)
-            .color(if can {
-                Color32::from_rgb(10, 26, 24)
+
+    if can {
+        accent_glow(p, rect, rounding, 70);
+    }
+    p.rect_filled(
+        rect,
+        rounding,
+        if can {
+            if resp.hovered() {
+                blend(ACCENT, Color32::WHITE, 0.12)
             } else {
-                DIM
-            }),
-    )
-    .fill(if can { ACCENT } else { tint(Color32::WHITE, 10) })
-    .stroke(Stroke::NONE)
-    .rounding(Rounding::same(10.0))
-    .min_size(egui::vec2(ui.available_width(), 36.0));
-    ui.add_enabled(can, b).clicked()
+                ACCENT
+            }
+        } else {
+            tint(Color32::WHITE, 10)
+        },
+    );
+    p.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "开始转换",
+        egui::FontId::proportional(13.0),
+        if can {
+            Color32::from_rgb(10, 26, 24)
+        } else {
+            DIM
+        },
+    );
+    resp.clicked()
 }
 
 fn fmt_duration(s: f64) -> String {
@@ -1220,13 +1438,53 @@ impl App {
                 BG,
             );
         }
+        let name_font = egui::FontId::proportional(13.5);
         ui.painter().text(
             egui::pos2(logo.right() + 10.0, full.center().y),
             egui::Align2::LEFT_CENTER,
             APP_NAME,
-            egui::FontId::proportional(13.5),
+            name_font.clone(),
             TEXT,
         );
+
+        // 铃铛：紧跟在名字右边。它落在原生命中区里，frame.rs 那边要把它标成 HTCLIENT，
+        // 否则点它会被当成拖标题栏。
+        let name_w = ui
+            .painter()
+            .layout_no_wrap(APP_NAME.to_string(), name_font, TEXT)
+            .size()
+            .x;
+        let bell = egui::Rect::from_min_size(
+            egui::pos2(logo.right() + 10.0 + name_w + 10.0, full.center().y - 13.0),
+            egui::vec2(26.0, 26.0),
+        );
+        self.bell_rect = bell;
+        #[cfg(windows)]
+        frame::set_bell_left(bell.left());
+        let bell_resp = ui.interact(bell, ui.id().with("bell"), egui::Sense::click());
+        if bell_resp.hovered() {
+            ui.painter()
+                .circle_filled(bell.center(), 12.0, tint(Color32::WHITE, 16));
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        bell_icon(
+            ui.painter(),
+            bell.shrink(5.0),
+            if self.notices_open { TEXT } else { MUTED },
+        );
+        if self.unread_notices() > 0 {
+            let dot = egui::pos2(bell.right() - 4.0, bell.top() + 4.0);
+            ui.painter().circle_filled(dot, 4.5, tint(DANGER, 55));
+            ui.painter().circle_filled(dot, 3.0, DANGER);
+        }
+        if bell_resp.clicked() {
+            self.notices_open = !self.notices_open;
+            if self.notices_open {
+                for n in &mut self.notices {
+                    n.read = true;
+                }
+            }
+        }
 
         // 右边：图钉 / 最小化 / 最大化 / 关闭
         let mut rect = egui::Rect::from_min_size(
@@ -2048,14 +2306,10 @@ impl App {
                 }
             }
 
-            if self.running {
-                ui.add(
-                    egui::ProgressBar::new(self.overall())
-                        .desired_width((ui.available_width() - 8.0).max(60.0))
-                        .fill(ACCENT),
-                );
-            } else if ui
-                .add(
+            // 总进度只在"开始转换"按钮里面显示，这里不再放第二条
+            if ui
+                .add_enabled(
+                    !self.running,
                     egui::Button::new(RichText::new("清空").size(12.0).color(DIM))
                         .fill(Color32::TRANSPARENT)
                         .stroke(Stroke::NONE)
@@ -3747,36 +4001,7 @@ impl App {
             });
         }
 
-        match &it.state {
-            State::Done(path, size) => {
-                ui.add_space(14.0);
-                card(ui, ACCENT, |ui| {
-                    para(ui, "转换完成", 11.5, ACCENT);
-                    ui.add_space(5.0);
-                    para(
-                        ui,
-                        &format!(
-                            "{}　{}",
-                            path.file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default(),
-                            fmt_size(*size)
-                        ),
-                        9.5,
-                        MUTED,
-                    );
-                });
-            }
-            State::Failed(e) => {
-                ui.add_space(14.0);
-                card(ui, DANGER, |ui| {
-                    para(ui, "转换失败", 11.5, DANGER);
-                    ui.add_space(5.0);
-                    para(ui, e, 9.5, MUTED);
-                });
-            }
-            _ => {}
-        }
+        // 完成/失败不再在详情底部堆卡片：状态在队列行（✓ / ✗），通知进标题栏铃铛
 
         // 选中即分析（结果进缓存，切回来不重跑）
         if self.cfg.auto_analyze
@@ -4622,6 +4847,46 @@ fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, active: boo
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// 标题栏的铃铛。全部用 painter 画，不赌字体里有没有 🔔。
+fn bell_icon(p: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let c = rect.center();
+    let s = rect.width().min(rect.height());
+    // 钟身：上面两个大圆角，下面收窄
+    p.rect_filled(
+        egui::Rect::from_center_size(
+            c + egui::vec2(0.0, 0.02 * s),
+            egui::vec2(0.58 * s, 0.46 * s),
+        ),
+        Rounding {
+            nw: 0.29 * s,
+            ne: 0.29 * s,
+            sw: 0.10 * s,
+            se: 0.10 * s,
+        },
+        color,
+    );
+    // 顶部提手
+    p.rect_filled(
+        egui::Rect::from_center_size(
+            c + egui::vec2(0.0, -0.28 * s),
+            egui::vec2(0.16 * s, 0.10 * s),
+        ),
+        Rounding::same(1.0),
+        color,
+    );
+    // 底沿
+    p.rect_filled(
+        egui::Rect::from_center_size(
+            c + egui::vec2(0.0, 0.20 * s),
+            egui::vec2(0.68 * s, 0.09 * s),
+        ),
+        Rounding::same(0.045 * s),
+        color,
+    );
+    // 铃舌
+    p.circle_filled(c + egui::vec2(0.0, 0.31 * s), 0.075 * s, color);
 }
 
 #[derive(Clone, Copy)]
