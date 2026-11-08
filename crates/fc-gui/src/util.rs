@@ -480,6 +480,11 @@ pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
 /// 波形区域跟着长；高度记在配置里，下次启动还是这个高度。
 pub(crate) const BAR_H: f32 = 164.0;
 
+/// 播放栏宽度：可左右拉伸，最小 760 保证标题/走带/音量不重叠
+pub(crate) const BAR_W: f32 = 1100.0;
+pub(crate) const BAR_W_MIN: f32 = 760.0;
+pub(crate) const BAR_W_MAX: f32 = 1500.0;
+
 /// 能拖到的最小 / 最大高度：再矮波形就没了，再高会把队列全盖住
 pub(crate) const BAR_H_MIN: f32 = 134.0;
 pub(crate) const BAR_H_MAX: f32 = 360.0;

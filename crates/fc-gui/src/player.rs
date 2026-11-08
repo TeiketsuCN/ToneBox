@@ -128,6 +128,7 @@ impl App {
         let mut vol_change: Option<f32> = None;
         let mut open_cover = false;
         let mut open_spec = false;
+        let mut collapse_bar = false;
 
         // ── 上半：封面 + 走带 + 标题 + 音量 ──
         ui.horizontal(|ui| {
@@ -174,6 +175,14 @@ impl App {
             );
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                // 最右边：收起播放栏
+                let cb = egui::Button::new(RichText::new("收起").size(8.5).color(DIM))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(Stroke::NONE)
+                    .min_size(egui::vec2(32.0, 18.0));
+                if ui.add(cb).on_hover_text("收起播放栏，右下角可再拿出来").clicked() {
+                    collapse_bar = true;
+                }
                 let mut v = self
                     .player
                     .as_ref()
@@ -240,12 +249,40 @@ impl App {
                 DIM,
             );
         }
-        if has_player && (wresp.clicked() || wresp.dragged()) {
+        // 波形右边缘 12px：左右拉伸播放栏宽度（拖动时不再当跳转）
+        let edge_x = wrect.right() - 12.0;
+        let hover_edge = wresp
+            .hover_pos()
+            .map(|p| p.x > edge_x)
+            .unwrap_or(false);
+        if hover_edge {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            p.line_segment(
+                [
+                    egui::pos2(wrect.right() - 2.0, wrect.top() + 6.0),
+                    egui::pos2(wrect.right() - 2.0, wrect.bottom() - 6.0),
+                ],
+                Stroke::new(2.0, tint(Color32::WHITE, 110)),
+            );
+        }
+        if wresp.drag_started() {
+            if let Some(pp) = wresp.interact_pointer_pos() {
+                self.bar_w_drag = pp.x > edge_x;
+            }
+        }
+        if self.bar_w_drag && wresp.dragged() {
+            self.bar_w = (self.bar_w + wresp.drag_delta().x).clamp(BAR_W_MIN, BAR_W_MAX);
+        } else if has_player && (wresp.clicked() || wresp.dragged()) {
             if let Some(pp) = wresp.interact_pointer_pos() {
                 seek = Some(
                     ((pp.x - wrect.left()) / wrect.width()).clamp(0.0, 1.0) as f64 * dur,
                 );
             }
+        }
+        if self.bar_w_drag && wresp.drag_stopped() {
+            self.cfg.bar_width = self.bar_w;
+            self.cfg.save();
+            self.bar_w_drag = false;
         }
 
         ui.add_space(6.0);
@@ -292,6 +329,43 @@ impl App {
                 ))
                 .size(9.0)
                 .color(DIM),
+            );
+            // 右下角的小把手：按住左右拖 = 拉宽/收窄播放栏
+            ui.add_space(2.0);
+            let (hrect, hresp) = ui.allocate_exact_size(
+                egui::vec2(18.0, 16.0),
+                egui::Sense::drag(),
+            );
+            if hresp.hovered() || hresp.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+            if hresp.dragged() {
+                self.bar_w =
+                    (self.bar_w + hresp.drag_delta().x).clamp(BAR_W_MIN, BAR_W_MAX);
+            }
+            if hresp.drag_stopped() {
+                self.cfg.bar_width = self.bar_w;
+                self.cfg.save();
+            }
+            let p = ui.painter();
+            let hc = hrect.center();
+            let hcol = tint(
+                Color32::WHITE,
+                if hresp.hovered() || hresp.dragged() { 150 } else { 70 },
+            );
+            p.line_segment(
+                [
+                    egui::pos2(hc.x - 4.0, hc.y - 4.0),
+                    egui::pos2(hc.x - 4.0, hc.y + 4.0),
+                ],
+                Stroke::new(1.4, hcol),
+            );
+            p.line_segment(
+                [
+                    egui::pos2(hc.x + 4.0, hc.y - 4.0),
+                    egui::pos2(hc.x + 4.0, hc.y + 4.0),
+                ],
+                Stroke::new(1.4, hcol),
             );
         });
 
@@ -341,6 +415,11 @@ impl App {
             );
         }
 
+        if collapse_bar {
+            self.bar_collapsed = true;
+            self.cfg.bar_collapsed = true;
+            self.cfg.save();
+        }
         if let Some(p) = self.player.as_mut() {
             if toggle {
                 p.toggle();

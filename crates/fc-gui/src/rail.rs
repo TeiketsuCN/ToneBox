@@ -625,36 +625,35 @@ fn group_header(ui: &mut egui::Ui, title: &str, count: usize, open: bool) -> boo
     resp.clicked()
 }
 
-/// 「引擎和设备」的子菜单行：缩进 + 小圆点 + 名称 + 数量
+/// 「引擎和设备」的子菜单行：缩小版的大项，选中也是圆角底色（和音乐库/编解码一致）
 fn rail_sub_tab(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -> bool {
     let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::click());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 28.0), egui::Sense::click());
     let p = ui.painter();
-    if on {
-        p.rect_filled(
-            egui::Rect::from_min_max(
-                egui::pos2(rect.left(), rect.top() + 3.0),
-                egui::pos2(rect.left() + 2.0, rect.bottom() - 3.0),
-            ),
-            Rounding::same(1.0),
-            accent(),
-        );
-    }
-    p.circle_filled(
-        egui::pos2(rect.left() + 14.0, rect.center().y),
-        if on { 2.4 } else { 1.8 },
-        if on { accent() } else { tint(Color32::WHITE, 55) },
+    let fill = if on {
+        tint(accent(), 26)
+    } else if resp.hovered() {
+        tint(Color32::WHITE, 12)
+    } else {
+        Color32::TRANSPARENT
+    };
+    let body = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + 12.0, rect.top() + 1.0),
+        egui::pos2(rect.right() - 2.0, rect.bottom() - 1.0),
     );
+    if fill != Color32::TRANSPARENT {
+        p.rect_filled(body, Rounding::same(8.0), fill);
+    }
     p.text(
-        egui::pos2(rect.left() + 24.0, rect.center().y),
+        egui::pos2(body.left() + 14.0, body.center().y),
         egui::Align2::LEFT_CENTER,
         label,
-        egui::FontId::proportional(9.5),
+        egui::FontId::proportional(10.5),
         if on { accent() } else { MUTED },
     );
     if count > 0 {
         p.text(
-            egui::pos2(rect.right() - 2.0, rect.center().y),
+            egui::pos2(body.right() - 8.0, body.center().y),
             egui::Align2::RIGHT_CENTER,
             count.to_string(),
             egui::FontId::proportional(8.5),

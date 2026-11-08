@@ -297,6 +297,12 @@ pub(crate) struct App {
     bar_pos: Option<(f32, f32)>,
     /// 本帧播放栏实际画在哪（拖拽时作为基准）
     bar_draw_pos: (f32, f32),
+    /// 播放栏宽度（左右拉伸）
+    bar_w: f32,
+    /// 播放栏是否收起
+    bar_collapsed: bool,
+    /// 是否正在拖波形右边缘改宽度
+    bar_w_drag: bool,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
     blurb_t: f32,
@@ -515,6 +521,9 @@ impl App {
                 None
             },
             bar_draw_pos: (0.0, 0.0),
+            bar_w: cfg.bar_width.clamp(BAR_W_MIN, BAR_W_MAX),
+            bar_collapsed: cfg.bar_collapsed,
+            bar_w_drag: false,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
             blurb_t: 1.0,
@@ -1463,13 +1472,36 @@ impl eframe::App for App {
 
             // 悬浮播放栏：不占布局，所有页面都在、宽度一致；可以拖到任意位置。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
+            if self.bar_collapsed {
+                // 收起后留一个小按钮，点一下再拿出来
+                let screen = ctx.screen_rect();
+                let pos = egui::pos2(LEFT_W + inset + 10.0, screen.bottom() - 44.0);
+                egui::Area::new(egui::Id::new("bar_restore"))
+                    .order(egui::Order::Middle)
+                    .fixed_pos(pos)
+                    .show(ctx, |ui| {
+                        let b = egui::Button::new(
+                            RichText::new("播放栏").size(10.0).color(accent()),
+                        )
+                        .fill(tint(BG, 225))
+                        .stroke(line(accent(), 90))
+                        .rounding(Rounding::same(8.0))
+                        .min_size(egui::vec2(92.0, 30.0));
+                        if ui.add(b).on_hover_text("把播放栏拿回来").clicked() {
+                            self.bar_collapsed = false;
+                            self.cfg.bar_collapsed = false;
+                            self.cfg.save();
+                        }
+                    });
+            } else {
             let screen = ctx.screen_rect();
             let bar_h = self.bar_h;
             let bar_pad = 26.0;
-            // 三个大页共用一个宽度：切页时播放栏不跳
-            let bar_w = (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0)
-                .min(1100.0)
-                .max(240.0);
+            // 三个大页共用一个宽度：切页时播放栏不跳；宽度可左右拉伸
+            let avail = (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0).max(240.0);
+            let bar_w = self
+                .bar_w
+                .clamp(BAR_W_MIN.min(avail), BAR_W_MAX.min(avail));
             let default_pos = egui::pos2(
                 LEFT_W + inset + bar_pad,
                 screen.bottom() - bar_h - BAR_MARGIN - inset,
@@ -1511,6 +1543,7 @@ impl eframe::App for App {
                             self.player_bar(ui);
                         });
                 });
+            }
         }
         if do_add_task {
             self.add_task();

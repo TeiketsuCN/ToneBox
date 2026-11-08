@@ -29,6 +29,10 @@ fn default_bar_pos() -> f32 {
     -1.0
 }
 
+fn default_bar_w() -> f32 {
+    1100.0
+}
+
 /// 窗口大小。固定尺寸，切换时直接改窗口，不做界面缩放，
 /// 这样布局永远按设计宽度排，不会拉歪。
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
@@ -215,6 +219,12 @@ pub struct Settings {
     pub bar_x: f32,
     #[serde(default = "default_bar_pos")]
     pub bar_y: f32,
+    /// 播放栏宽度（逻辑点），可左右拉伸
+    #[serde(default = "default_bar_w")]
+    pub bar_width: f32,
+    /// 播放栏是否收起
+    #[serde(default)]
+    pub bar_collapsed: bool,
     /// 播放输出设备（WASAPI 友好名）。空 = 系统默认输出。
     #[serde(default)]
     pub audio_out_device: String,
@@ -285,6 +295,8 @@ impl Default for Settings {
             bar_height: default_bar_h(),
             bar_x: default_bar_pos(),
             bar_y: default_bar_pos(),
+            bar_width: default_bar_w(),
+            bar_collapsed: false,
             audio_out_device: String::new(),
             replaygain: false,
             exclusive_output: false,
