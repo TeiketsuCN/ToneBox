@@ -312,6 +312,11 @@ impl Settings {
         p.opts = self.opts.clone();
         p.output_mode = self.output_mode;
         p.output_dir = self.output_dir.clone();
+        // 背景色/渐变和响度都属于"这套配置"：apply_active 会从这里读回来，
+        // 只写不读（或反过来）会让用户改了设置、重启后被打回原样。
+        p.bg_color = self.bg_color;
+        p.bg_gradient = self.bg_gradient;
+        p.loudness = self.loudness;
         p.write_tags = self.write_tags;
         p.meta_artist = self.meta_artist.clone();
         p.meta_album = self.meta_album.clone();
@@ -389,5 +394,39 @@ impl Settings {
                 let _ = std::fs::write(p, s);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 背景色/渐变/响度必须能来回走一趟：apply_active 会从 Profile 读回来，
+    /// snapshot_active 漏写任何一项，重启后用户改的设置就没了。
+    #[test]
+    fn profile_snapshot_roundtrips_background_and_loudness() {
+        let mut s = Settings::default();
+        s.profiles = vec![
+            Profile::from_settings(&s, "A".into()),
+            Profile::from_settings(&s, "B".into()),
+        ];
+        s.active_profile = 0;
+        s.bg_color = [1, 2, 3];
+        s.bg_gradient = 7;
+        s.loudness = Some(-14.0);
+        s.snapshot_active();
+
+        // 切到 B：应该是 B 自己的值（默认 None / 0）
+        s.active_profile = 1;
+        s.apply_active();
+        assert_eq!(s.loudness, None);
+        assert_eq!(s.bg_gradient, 0);
+
+        // 切回 A：刚才改的三项都还在
+        s.active_profile = 0;
+        s.apply_active();
+        assert_eq!(s.loudness, Some(-14.0));
+        assert_eq!(s.bg_gradient, 7);
+        assert_eq!(s.bg_color, [1, 2, 3]);
     }
 }

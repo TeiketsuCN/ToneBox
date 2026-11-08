@@ -359,6 +359,8 @@ impl App {
         });
         if self.cfg.loudness.is_some() {
             hint_below(ui, "按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。", DIM);
+            ui.add_space(4.0);
+            self.loudness_preview(ui);
         }
 
         ui.add_space(14.0);
@@ -668,8 +670,175 @@ impl App {
         changed
     }
 
-    /// 「删除源文件」不是普通单选：必须长按 3 秒才生效。
-    /// 按住时右侧走倒计时、圆点转一圈把进度画出来，松手就取消。
+    /// 「响度」下面的一条结果预览：源包络 + 归一化后的包络 + -1 dBFS 峰值顶线。
+    ///
+    /// 为什么要画**两条**：响度归一化是整轨统一增益，波形形状不会变；
+    /// 只画一条"目标波形"就是把同一条曲线放大缩小，看不出改了什么。
+    /// 灰色是源、彩色是目标，顶部虚线是转换时预留的 1 dB 峰值余量——
+    /// 目标包络顶到虚线，说明增益被自动下调过（再高就削波了）。
+    ///
+    /// 波形和响度都来自已有的后台分析/波形缓存，这里不额外解码。
+    pub(crate) fn loudness_preview(&mut self, ui: &mut egui::Ui) {
+        let sel = self.selected;
+        let target = self.cfg.loudness.unwrap_or(0.0);
+
+        // 没测过响度就借一次后台分析（结果会缓存，切回来不重跑）。
+        // 即使用户关掉了「自动分析」也该测：他刚打开响度归一化，
+        // 不测就没法告诉他会被加/减多少 dB、会不会顶到峰值余量。
+        let need = self
+            .items
+            .get(sel)
+            .map(|it| {
+                it.info.as_ref().map(|m| m.sample_rate > 0).unwrap_or(false)
+                    && it.lufs.is_none()
+                    && matches!(it.analysis, Analysis::Idle)
+            })
+            .unwrap_or(false);
+        if need {
+            self.start_analyze(sel, ui.ctx());
+        }
+
+        let Some(it) = self.items.get(sel) else {
+            return;
+        };
+        let Some(m) = &it.info else { return };
+        if m.sample_rate == 0 || it.encrypted.is_some() {
+            return;
+        }
+        let wave = match &self.wave {
+            Some((p, w)) if *p == it.path => Some(w),
+            _ => None,
+        };
+        let Some(l) = it.lufs else {
+            // 分析失败（比如样本太短）就别一直显示"测量中"
+            let text = if matches!(it.analysis, Analysis::Failed(_)) {
+                "测不出响度（样本太短或解码失败）"
+            } else {
+                "响度测量中…"
+            };
+            ui.label(RichText::new(text).size(8.5).color(DIM));
+            return;
+        };
+        if !l.lufs.is_finite() || !l.peak_dbfs.is_finite() {
+            ui.label(
+                RichText::new("测不出响度（样本太短或几乎全是静音）")
+                    .size(8.5)
+                    .color(DIM),
+            );
+            return;
+        }
+
+        // 算法必须和 start_batch 里的一模一样，否则预览会和实际结果对不上
+        let raw_gain = target - l.lufs;
+        let ceiling = -1.0 - (l.peak_dbfs + raw_gain);
+        let limited = ceiling < 0.0;
+        let gain = (raw_gain + ceiling.min(0.0)).clamp(-30.0, 30.0);
+
+        // 说明这是"当前选中文件"的预览：响度是全局设置，但每条素材要补的增益不同
+        ui.label(
+            RichText::new("响度预览（当前文件）")
+                .size(8.0)
+                .color(DIM),
+        );
+        ui.add_space(2.0);
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 46.0),
+            egui::Sense::hover(),
+        );
+        let p = ui.painter();
+        p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 6));
+        let inner = rect.shrink2(egui::vec2(6.0, 4.0));
+        let cy = inner.center().y;
+        // 上下各留 2px，±1.0 就是条带的上下边（0 dBFS）
+        let half = (inner.height() * 0.5 - 2.0).max(2.0);
+
+        // -1 dBFS 顶线（转换时峰值不会越过它，除非增益被 ±30 dB 夹住）
+        let ceil_amp = 10f32.powf(-1.0 / 20.0);
+        let ceil_y = cy - half * ceil_amp;
+        let mut dx = inner.left();
+        while dx < inner.right() {
+            let x2 = (dx + 5.0).min(inner.right());
+            p.line_segment(
+                [egui::pos2(dx, ceil_y), egui::pos2(x2, ceil_y)],
+                Stroke::new(1.0, tint(WARN, 85)),
+            );
+            dx += 9.0;
+        }
+
+        if let Some(chans) = wave {
+            let n = chans.iter().map(|c| c.len()).max().unwrap_or(0);
+            if n > 0 {
+                let scale = 10f32.powf(gain / 20.0);
+                // 260px 宽放 480 个桶纯属浪费，抽稀到"一像素一根"
+                let step = ((n as f32) / inner.width().max(1.0)).ceil().max(1.0) as usize;
+                for i in (0..n).step_by(step) {
+                    let (mut mn, mut mx) = (0f32, 0f32);
+                    for ch in chans {
+                        if let Some(&(a, b)) = ch.get(i) {
+                            mn = mn.min(a);
+                            mx = mx.max(b);
+                        }
+                    }
+                    let x = inner.left() + inner.width() * (i as f32 + 0.5) / n as f32;
+                    // 源包络：灰色，作为"改之前"的参照
+                    p.line_segment(
+                        [
+                            egui::pos2(x, cy - mx.clamp(-1.0, 1.0) * half),
+                            egui::pos2(x, cy - mn.clamp(-1.0, 1.0) * half),
+                        ],
+                        Stroke::new(1.0, tint(Color32::WHITE, 40)),
+                    );
+                    // 目标包络：颜色跟着强调色；超出 0 dBFS 的部分压在边上
+                    let omx = (mx * scale).clamp(-1.0, 1.0);
+                    let omn = (mn * scale).clamp(-1.0, 1.0);
+                    p.line_segment(
+                        [
+                            egui::pos2(x, cy - omx * half),
+                            egui::pos2(x, cy - omn * half),
+                        ],
+                        Stroke::new(1.3, accent()),
+                    );
+                }
+            }
+        } else {
+            p.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                "波形生成中…",
+                FontId::proportional(9.0),
+                DIM,
+            );
+        }
+
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("{:.1} → {:.0} LUFS", l.lufs, target))
+                    .size(8.5)
+                    .color(DIM),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format!("增益 {:+.1} dB", gain))
+                        .size(8.5)
+                        .color(if limited { WARN } else { TEXT }),
+                );
+            });
+        });
+        if limited {
+            out_hint(ui, "峰值会顶到 -1 dBFS：增益已自动下调，不会削波", WARN);
+        } else if gain.abs() >= 0.05 {
+            out_hint(
+                ui,
+                &format!("输出峰值 {:.1} dBFS（预留 1 dB 余量）", l.peak_dbfs + gain),
+                DIM,
+            );
+        } else {
+            out_hint(ui, "已经是目标响度，不用补增益", DIM);
+        }
+    }
+
+
     /// 「清除所有」：长按 3 秒清掉批量元数据和当前文件的覆盖值
     pub(crate) fn clear_meta_button(&mut self, ui: &mut egui::Ui) -> bool {
         let dt = self.dt;
@@ -718,6 +887,8 @@ impl App {
         false
     }
 
+    /// 「删除源文件」不是普通单选：必须长按 3 秒才生效。
+    /// 按住时右侧走倒计时、圆点转一圈把进度画出来，松手就取消。
     pub(crate) fn delete_source_row(&mut self, ui: &mut egui::Ui) -> bool {
         let dt = self.dt;
         let selected = self.delete_source;

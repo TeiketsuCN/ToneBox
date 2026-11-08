@@ -25,6 +25,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
 | 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
+| 响度归一化（EBU R128）与预览（源/目标包络、峰值余量、限幅提示） | ✅ |
 | 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |
 | 视频容器输出（MKV / MP4 / WEBM / AVI；直接复制或转 H.264/H.265/VP9/AV1） | ✅ |
 | 格式百科（33 条长文案，可从百科直接设为输出格式） | ✅ |
