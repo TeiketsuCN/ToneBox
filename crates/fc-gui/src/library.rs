@@ -151,6 +151,7 @@ impl App {
         egui::ScrollArea::vertical()
             .id_salt("lib_list")
             .auto_shrink([false, false])
+            .max_height(ui.available_height() - BAR_RESERVE)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if ids.is_empty() {

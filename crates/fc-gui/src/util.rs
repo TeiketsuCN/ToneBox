@@ -408,6 +408,10 @@ pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
 }
 
 /// 可点击跳转的进度条
+/// 底部悬浮播放栏占掉的高度（80 条 + 10 底边距 + 余量）。
+/// 队列/详情/库的滚动区都留出这么多，内容不会钻到播放栏下面。
+pub(crate) const BAR_RESERVE: f32 = 96.0;
+
 /// 和「删除源文件」同一套圆点：空心环 + 选中时实心点。
 /// egui 自带的 radio 是另一套观感（小方块感的圆），不要混着用。
 pub(crate) fn radio_dot(ui: &mut egui::Ui, label: &str, on: bool) -> bool {

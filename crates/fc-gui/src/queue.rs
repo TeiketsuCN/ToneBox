@@ -32,9 +32,35 @@ impl App {
         let mut play_now: Option<usize> = None;
         let count = self.items.len();
 
+        // 按钮放在列表顶部：播放栏是悬浮的，底部按钮会被它盖住
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+            if lib_button(ui, "添加文件", true) {
+                if let Some(paths) = rfd::FileDialog::new()
+                    .add_filter("音频 / 视频", INPUT_EXTS)
+                    .pick_files()
+                {
+                    self.add_files(paths);
+                }
+            }
+            if lib_button(ui, "清空", false) && !self.running {
+                self.items.clear();
+                self.selected = 0;
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format!("{} 个文件", count))
+                        .size(9.0)
+                        .color(DIM),
+                );
+            });
+        });
+        ui.add_space(6.0);
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .max_height(ui.available_height() - 58.0)
+            // 底部给悬浮播放栏留位，列表不要钻到它下面
+            .max_height(ui.available_height() - BAR_RESERVE)
             .show(ui, |ui| {
                 for i in 0..count {
                     let is_sel = i == self.selected;
@@ -277,44 +303,6 @@ impl App {
             self.selected = i;
             self.start_play(i);
         }
-
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-
-            if ui
-                .add_enabled(
-                    !self.running,
-                    egui::Button::new(RichText::new("添加文件").size(12.0).color(MUTED))
-                        .fill(Color32::TRANSPARENT)
-                        .stroke(line(Color32::WHITE, 20))
-                        .rounding(Rounding::same(9.0))
-                        .min_size(egui::vec2(86.0, 34.0)),
-                )
-                .clicked()
-            {
-                if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter("音频 / 视频", INPUT_EXTS)
-                    .pick_files()
-                {
-                    self.add_files(paths);
-                }
-            }
-
-            // 总进度只在"开始转换"按钮里面显示，这里不再放第二条
-            if ui
-                .add_enabled(
-                    !self.running,
-                    egui::Button::new(RichText::new("清空").size(12.0).color(DIM))
-                        .fill(Color32::TRANSPARENT)
-                        .stroke(Stroke::NONE)
-                        .rounding(Rounding::same(9.0)),
-                )
-                .clicked()
-            {
-                self.items.clear();
-                self.selected = 0;
-            }
-        });
 
         animating
     }

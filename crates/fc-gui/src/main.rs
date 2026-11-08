@@ -1044,14 +1044,37 @@ impl eframe::App for App {
                 LEFT_W + inset,
                 screen.bottom() - bar_h - 10.0 - inset,
             );
+            // 条上方留一段渐隐：底下的列表滚到这儿先淡出，不会与播放栏的文字打架
+            let fade_h = 20.0;
             egui::Area::new(egui::Id::new("player_float"))
                 .order(egui::Order::Middle)
-                .fixed_pos(bar_pos)
+                .fixed_pos(egui::pos2(bar_pos.x, bar_pos.y - fade_h))
                 .show(ctx, |ui| {
                     ui.set_width(bar_w);
+                    let (fade_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(bar_w, fade_h),
+                        egui::Sense::hover(),
+                    );
+                    let p = ui.painter();
+                    let steps = 13;
+                    for i in 0..steps {
+                        let f = i as f32 / steps as f32;
+                        let a = (150.0 * f) as u8;
+                        let y0 = fade_rect.top() + fade_rect.height() * f;
+                        let y1 = fade_rect.top() + fade_rect.height() * (i + 1) as f32 / steps as f32;
+                        p.rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(fade_rect.left(), y0),
+                                egui::pos2(fade_rect.right(), y1 + 0.5),
+                            ),
+                            0.0,
+                            tint(BG, a),
+                        );
+                    }
+                    ui.add_space(0.0);
                     egui::Frame::none()
-                        // 实色，和列表/详情的观感一致；半透明会让下面的行透出来
-                        .fill(Color32::from_rgb(20, 24, 34))
+                        // 半透明玻璃 + 上面的渐隐，底下的行不会直接透到文字上
+                        .fill(tint(BG, 150))
                         .rounding(Rounding::same(14.0))
                         .inner_margin(egui::Margin::symmetric(12.0, 8.0))
                         .show(ui, |ui| {

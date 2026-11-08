@@ -34,6 +34,7 @@ impl App {
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
+            .max_height(ui.available_height() - BAR_RESERVE)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 animating |= self.detail_body(ui, t);
