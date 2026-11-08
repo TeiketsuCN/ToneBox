@@ -1,0 +1,13 @@
+﻿ToneBox 迁移包（2026-11-08 20:44）
+
+源码 + .git + vendor\ffmpeg，不含 target / out。
+
+新机器上：
+1) 装 Rust（gnu 工具链）：
+   .\tools\rustup-init.exe -y --default-host x86_64-pc-windows-gnu --profile minimal
+2) 装 MinGW（WinLibs）：
+   winget install BrechtSanders.WinLibs.POSIX.UCRT
+3) 改 build.ps1 里写死的 WinLibs 路径和 Set-Location；改 tools\install.ps1 的 $AppDir
+4) powershell -ExecutionPolicy Bypass -File tools\install.ps1
+
+细节见 docs\迁移-新电脑.md
