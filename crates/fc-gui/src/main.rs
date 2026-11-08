@@ -5242,6 +5242,38 @@ fn quality_size(q: Quality) -> f32 {
     }
 }
 
+/// 圆角矩形在某个 y 处的左右内缩量。
+/// 色带要按这个收边，否则方角色块会从圆角描边外面露出来。
+fn corner_inset(rect: egui::Rect, radius: f32, y: f32) -> f32 {
+    let r = radius
+        .min(rect.width() * 0.5)
+        .min(rect.height() * 0.5);
+    let d = (y - rect.top()).min(rect.bottom() - y).max(0.0);
+    if d >= r {
+        0.0
+    } else {
+        r - (r * r - (r - d) * (r - d)).sqrt()
+    }
+}
+
+/// 一条水平色带裁进圆角矩形后的轮廓（左边界 → 底边 → 右边界 → 顶边）。
+/// 只给 Hi-Res 的渐变色带用：`rect_filled` 是方的，圆角得自己收。
+fn rounded_band(rect: egui::Rect, radius: f32, y0: f32, y1: f32) -> Vec<egui::Pos2> {
+    let y0 = y0.max(rect.top());
+    let y1 = y1.min(rect.bottom());
+    let n = 5;
+    let mut pts = Vec::with_capacity(2 * n + 2);
+    for i in 0..=n {
+        let y = y0 + (y1 - y0) * i as f32 / n as f32;
+        pts.push(egui::pos2(rect.left() + corner_inset(rect, radius, y), y));
+    }
+    for i in (0..=n).rev() {
+        let y = y0 + (y1 - y0) * i as f32 / n as f32;
+        pts.push(egui::pos2(rect.right() - corner_inset(rect, radius, y), y));
+    }
+    pts
+}
+
 /// 在给定矩形里画标识。返回 true = 有动画（调用方负责请求重绘）。
 fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> bool {
     let r = Rounding::same(8.5);
@@ -5265,21 +5297,23 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> boo
             let steps = 5;
             for i in 0..steps {
                 let f = i as f32 / steps as f32;
-                let band = egui::Rect::from_min_max(
-                    egui::pos2(rect.left(), rect.top() + f * rect.height()),
-                    egui::pos2(
-                        rect.right(),
-                        rect.top() + (i + 1) as f32 / steps as f32 * rect.height() + 1.0,
-                    ),
-                );
-                clip.rect_filled(band, Rounding::ZERO, blend(deep, gold, 0.25 + f * 0.85));
+                let y0 = rect.top() + f * rect.height();
+                let y1 = rect.top() + (i + 1) as f32 / steps as f32 * rect.height() + 1.0;
+                // 色带也要贴着圆角收边，不然四角会露出方角
+                clip.add(egui::Shape::convex_polygon(
+                    rounded_band(rect, 8.5, y0, y1),
+                    blend(deep, gold, 0.25 + f * 0.85),
+                    Stroke::NONE,
+                ));
             }
             let phase = ((t * 0.4) % 1.0) as f32;
             // 只在中间平直段扫，而且用三层不同宽度叠出软边，
             // 一层硬边会看着像多出来一个小方块
-            let span = (rect.width() - 34.0).max(8.0);
-            let bx = rect.left() + 17.0 + phase * span;
+            // 平直段只有 r..width-r，扫光带是斜的，所以左右还要各让出 slant，
+            // 不然扫到端点时白角会从圆角外面透出来
             let slant = 7.0;
+            let span = (rect.width() - 2.0 * 8.5 - 16.0 - slant).max(4.0);
+            let bx = rect.left() + 8.5 + slant + phase * span;
             for (i, w) in [16.0f32, 10.0, 5.0].iter().enumerate() {
                 let a = (16.0 + 10.0 * pulse) as u8 / (i as u8 + 1);
                 clip.add(egui::Shape::convex_polygon(
