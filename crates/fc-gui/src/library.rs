@@ -141,10 +141,7 @@ impl App {
                     || e.genre.to_lowercase().contains(&needle)
             })
             .collect();
-        let playing_path = self
-            .player_for
-            .and_then(|i| self.items.get(i))
-            .map(|it| it.path.clone());
+        let playing_path = self.player_for.clone();
 
         let mut clicked: Option<usize> = None;
         let mut requests: Vec<PathBuf> = Vec::new();

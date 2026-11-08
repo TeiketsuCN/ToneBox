@@ -36,6 +36,8 @@ impl App {
 
         let display = self
             .player_for
+            .as_ref()
+            .and_then(|p| self.items.iter().position(|it| &it.path == p))
             .or_else(|| (!self.items.is_empty()).then_some(self.selected))
             .filter(|i| *i < self.items.len());
         let (playing, pos, dur) = match self.player.as_ref() {
@@ -173,7 +175,9 @@ impl App {
             p.text(
                 wrect.center(),
                 Align2::CENTER_CENTER,
-                if has_player {
+                if display.map(|i| self.items[i].encrypted.is_some()).unwrap_or(false) {
+                    "加密文件：只识别，不解码也不播放"
+                } else if has_player {
                     "波形生成中…"
                 } else {
                     "双击队列里的文件即可试听"

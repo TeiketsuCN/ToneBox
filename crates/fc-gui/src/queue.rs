@@ -304,7 +304,17 @@ impl App {
             });
 
         if let Some(i) = remove {
-            self.items.remove(i);
+            let removed = self.items.remove(i);
+            // 删掉的正好是正在放/显示的那首：停止播放，别让播放栏指着不存在的歌
+            if self.player_for.as_ref() == Some(&removed.path) {
+                self.player = None;
+                self.player_for = None;
+                self.play_error = None;
+            }
+            // 后面的项整体前移，选中项跟着挪
+            if i < self.selected {
+                self.selected -= 1;
+            }
             self.selected = self.selected.min(self.items.len().saturating_sub(1));
         }
         if let Some(i) = play_now {

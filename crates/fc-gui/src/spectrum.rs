@@ -24,6 +24,8 @@ impl App {
     pub(crate) fn open_spectrum(&mut self) {
         let idx = self
             .player_for
+            .as_ref()
+            .and_then(|p| self.items.iter().position(|it| &it.path == p))
             .or(if self.items.is_empty() {
                 None
             } else {

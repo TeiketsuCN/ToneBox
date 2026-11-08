@@ -185,7 +185,7 @@ impl Item {
 
 /// 后台读完标签/封面后回传
 pub(crate) struct MediaMsg {
-    idx: usize,
+    path: PathBuf,
     tags: fc_core::Tags,
     cover: Option<(Vec<u8>, u32, u32)>,
 }
@@ -253,7 +253,8 @@ pub(crate) struct App {
     frames: u64,
     backdrop_done: bool,
     player: Option<fc_player::Player>,
-    player_for: Option<usize>,
+    /// 正在播放/显示的文件（用路径记，删了/移动了也不会指错歌）
+    player_for: Option<PathBuf>,
     play_error: Option<String>,
     /// 播放音量（没有播放器时也记住，下次 open 直接套上）
     player_volume: f32,
@@ -280,8 +281,8 @@ pub(crate) struct App {
     /// 窗口是否置顶
     pinned: bool,
     /// 频谱分析结果通道
-    analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
-    analysis_rx: Receiver<(usize, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
+    analysis_tx: std::sync::mpsc::Sender<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
+    analysis_rx: Receiver<(PathBuf, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
     /// 标签/封面回传（后台线程读，主线程建纹理）
     media_tx: std::sync::mpsc::Sender<MediaMsg>,
     media_rx: Receiver<MediaMsg>,
@@ -816,7 +817,7 @@ impl App {
             let loud = ffmpeg
                 .as_ref()
                 .and_then(|f| fc_analyze::loudness(f, &path).ok());
-            let _ = tx.send((idx, res, loud));
+            let _ = tx.send((path.clone(), res, loud));
             ctx.request_repaint();
         });
     }
@@ -846,7 +847,7 @@ impl App {
         if let Some(it) = self.items.get(idx) {
             if it.encrypted.is_some() {
                 self.player = None;
-                self.player_for = Some(idx);
+                self.player_for = Some(self.items[idx].path.clone());
                 self.play_error = Some("加密文件：本工具只识别，不解码也不播放。".into());
                 return;
             }
@@ -855,13 +856,13 @@ impl App {
         self.play_error = None;
         let Some(tools) = self.tools.clone() else {
             self.play_error = Some("找不到 ffmpeg，无法试听".into());
-            self.player_for = Some(idx);
+            self.player_for = Some(self.items[idx].path.clone());
             return;
         };
         let Some(it) = self.items.get(idx) else { return };
         let Some(info) = it.info.clone() else {
             self.play_error = Some("这个文件解不出音频，没法试听".into());
-            self.player_for = Some(idx);
+            self.player_for = Some(self.items[idx].path.clone());
             return;
         };
         match fc_player::Player::open(&tools.ffmpeg, &it.path, info.duration_s) {
@@ -869,18 +870,18 @@ impl App {
                 // 接着上次的音量，不要每次开新文件都跳回默认
                 p.set_volume(self.player_volume);
                 self.player = Some(p);
-                self.player_for = Some(idx);
+                self.player_for = Some(self.items[idx].path.clone());
             }
             Err(e) => {
                 self.play_error = Some(format!("{e:#}"));
-                self.player_for = Some(idx);
+                self.player_for = Some(self.items[idx].path.clone());
             }
         }
     }
 
     fn poll_media(&mut self, ctx: &egui::Context) {
         while let Ok(m) = self.media_rx.try_recv() {
-            if let Some(it) = self.items.get_mut(m.idx) {
+            if let Some(it) = self.items.iter_mut().find(|it| it.path == m.path) {
                 it.tags = m.tags;
                 if let Some((rgba, w, h)) = m.cover {
                     let img = egui::ColorImage {
@@ -891,7 +892,7 @@ impl App {
                             .collect(),
                     };
                     it.cover = Some(ctx.load_texture(
-                        format!("cover_{}", m.idx),
+                        format!("cover_{}", m.path.display()),
                         img,
                         egui::TextureOptions::LINEAR,
                     ));
@@ -901,8 +902,8 @@ impl App {
     }
 
     fn poll_analysis(&mut self) {
-        while let Ok((idx, res, loud)) = self.analysis_rx.try_recv() {
-            if let Some(it) = self.items.get_mut(idx) {
+        while let Ok((path, res, loud)) = self.analysis_rx.try_recv() {
+            if let Some(it) = self.items.iter_mut().find(|it| it.path == path) {
                 it.analysis = match res {
                     Ok(r) => Analysis::Done(r),
                     Err(e) => Analysis::Failed(e),
@@ -1071,13 +1072,18 @@ impl eframe::App for App {
         self.poll_analysis();
 
         // 播放栏波形：当前显示的那首还没算过就后台补上（加密文件没有 info，跳过）
-        if let Some(i) = self.player_for.or_else(|| {
-            if self.items.is_empty() {
-                None
-            } else {
-                Some(self.selected)
-            }
-        }) {
+        if let Some(i) = self
+            .player_for
+            .as_ref()
+            .and_then(|p| self.items.iter().position(|it| &it.path == p))
+            .or_else(|| {
+                if self.items.is_empty() {
+                    None
+                } else {
+                    Some(self.selected)
+                }
+            })
+        {
             if let Some(it) = self.items.get(i) {
                 if it.info.is_some() {
                     let p = it.path.clone();
@@ -1427,7 +1433,7 @@ pub(crate) fn spawn_media_load(
                 cover = to_tex(c.bytes);
             }
         }
-        let _ = tx.send(MediaMsg { idx, tags, cover });
+        let _ = tx.send(MediaMsg { path: p.clone(), tags, cover });
     });
 }
 
