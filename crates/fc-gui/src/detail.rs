@@ -284,6 +284,21 @@ impl App {
             // 加密格式：别只丢一句"读不出来"，给出平台、置信度、判断依据和合法出路
             ui.add_space(14.0);
             para(ui, "加密格式", 10.0, DANGER);
+            // NCM 的封面是明文存的：不给音频解密，也能让你看见是哪张专辑
+            if let Some(tex) = &it.cover {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Image::new(tex)
+                            .fit_to_exact_size(egui::vec2(96.0, 96.0)),
+                    );
+                    ui.add_space(10.0);
+                    ui.vertical(|ui| {
+                        para(ui, "容器内封面", 9.0, MUTED);
+                        para(ui, "未加密，直接读取；音频仍然是加密的", 8.5, DIM);
+                    });
+                });
+            }
             ui.add_space(6.0);
             egui::Grid::new("enc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 row(ui, "平台", enc.platform);

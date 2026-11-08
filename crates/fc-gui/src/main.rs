@@ -1354,12 +1354,19 @@ pub(crate) fn spawn_media_load(
     let p = path.to_path_buf();
     std::thread::spawn(move || {
         let tags = fc_core::read_tags(&ffprobe, &p);
-        let cover = fc_core::extract_cover(&ffmpeg, &p).and_then(|bytes| {
+        let to_tex = |bytes: Vec<u8>| -> Option<(Vec<u8>, u32, u32)> {
             let img = image::load_from_memory(&bytes).ok()?;
-            let small = img.resize_exact(96, 96, image::imageops::FilterType::Triangle);
+            let small = img.resize_exact(128, 128, image::imageops::FilterType::Triangle);
             let rgba = small.to_rgba8();
             Some((rgba.as_raw().clone(), rgba.width(), rgba.height()))
-        });
+        };
+        let mut cover = fc_core::extract_cover(&ffmpeg, &p).and_then(to_tex);
+        // 加密容器（NCM）里封面是明文存的：ffmpeg 打不开整文件，但能单独取这张图
+        if cover.is_none() {
+            if let Some(c) = fc_core::ncm::cover(&p) {
+                cover = to_tex(c.bytes);
+            }
+        }
         let _ = tx.send(MediaMsg { idx, tags, cover });
     });
 }

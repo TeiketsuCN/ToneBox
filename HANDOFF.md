@@ -205,6 +205,11 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 
 ## 加密格式识别
 
+**NCM 的封面是明文存的**（`fc-core/src/ncm.rs`）：容器里 4 字节封面长度 + 一张未加密的
+JPEG/PNG，读它不涉及解密。界面上队列缩略图、详情卡、播放栏都会显示，用来认"这是哪张专辑"。
+音频和标签块仍然加密，程序不碰。
+
+
 `fc-core/src/identify.rs`：只看内容，命名只是弱佐证。
 
 | 依据 | 置信度 |

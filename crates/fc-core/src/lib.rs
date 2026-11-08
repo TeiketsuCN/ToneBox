@@ -13,6 +13,7 @@ pub mod metadata;
 pub mod wiki;
 pub mod dsd;
 pub mod loudness;
+pub mod ncm;
 
 pub use ffmpeg::{convert, locate, probe, MediaInfo, ProgressFn, Tools};
 pub use dsd::{bit_rate_hz as dsd_bit_rate_hz, tier as dsd_tier};
