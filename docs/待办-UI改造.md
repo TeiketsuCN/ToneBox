@@ -235,6 +235,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 28 | 音乐库「添加音乐 / 添加文件夹」常驻顶部；库排最前；播放条浮起 | ✅ 完成（`lib_button` / 圆角阴影条） |
 | 29 | 库列表显示专辑封面（懒加载）+ 左下用户配置（切换/改名/导出/导入） | ✅ 完成（`spawn_lib_cover` / `Profile`） |
 | 30 | 左上角换成 logo + 改名 tonebox | ✅ 完成（`APP_NAME` + 电平条 logo） |
+| 31 | 显示名 ToneBox；配置改用 `···` 菜单；队列数值音质 + Hi-Res/CD/HQ 标识；库扫描结果持久化 | ✅ 完成（`quality_badge` / `library_cache`） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -347,6 +348,14 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
   （报"缺少右 }"，其实全是注释乱码）。用 edit 工具改完要补回 BOM：
   `[System.IO.File]::WriteAllText($p,$t,(New-Object System.Text.UTF8Encoding($true)))`。
   同理 `uninstall.ps1`、`fetch-*.ps1` 都是带 BOM 的。
+- **`TopBottomPanel` 默认 resizable，会在边上画一条拖动分隔线**：用户说的"播放栏上面那条线"
+  和"左下一行字上面的线"都是它，不是我们画的边框。统一加 `.resizable(false)` 就没了。
+- **队列行里加音质标识要预留宽度**：左边标题的 `set_max_width` 是减出来的，不把标识宽度算进去，
+  徽章会直接盖在标题/副标题上。现在按"有标识再多留 58px"算。
+- **懒加载封面/扫描结果要有重绘驱动**：后台线程回传以后，如果没有任何动画或输入，
+  egui 不会重绘，界面就永远停在占位图。`lib_cover_pending` 非空时 `request_repaint_after(150ms)`。
+- **音乐库别每次启动都扫**：结果写 `config.json` 的 `library_cache`（路径 + 标签 + 编码 + 码率 +
+  采样率 + 位深 + 时长），启动铺出来；只有用户点「重新扫描」/加目录/加文件才重扫并回写。
 
 ---
 
