@@ -52,7 +52,7 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 | 独占输出 / 设备选择 / ReplayGain | ✅ WASAPI 直通（s32）、按源采样率；ASIO 未支持 |
 | 安装包 | ✅ `D:\Apps\FormatConverter`，**157 MB**（自带 ffmpeg） |
 
-**测试**：`cargo test -p fc-core --lib` = 65 个；`cargo test -p fc-player --lib` = 4 个（设备分类）；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
+**测试**：`cargo test -p fc-core --lib` = 65 个；`cargo test -p fc-player --lib` = 6 个（设备/蓝牙协议分类）；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
 **分支**：`main` 工作区干净，已 push。
 
 ---
@@ -77,8 +77,12 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 设备页列出输出/输入（不含蓝牙）：44px 手绘图标 + 名称 + 类型/角标 + 格式；
 Steam 串流设备深蓝 + 角标、Realtek（瑞昱/瑞鼎）深蓝角标、USB 声卡金色 + 呼吸光 + 「独立声卡?」、
 摄像头用相机图标 + 「摄像头」角标；点输出设备切换播放输出。行背景透明，只有圆点着色。
-蓝牙页只看蓝牙设备（没有时空状态提示去 Windows 配对）；引擎页放 ReplayGain/独占开关、
-当前输出、引擎信息和「HiFi 输出」状态表（ASIO / 无缝 / DSD DoP 未做）。
+蓝牙页只看蓝牙设备：按耳机分组（Stereo / Hands-Free 端点归成一只），逐条列出
+**A2DP / AVRCP / HFP / HSP / LE Audio** 的状态（正在使用 / 可用 / 兼容备用 / 未连接），
+并说明 Windows 不公开实际编解码（SBC/AAC/aptX/LDAC），下面有一条"冲刺"数据带动效
+（A2DP 在用时箭头跑得快，没在用时几乎不动）。没有蓝牙设备时显示配对提示。
+调试时可用 `FC_FAKE_BT=1`（仅 debug 构建）注入一只假耳机看效果。
+引擎页放 ReplayGain/独占开关、当前输出、引擎信息和「HiFi 输出」状态表（ASIO / 无缝 / DSD DoP 未做）。
 
 **音乐库页**：左栏 `库 / 歌曲 / 专辑 / 风格 / 艺术家`（「库」在最前），右侧整块列表（整行可点、双击播放）。
 每行：**37px 封面 + 标题 + 编码·艺术家·专辑 + 右侧音质标识 + 时长**（FLAC/MP3/Vorbis… 和 CD 无损 / Hi-Res 无损 / 有损 320k 都有）。
@@ -205,6 +209,8 @@ Win11 + HDR 下退出后整个桌面会变暗。
 | 播放队列统一存 s32le 字节 | 共享输出转 f32，独占直接写声卡；同一份数据两条路径，不重复解码 |
 | 设备行图标 44px、行背景透明 | 图标和角标用来快速认设备；圆点选项不铺底，避免整行变色干扰阅读 |
 | Steam/Realtek 深蓝、USB 金色呼吸光 | 用户要在设备列表里一眼认出串流设备/板载声卡/可能的独立声卡；摄像头用相机图标 + 角标 |
+| 蓝牙只报协议、不猜编解码 | Windows 不公开当前 A2DP 编解码（SBC/AAC/aptX/LDAC），硬编一个会误导；协议（A2DP/AVRCP/HFP/HSP/LE）可以从端点推断 |
+| 蓝牙页用"冲刺"数据带 | 用户要一个动效；箭头尾迹能表达"正在传音频"，A2DP 没在用就几乎不动，不假装在传 |
 | 响度预览画「源 + 目标 + 峰值顶线」，不画单条波形 | 归一化是整轨统一增益，形状不变；只画一条缩放后的波形是装饰。真正有用的是加了多少 dB、峰值会不会顶到 −1 dBFS、增益有没有被下调 |
 
 ---

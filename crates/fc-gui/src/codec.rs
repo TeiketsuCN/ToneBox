@@ -185,13 +185,10 @@ impl App {
         );
     }
 
-    /// 蓝牙子页：只看蓝牙设备
+    /// 蓝牙子页：按耳机分组，写明正在使用的蓝牙协议，并画一条"冲刺"数据带动效。
     fn codec_bluetooth(&mut self, ui: &mut egui::Ui) {
-        let mut pick: Option<String> = None;
-        let list: Vec<usize> = (0..self.audio_devices.len())
-            .filter(|i| self.audio_devices[*i].is_bluetooth)
-            .collect();
-        if list.is_empty() {
+        let groups = fc_player::devices::bluetooth_groups(&self.audio_devices);
+        if groups.is_empty() {
             para(ui, "没有检测到蓝牙音频设备。", 10.0, MUTED);
             ui.add_space(4.0);
             para(
@@ -202,30 +199,83 @@ impl App {
             );
             return;
         }
-        for idx in list {
-            let dev = &self.audio_devices[idx];
-            let selected = if self.cfg.audio_out_device.is_empty() {
-                dev.is_default && dev.flow == fc_player::devices::Flow::Output
-            } else {
-                dev.name == self.cfg.audio_out_device
-            };
-            let can_pick = dev.flow == fc_player::devices::Flow::Output;
-            if self.device_row(ui, dev, selected, can_pick) {
-                pick = Some(dev.name.clone());
+        // 冲刺动效要持续重绘
+        ui.ctx().request_repaint();
+        let t = ui.input(|i| i.time) as f32;
+
+        let mut pick: Option<String> = None;
+        for g in groups {
+            // 耳机标题
+            ui.horizontal(|ui| {
+                paint_bt_rune(ui, 18.0);
+                ui.add_space(6.0);
+                ui.label(RichText::new(&g.name).size(12.0).color(TEXT).strong());
+                ui.add_space(8.0);
+                ui.label(RichText::new("已连接").size(8.5).color(C_BT));
+            });
+            ui.add_space(4.0);
+
+            // 协议清单：全部列出来，标清楚哪个正在用
+            for prof in &g.profiles {
+                let (state, col) = profile_state(prof);
+                ui.horizontal(|ui| {
+                    ui.add_space(28.0);
+                    let dot = if prof.active { C_BT } else { tint(Color32::WHITE, 40) };
+                    ui.label(RichText::new("●").size(7.0).color(dot));
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(prof.name)
+                            .size(9.5)
+                            .color(if prof.active { TEXT } else { MUTED })
+                            .strong(),
+                    );
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(prof.role).size(8.5).color(DIM));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(RichText::new(state).size(8.5).color(col));
+                    });
+                });
             }
+            ui.add_space(3.0);
+            ui.horizontal(|ui| {
+                ui.add_space(28.0);
+                para(
+                    ui,
+                    "实际编解码（SBC / AAC / aptX / LDAC）由耳机和驱动协商，Windows 不公开；这里报的是蓝牙协议。",
+                    8.0,
+                    DIM,
+                );
+            });
+            ui.add_space(6.0);
+
+            // 冲刺动效：数据带沿轨道向右冲，A2DP 在用时速度更快
+            let active = g.profiles.iter().any(|p| p.active && p.name == "A2DP");
+            let (track, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width() - 4.0, 30.0),
+                egui::Sense::hover(),
+            );
+            paint_sprint(ui.painter(), track, t, C_BT, active);
+            ui.add_space(6.0);
+
+            // 端点（可点选为播放输出）
+            for d in &g.endpoints {
+                let selected = if self.cfg.audio_out_device.is_empty() {
+                    d.is_default && d.flow == fc_player::devices::Flow::Output
+                } else {
+                    d.name == self.cfg.audio_out_device
+                };
+                let can_pick = d.flow == fc_player::devices::Flow::Output;
+                if self.device_row(ui, d, selected, can_pick) {
+                    pick = Some(d.name.clone());
+                }
+            }
+            ui.add_space(12.0);
         }
         if let Some(name) = pick {
             self.cfg.audio_out_device = name;
             self.cfg.save();
             self.player = None;
         }
-        ui.add_space(6.0);
-        para(
-            ui,
-            "蓝牙判断按设备名/描述里的关键字；判不出就不标，不硬猜。",
-            8.5,
-            DIM,
-        );
     }
 
     /// 引擎子页：播放选项、当前输出、引擎与 HiFi 状态
@@ -614,6 +664,117 @@ fn paint_device_icon(
             p.circle_filled(c, 2.5, color);
         }
     }
+}
+
+/// 协议状态文字 + 颜色
+fn profile_state(p: &fc_player::devices::BtProfile) -> (&'static str, Color32) {
+    if p.active {
+        return match p.name {
+            "AVRCP" => ("可用", MUTED),
+            _ => ("正在使用", C_BT),
+        };
+    }
+    match p.name {
+        "HSP" => ("兼容备用", DIM),
+        _ => ("未连接", DIM),
+    }
+}
+
+/// 蓝牙符号（手绘）
+fn paint_bt_rune(ui: &mut egui::Ui, size: f32) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(size, size),
+        egui::Sense::hover(),
+    );
+    let p = ui.painter();
+    let c = rect.center();
+    let h = size * 0.38;
+    let w = size * 0.24;
+    let s = Stroke::new(1.8, C_BT);
+    p.line_segment(
+        [egui::pos2(c.x, c.y - h), egui::pos2(c.x, c.y + h)],
+        s,
+    );
+    let up = egui::pos2(c.x + w, c.y - h * 0.5);
+    let lo = egui::pos2(c.x - w, c.y + h * 0.5);
+    let lup = egui::pos2(c.x - w, c.y - h * 0.5);
+    let llo = egui::pos2(c.x + w, c.y + h * 0.5);
+    p.line_segment([egui::pos2(c.x, c.y - h), up], s);
+    p.line_segment([up, lo], s);
+    p.line_segment([lo, egui::pos2(c.x, c.y + h)], s);
+    p.line_segment([egui::pos2(c.x, c.y - h), lup], s);
+    p.line_segment([lup, llo], s);
+    p.line_segment([llo, egui::pos2(c.x, c.y + h)], s);
+}
+
+/// "冲刺"数据带：几个箭头带着尾迹向右冲；
+/// A2DP 在用时速度更快，没在用时几乎不动（避免误导成正在传音频）。
+fn paint_sprint(
+    p: &egui::Painter,
+    rect: egui::Rect,
+    t: f32,
+    color: Color32,
+    active: bool,
+) {
+    p.rect_filled(rect, Rounding::same(15.0), tint(Color32::WHITE, 5));
+    let clip = rect.shrink(3.0);
+    let p = p.with_clip_rect(clip);
+    let y = rect.center().y;
+
+    // 底：一条很淡的虚线轨道，让"冲刺"有参照
+    let mut x = clip.left();
+    while x < clip.right() {
+        let x2 = (x + 4.0).min(clip.right());
+        p.line_segment(
+            [egui::pos2(x, y), egui::pos2(x2, y)],
+            Stroke::new(1.0, tint(Color32::WHITE, 18)),
+        );
+        x += 10.0;
+    }
+
+    let speed = if active { 0.75 } else { 0.10 };
+    let n = 6;
+    for i in 0..n {
+        let phase = (t * speed + i as f32 / n as f32) % 1.0;
+        let hx = clip.left() + clip.width() * phase;
+        // 靠近右端淡出，像冲出画面
+        let fade = ((1.0 - phase) / 0.12).clamp(0.0, 1.0);
+        let alpha = if phase > 0.88 { (170.0 * fade) as u8 } else { 170 };
+        if alpha < 8 {
+            continue;
+        }
+        // 尾迹：越靠后越短、越淡
+        for k in 0..5 {
+            let back = k as f32 * 7.0;
+            let x0 = hx - back - 6.0;
+            let x1 = hx - back;
+            let a = alpha.saturating_sub(k as u8 * 32);
+            if a < 8 {
+                continue;
+            }
+            p.line_segment(
+                [egui::pos2(x0, y), egui::pos2(x1, y)],
+                Stroke::new(2.6 - k as f32 * 0.35, tint(color, a)),
+            );
+        }
+        // 箭头头
+        let head = Stroke::new(2.4, tint(color, alpha.saturating_add(40)));
+        p.line_segment(
+            [egui::pos2(hx - 5.0, y - 4.0), egui::pos2(hx, y)],
+            head,
+        );
+        p.line_segment(
+            [egui::pos2(hx - 5.0, y + 4.0), egui::pos2(hx, y)],
+            head,
+        );
+    }
+    // 右端终点光
+    let glow = 0.5 + 0.5 * (t * 3.2).sin().abs();
+    p.circle_filled(
+        egui::pos2(clip.right() - 5.0, y),
+        if active { 3.6 } else { 2.2 },
+        tint(color, (85.0 * glow) as u8),
+    );
 }
 
 /// 子页标签：透明底，选中项用强调色 + 下划线

@@ -83,6 +83,115 @@ impl AudioDevice {
     }
 }
 
+/// 一只蓝牙耳机/音箱（可能同时有 Stereo 和 Hands-Free 两个端点）
+#[derive(Clone, Debug)]
+pub struct BtHeadset {
+    /// 去掉 "Stereo" / "Hands-Free AG Audio" 后缀后的名字
+    pub name: String,
+    pub endpoints: Vec<AudioDevice>,
+    pub profiles: Vec<BtProfile>,
+}
+
+/// 蓝牙协议/用途。`active` = 当前有对应端点，正在使用。
+#[derive(Clone, Copy, Debug)]
+pub struct BtProfile {
+    pub name: &'static str,
+    pub role: &'static str,
+    pub active: bool,
+}
+
+/// 把蓝牙端点按"同一只耳机"分组，并推断正在使用的协议。
+///
+/// Windows 不公开 A2DP 实际编解码（SBC/AAC/aptX/LDAC），这里只能从端点名推断
+/// 蓝牙**协议**：立体声输出 = A2DP（+ AVRCP 遥控），免提端点 = HFP/HSP。
+pub fn bluetooth_groups(devices: &[AudioDevice]) -> Vec<BtHeadset> {
+    let mut groups: Vec<BtHeadset> = Vec::new();
+    for d in devices.iter().filter(|d| d.is_bluetooth) {
+        let base = bt_base_name(&d.name);
+        if let Some(g) = groups.iter_mut().find(|g| g.name == base) {
+            g.endpoints.push(d.clone());
+        } else {
+            groups.push(BtHeadset {
+                name: base,
+                endpoints: vec![d.clone()],
+                profiles: Vec::new(),
+            });
+        }
+    }
+    for g in &mut groups {
+        g.profiles = bt_profiles(&g.endpoints);
+    }
+    groups
+}
+
+fn bt_base_name(name: &str) -> String {
+    let mut n = name.to_string();
+    for suffix in [
+        " Hands-Free AG Audio",
+        " Hands-Free",
+        " AG Audio",
+        " Stereo",
+    ] {
+        n = n.replace(suffix, "");
+    }
+    // 去掉尾部空括号/空格：「耳机 (WH-1000XM4 )」→「耳机 (WH-1000XM4)」
+    while n.contains(" )") {
+        n = n.replace(" )", ")");
+    }
+    n.trim().to_string()
+}
+
+fn bt_profiles(endpoints: &[AudioDevice]) -> Vec<BtProfile> {
+    let names = endpoints
+        .iter()
+        .map(|d| d.name.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    let a2dp = endpoints.iter().any(|d| {
+        let n = d.name.to_lowercase();
+        d.flow == Flow::Output
+            && (n.contains("stereo")
+                || n.contains("headphone")
+                || n.contains("a2dp")
+                || (n.contains("耳机")
+                    && !n.contains("handsfree")
+                    && !n.contains("hands-free")))
+    });
+    let hfp = names.contains("hands-free")
+        || names.contains("handsfree")
+        || names.contains("headset")
+        || names.contains("ag audio")
+        || endpoints.iter().any(|d| d.flow == Flow::Input);
+    let le = names.contains("le audio") || names.contains("le-audio");
+    vec![
+        BtProfile {
+            name: "A2DP",
+            role: "立体声音乐（高带宽）",
+            active: a2dp,
+        },
+        BtProfile {
+            name: "AVRCP",
+            role: "播放/暂停/音量遥控",
+            active: a2dp,
+        },
+        BtProfile {
+            name: "HFP",
+            role: "免提 + 麦克风（会降音质）",
+            active: hfp,
+        },
+        BtProfile {
+            name: "HSP",
+            role: "老式免提（兼容备用）",
+            active: false,
+        },
+        BtProfile {
+            name: "LE Audio",
+            role: "低功耗新协议",
+            active: le,
+        },
+    ]
+}
+
 /// 枚举所有**活动**的输出和输入设备（默认设备排在最前）。
 pub fn list() -> Result<Vec<AudioDevice>> {
     #[cfg(windows)]
@@ -172,6 +281,12 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
         }
     }
 
+    // 开发用：没有蓝牙硬件的机器上也能预览蓝牙页（仅 debug 构建）
+    #[cfg(debug_assertions)]
+    if std::env::var("FC_FAKE_BT").ok().as_deref() == Some("1") {
+        out.extend(fake_bluetooth());
+    }
+
     // 默认设备排前面，其余按名字排，列表稳定
     out.sort_by(|a, b| {
         b.is_default
@@ -179,6 +294,36 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(out)
+}
+
+/// 开发用假蓝牙耳机：`FC_FAKE_BT=1` 时混进设备列表，
+/// 方便在没有蓝牙硬件的机器上验收"协议清单 + 冲刺动效"。
+#[cfg(debug_assertions)]
+fn fake_bluetooth() -> Vec<AudioDevice> {
+    let mk = |name: &str, flow: Flow, default: bool| AudioDevice {
+        id: format!("fake:{name}"),
+        name: name.to_string(),
+        description: "Bluetooth Audio".into(),
+        flow,
+        kind: if flow == Flow::Output {
+            Kind::Headphones
+        } else {
+            Kind::Microphone
+        },
+        is_bluetooth: true,
+        is_steam: false,
+        is_realtek: false,
+        is_camera: false,
+        is_default: default,
+        channels: 2,
+        sample_rate: 48_000,
+        bits: 16,
+        format_label: "16-bit int · 48 kHz · 2ch".into(),
+    };
+    vec![
+        mk("耳机 (WH-1000XM4 Stereo)", Flow::Output, true),
+        mk("耳机 (WH-1000XM4 Hands-Free AG Audio)", Flow::Input, false),
+    ]
 }
 
 /// 按设备名 / 驱动描述归类。
@@ -281,5 +426,52 @@ mod tests {
             classify("USB Audio DAC", "Speakers", Flow::Output).0,
             Kind::Usb
         );
+    }
+
+    fn bt_dev(name: &str, flow: Flow) -> AudioDevice {
+        AudioDevice {
+            id: name.to_string(),
+            name: name.to_string(),
+            description: "Bluetooth Audio".into(),
+            flow,
+            kind: if flow == Flow::Output {
+                Kind::Headphones
+            } else {
+                Kind::Microphone
+            },
+            is_bluetooth: true,
+            is_steam: false,
+            is_realtek: false,
+            is_camera: false,
+            is_default: false,
+            channels: 2,
+            sample_rate: 48_000,
+            bits: 16,
+            format_label: "16-bit int · 48 kHz · 2ch".into(),
+        }
+    }
+
+    #[test]
+    fn bluetooth_stereo_and_handsfree_form_one_headset() {
+        let devs = vec![
+            bt_dev("耳机 (WH-1000XM4 Stereo)", Flow::Output),
+            bt_dev("耳机 (WH-1000XM4 Hands-Free AG Audio)", Flow::Input),
+        ];
+        let groups = bluetooth_groups(&devs);
+        assert_eq!(groups.len(), 1, "两个端点应归成一只耳机");
+        assert_eq!(groups[0].name, "耳机 (WH-1000XM4)");
+        let p = &groups[0].profiles;
+        assert!(p.iter().any(|x| x.name == "A2DP" && x.active));
+        assert!(p.iter().any(|x| x.name == "HFP" && x.active));
+        assert!(p.iter().any(|x| x.name == "AVRCP" && x.active));
+        assert!(p.iter().any(|x| x.name == "HSP" && !x.active));
+    }
+
+    #[test]
+    fn bluetooth_stereo_only_has_no_hfp() {
+        let groups = bluetooth_groups(&[bt_dev("Headphones (Buds Stereo)", Flow::Output)]);
+        let p = &groups[0].profiles;
+        assert!(p.iter().any(|x| x.name == "A2DP" && x.active));
+        assert!(p.iter().any(|x| x.name == "HFP" && !x.active));
     }
 }
