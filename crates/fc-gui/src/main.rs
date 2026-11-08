@@ -280,6 +280,8 @@ pub(crate) struct App {
     bg: bg::WallpaperBg,
     /// 当前生效的强调色（背景/底色一变就重算，然后重设一遍 egui style 里沾色的项）
     accent_now: Color32,
+    /// 播放栏当前高度（逻辑点）。顶部拖拽条改它，松手写进配置。
+    bar_h: f32,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
     blurb_t: f32,
@@ -485,6 +487,7 @@ impl App {
             cover_big_rx: brx,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
+            bar_h: cfg.bar_height.clamp(BAR_H_MIN, BAR_H_MAX),
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
             blurb_t: 1.0,
@@ -573,6 +576,12 @@ impl App {
         style.visuals.widgets.hovered.bg_stroke = line(accent(), 90);
         style.visuals.widgets.active.bg_stroke = line(accent(), 130);
         ctx.set_style(style);
+    }
+
+    /// 播放栏 + 底边距实际占掉的高度：队列/音乐库的滚动区要留这么多，
+    /// 内容才不会钻到悬浮播放栏下面（栏高可拖，所以不能再用常量）。
+    pub(crate) fn bar_reserve(&self) -> f32 {
+        self.bar_h + BAR_MARGIN + 10.0
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
@@ -1413,7 +1422,7 @@ impl eframe::App for App {
             // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
             let screen = ctx.screen_rect();
-            let bar_h = BAR_H;
+            let bar_h = self.bar_h;
             // 左右各缩进一点，不贴满两栏（用户要"短一点"）
             let bar_pad = 26.0;
             let bar_w = if self.page == Page::Convert {

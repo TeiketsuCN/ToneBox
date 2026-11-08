@@ -36,6 +36,42 @@ impl App {
         // 行间距自己控制，别让默认 spacing 把总高度顶出 BAR_H
         ui.spacing_mut().item_spacing.y = 0.0;
 
+        // ── 顶部拖拽条：上下拉伸播放栏，双击复位 ──
+        // 只给"拉高"是有原因的：波形是整个栏里唯一能伸缩的部分，
+        // 封面/走带/进度条的高度都是定死的（见 BAR_CHROME）。
+        let (hrect, hresp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 6.0),
+            egui::Sense::click_and_drag(),
+        );
+        if hresp.hovered() || hresp.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        if hresp.dragged() {
+            // 往上拖是变高，所以减掉 dy；drag_delta 是每帧位移
+            self.bar_h = (self.bar_h - hresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
+        }
+        if hresp.double_clicked() {
+            self.bar_h = BAR_H;
+        }
+        if hresp.drag_stopped() || hresp.double_clicked() {
+            self.cfg.bar_height = self.bar_h;
+            self.cfg.save();
+        }
+        // 抓手：中间一小段横线，悬停时亮一点，告诉用户这里能拖
+        let gp = ui.painter();
+        let grab = egui::Rect::from_center_size(
+            hrect.center(),
+            egui::vec2(34.0, 2.5),
+        );
+        gp.rect_filled(
+            grab,
+            Rounding::same(1.5),
+            tint(
+                Color32::WHITE,
+                if hresp.hovered() || hresp.dragged() { 110 } else { 55 },
+            ),
+        );
+
         let display = self
             .player_for
             .as_ref()
@@ -141,7 +177,8 @@ impl App {
         ui.add_space(4.0);
 
         // ── 中部：波形（左右声道各一条；点/拖也能跳转）──
-        let wave_h = 52.0;
+        // 栏高可拖：除波形外的固定部分见 BAR_CHROME，剩下的都给波形
+        let wave_h = (self.bar_h - BAR_CHROME).clamp(22.0, 260.0);
         let (wrect, wresp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), wave_h),
             egui::Sense::click_and_drag(),

@@ -19,6 +19,11 @@ fn default_bg_color() -> [u8; 3] {
     [20, 22, 30]
 }
 
+/// 播放栏默认高度（和 util::BAR_H 保持一致）
+fn default_bar_h() -> f32 {
+    164.0
+}
+
 /// 窗口大小。固定尺寸，切换时直接改窗口，不做界面缩放，
 /// 这样布局永远按设计宽度排，不会拉歪。
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
@@ -197,6 +202,9 @@ pub struct Settings {
     pub bg_gradient: u8,
     /// 壁纸压暗程度（0~255），数值越大越暗
     pub dim: u8,
+    /// 播放栏高度（逻辑点，含顶部拖拽条）。用户拖过就记住，下次启动沿用。
+    #[serde(default = "default_bar_h")]
+    pub bar_height: f32,
     /// 选中文件就自动做频谱分析
     pub auto_analyze: bool,
     /// 输出参数（压缩等级 / 位深 / 码率……）——当前配置的展开
@@ -255,6 +263,7 @@ impl Default for Settings {
             bg_color: default_bg_color(),
             bg_gradient: 0,
             dim: 96,
+            bar_height: default_bar_h(),
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,

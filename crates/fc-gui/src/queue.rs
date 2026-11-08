@@ -64,7 +64,7 @@ impl App {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             // 底部给悬浮播放栏留位，列表不要钻到它下面
-            .max_height((ui.available_height() - BAR_RESERVE).max(60.0))
+            .max_height((ui.available_height() - self.bar_reserve()).max(60.0))
             .show(ui, |ui| {
                 for i in 0..count {
                     let is_sel = i == self.selected;
