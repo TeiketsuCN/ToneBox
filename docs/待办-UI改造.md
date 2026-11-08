@@ -227,6 +227,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 20 | ATRAC 结论压保守 | ✅ 完成（单样本档位改区间 + caveat + 置信度上限 0.60，见 `报告-频谱标定.md`） |
 | 21 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ 完成（`rate_choices` / `output_rate`） |
 | 22 | 转换前的质量风险提示（降码率 / 无损转有损 / 升采样 / 抄大容器） | ✅ 完成（`quality_warnings`，详情面板卡片） |
+| 23 | ATRAC1/3/3+ 输出（走外部的 atracdenc，不随包） | ✅ 完成（`external.rs` + 侧栏灰态 + 设置页检测/重新检测） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -273,6 +274,21 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
   界面高亮"实际会输出的值"而不是配置里的值。
 - **升采样会凭空变大**：44.1k → 96k 的无损文件体积翻倍、信息一样多。必须在详情面板说出来
   （`quality_warnings` 第 5 条），否则用户会以为"采样率越高音质越好"。
+- **atracdenc 的 `-e` 名字和文档对不上**：0.2.3 的 `-h` 写的是 `atrac3_lp`，
+  实际只认 `atrac3_lp4`（LP4 66k）；man page 又写成 `atrac3_lp4`。写错时它只回一句
+  "unrecognized encoding codec"，很难查。`-e` 的四个值：`atrac1` / `atrac3`（LP2 132k）/
+  `atrac3_lp4`（LP4 66k）/ `atrac3plus`（352k）。
+- **`--bitrate` 只对 RealMedia 容器生效**：对 `.oma` 是**静默忽略**（传 105 还是 132300），
+  对 `.at3` 会生成 ffmpeg 解不开的帧。所以 ATRAC3 的档位只能用两个 `-e` 名字区分，
+  不能靠码率参数；ATRAC3+ 目前只有 352k 一档。
+- **atracdenc 是 32 位程序，非 ASCII 路径出过问题**：我们自己的样本就全是日文名。
+  所以解码和编码都用 `%TEMP%` 下的 ASCII 临时名，最后再 `copy` 到目标路径（不用 rename，
+  临时目录和目标可能不在一个盘）。
+- **外部工具的查找顺序和 ffmpeg 故意相反**：atracdenc 先找程序目录、再找 PATH；
+  ffmpeg 是先 PATH。原因是 atracdenc 由用户自己装，程序目录里那份最不容易版本打架。
+- **GitHub 直连不稳**：`github.com/…/releases/download/…` 在国内经常 504，
+  API 还会限流。`tools/fetch-atracdenc.ps1` 因此按"API asset → 钉住直链 → curl 重试"
+  三层兜底，全失败就打印手动下载步骤，不假装成功。
 
 ---
 

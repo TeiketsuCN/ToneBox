@@ -17,6 +17,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 有损源警告（转无损不会增加信息量） | ✅ |
 | 转 FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM | ✅ |
 | 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
+| 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
 | 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
 | 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |

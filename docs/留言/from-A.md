@@ -6,6 +6,49 @@
 
 ---
 
+## 2026-11-08 三轮 · 单人（ATRAC 外部编码器）
+
+用户要求两件事：**设置里加上 atracdenc（LGPL-2.1+）**，以及**侧栏里 ATRAC 灰着并说明
+"系统还没装这个"，装了才能编码**。核心还是"我们不承担分发编码器的风险"。
+
+### 做法
+
+- `crates/fc-core/src/external.rs`：只做两件事——**找**（程序目录 → 程序目录\atracdenc → PATH）
+  和**调**（ffmpeg 解码成 44.1k/16bit WAV → atracdenc 编码 → copy 到目标路径）。
+- `device.rs` 里 ATRAC1 / ATRAC3 / ATRAC3+ 改 `can_encode: true`，但界面还要过
+  `external_encoder()` + 检测：**没装 = 灰 + 横线 + 悬停提示"你系统里还没装 atracdenc"**；
+  装了才可选。ATRAC9 保持只读。
+- 设置页「关于」新增一行 `ATRAC 编码 | atracdenc（LGPL-2.1+，需自行安装）`，
+  下面显示检测状态 + 「重新检测外部工具」，再下面一段说明"不随包、装不装由你决定"。
+- `tools/fetch-atracdenc.ps1`：下载并放进 `程序目录\atracdenc\`（不进安装包）。
+- 输出列对 ATRAC 显示"由外部编码器 atracdenc 完成（不随包，需你自己安装）"。
+
+### 实测（用官方 Windows 构建 0.2.3，x86）
+
+| 格式 | atracdenc 参数 | 产物（ffprobe） |
+|---|---|---|
+| ATRAC1 | `-e atrac1 -o .aea` | atrac1 / 44100 / 292000 |
+| ATRAC3 LP2 | `-e atrac3 -o .oma` | atrac3 / 44100 / 132300 |
+| ATRAC3 LP4 | `-e atrac3_lp4 -o .oma` | atrac3 / 44100 / 66150 |
+| ATRAC3+ | `-e atrac3plus -o .oma` | atrac3p / 44100 / 352800 |
+
+界面实跑：FLAC → ATRAC3 132k，产物 496224 字节，ffprobe 与上表一致；
+ATRAC3+ 也能选（352k 固定）。没装时侧栏三条画横线，悬停就是"还没装"的提示。
+
+### 踩到的坑（都写进 `docs/待办-UI改造.md` 了）
+
+1. `-e` 名字和文档不一致：`-h` 写 `atrac3_lp`，实际只认 `atrac3_lp4`；man page 又写成 `atrac3_lp4`。
+2. `--bitrate` 只对 RealMedia 生效，对 `.oma` 静默忽略；ATRAC3+ 只有 352k 一档。
+3. atracdenc 是 32 位程序，非 ASCII 路径有风险 → 全程用 `%TEMP%` 的 ASCII 临时名。
+4. GitHub 直连 504 / API 限流 → fetch 脚本三层兜底，失败就打印手动步骤。
+
+### 对外说法
+
+> 装了 atracdenc 才能转 ATRAC，没装只能解码；编码器不随本程序分发。
+> 转出来的 `.oma` 没有 OpenMG 包装，塞不回 Hi-MD——要灌 MD 只能用原厂工具或硬件回录。
+
+---
+
 ## 2026-11-08 二轮 · 单人
 
 用户提了两件事：**高码率转低码率要提醒"会丢细节"、无损转有损也要提醒**；
