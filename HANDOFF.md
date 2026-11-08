@@ -153,6 +153,28 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 | `crates/fc-analyze/PERF.md` | 长文件采样策略 |
 | `docs/留言/from-B.md` | 机器 B 的全部交付与**走前三点提醒** |
 
+### 前端代码结构（`crates/fc-gui/src/`）
+
+`main.rs` 只留类型、常量、`App::new / update / 批处理与轮询`；界面按区域拆开：
+
+| 文件 | 内容 |
+|---|---|
+| `main.rs` | 类型、配色/布局常量、App 结构、`new`/`update`、转换批处理、媒体/分析轮询 |
+| `util.rs` | `tint/line/blend/approach`、`fmt_*`、小控件（`seg_button`/`chip`/`card`/`bar_slider`/`rate_slider`/`start_button`） |
+| `badges.rs` | `Quality` 与徽章（Hi-Res 渐变/倒角/扫光、CD、DSD 码流、有损档位），DSD 格式化 |
+| `titlebar.rs` | 自绘标题栏、窗口按钮、铃铛 |
+| `rail.rs` | 左侧两个大项、格式列表、音乐库分类、用户配置 |
+| `queue.rs` | 转换页的队列与拖放区 |
+| `player.rs` | 底部播放栏、大图封面、频谱按钮 |
+| `spectrum.rs` | 全屏频谱视图 |
+| `detail.rs` | 详情栏（标签、参数、质量评估） |
+| `output.rs` | 输出栏（预设、旋钮、输出位置、元数据） |
+| `library.rs` | 音乐库列表、扫描、封面、文件夹管理 |
+| `overlays.rs` | 格式百科、设置页、通知面板 |
+| `frame.rs` / `bg.rs` / `settings.rs` | 原生窗口子类化 / 壁纸背景 / 配置持久化 |
+
+新增界面一律放进对应模块；`App` 的字段仍然是私有的，子模块能直接访问（同 crate 后代可见）。
+
 ### 几条硬约束
 
 1. **颜色必须用 `Color32::from_rgba_premultiplied`**。用 unmultiplied 会被 eframe 二次 gamma。
