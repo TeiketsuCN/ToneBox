@@ -1,6 +1,6 @@
-ToneBox 迁移包（2026-11-08 23:20）
+ToneBox 迁移包
 
-源码 + 全部文档 + .git 历史 + vendor\ffmpeg（+ samples，如果带上了）。
+源码 + 全部文档 + .git 历史 + vendor\ffmpeg（打包时加 -WithSamples 才会带 samples）。
 不含 target / out / 已安装的程序。
 
 新机器上：
@@ -8,8 +8,8 @@ ToneBox 迁移包（2026-11-08 23:20）
    .\tools\rustup-init.exe -y --default-host x86_64-pc-windows-gnu --profile minimal
 2) 装 MinGW（WinLibs）：
    winget install BrechtSanders.WinLibs.POSIX.UCRT
-3) 编译 + 安装（路径已自动探测，不用改脚本）：
+3) 编译 + 安装（build.ps1 / install.ps1 已按脚本位置自动找路径，不用手改）：
    powershell -ExecutionPolicy Bypass -File tools\install.ps1
-4) 验证清单、可选配置、坑，全在 docs\迁移-新电脑.md
+4) 验证清单、可选配置、已知坑，全在 docs\迁移-新电脑.md
 
 推荐解压到 D:\FormatConverter（文档里的示例路径按这个写）。

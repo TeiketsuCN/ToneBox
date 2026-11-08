@@ -45,24 +45,9 @@ $robo = @(
 & robocopy @robo | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy 失败，exit=$LASTEXITCODE" }
 
-# 包内说明，别让新机器上手时抓瞎
-$note = @"
-ToneBox 迁移包（$(Get-Date -Format 'yyyy-MM-dd HH:mm')）
+# 迁移说明由仓库里的 迁移说明.txt 带过去（robocopy 已经复制），不再现生成，
+# 免得每次打包都把仓库里的这份弄脏。
 
-源码 + 全部文档 + .git 历史 + vendor\ffmpeg$(if ($WithSamples) { ' + samples' } else { '' })，不含 target / out。
-
-新机器上：
-1) 装 Rust（gnu 工具链）：
-   .\tools\rustup-init.exe -y --default-host x86_64-pc-windows-gnu --profile minimal
-2) 装 MinGW（WinLibs）：
-   winget install BrechtSanders.WinLibs.POSIX.UCRT
-3) 编译 + 安装（build.ps1 / install.ps1 已按脚本位置自动找路径，不用手改）：
-   powershell -ExecutionPolicy Bypass -File tools\install.ps1
-4) 验证清单、可选配置、已知坑，全在 docs\迁移-新电脑.md
-
-推荐解压到 D:\FormatConverter（文档里的示例路径按这个写）。
-"@
-$note | Set-Content -Path (Join-Path $stage '迁移说明.txt') -Encoding UTF8
 
 Write-Host "== 2/3 压缩（几百 MB，等一会儿）==" -ForegroundColor Cyan
 if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Force }
