@@ -262,7 +262,43 @@ impl App {
             // （容器/格式提示挂在输出标题下，码率提示挂在码率旋钮下，升采样挂在采样率下）。
         }
 
-        if let Some(e) = &it.error {
+        if let Some(enc) = &it.encrypted {
+            // 加密格式：别只丢一句"读不出来"，给出平台、置信度、判断依据和合法出路
+            ui.add_space(14.0);
+            para(ui, "加密格式", 10.0, DANGER);
+            ui.add_space(6.0);
+            egui::Grid::new("enc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                row(ui, "平台", enc.platform);
+                row(ui, "格式", enc.format);
+                ui.label(RichText::new("置信度").size(10.0).color(DIM));
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(150.0, 12.0), egui::Sense::hover());
+                let p = ui.painter();
+                p.rect_filled(rect, Rounding::same(6.0), tint(Color32::WHITE, 14));
+                let mut f = rect;
+                f.set_width(rect.width() * enc.confidence.clamp(0.0, 1.0));
+                p.rect_filled(
+                    f,
+                    Rounding::same(6.0),
+                    if enc.confidence > 0.8 { ACCENT } else { WARN },
+                );
+                ui.label(
+                    RichText::new(format!("{:.0}%", enc.confidence * 100.0))
+                        .size(9.0)
+                        .color(DIM),
+                );
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            for ev in &enc.evidence {
+                para(ui, &format!("· {ev}"), 9.0, tint(TEXT, 190));
+                ui.add_space(1.0);
+            }
+            ui.add_space(4.0);
+            para(ui, enc.hint, 9.5, MUTED);
+            ui.add_space(4.0);
+            para(ui, enc.advice, 9.5, MUTED);
+        } else if let Some(e) = &it.error {
             ui.add_space(14.0);
             ui.vertical(|ui| {
                 para(ui, "读不出来", 11.5, DANGER);

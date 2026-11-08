@@ -161,6 +161,8 @@ pub(crate) struct Item {
     analysis: Analysis,
     /// 整合响度（LUFS）/ 采样峰值；分析线程顺手测的，测不出来就是 None
     lufs: Option<fc_core::loudness::Loudness>,
+    /// 读不出来时，如果认出是加密格式，把识别结果留着给详情页显示
+    encrypted: Option<fc_core::Encrypted>,
     tags: fc_core::Tags,
     cover: Option<egui::TextureHandle>,
     /// 单文件标题覆盖（空 = 沿用源标签）
@@ -507,15 +509,19 @@ impl App {
             if self.items.iter().any(|i| i.path == p) {
                 continue;
             }
+            let mut encrypted = None;
             let (info, error) = match fc_core::probe(&tools, &p) {
                 Ok(i) => (Some(i), None),
                 Err(e) => {
                     // 读不出来时先问一句"是不是加密的"，能答就答得比报错清楚
-                    let msg = match fc_core::identify(&p) {
-                        Some(enc) => format!("{}\n\n{}", enc.summary(), enc.full_text()),
-                        None => format!("{e:#}"),
-                    };
-                    (None, Some(msg))
+                    match fc_core::identify(&p) {
+                        Some(enc) => {
+                            let msg = format!("{}\n\n{}", enc.summary(), enc.full_text());
+                            encrypted = Some(enc);
+                            (None, Some(msg))
+                        }
+                        None => (None, Some(format!("{e:#}"))),
+                    }
                 }
             };
             let idx = self.items.len();
@@ -532,6 +538,7 @@ impl App {
                 progress_t: 0.0,
                 analysis: Analysis::Idle,
                 lufs: None,
+                encrypted,
                 tags: fc_core::Tags::default(),
                 cover: None,
                 title_ov: None,
