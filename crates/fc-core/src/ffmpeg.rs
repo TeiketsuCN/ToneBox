@@ -90,6 +90,11 @@ struct Stream {
     /// FLAC / ALAC / PCM 的真实位深（ffprobe 给的是字符串）
     bits_per_raw_sample: Option<String>,
     bits_per_sample: Option<u32>,
+    /// 视频流的像素尺寸 / 帧率（音频流没有）
+    width: Option<u32>,
+    height: Option<u32>,
+    avg_frame_rate: Option<String>,
+    r_frame_rate: Option<String>,
     /// 内嵌封面在 ffprobe 里也是一条 video 流，别把它当成"这是视频文件"
     disposition: Option<Disposition>,
 }
@@ -119,6 +124,39 @@ pub struct MediaInfo {
     pub size_bytes: u64,
     /// 位深。无损才有意义（16 / 24 / 32），有损一般为 None。
     pub bits: Option<u32>,
+    /// 视频流编码（h264 / hevc / vp9 / av1 …）。纯音频文件是 None。
+    pub video_codec: Option<String>,
+    /// 画面宽高（像素）。纯音频文件是 0。
+    pub width: u32,
+    pub height: u32,
+    /// 帧率。ffprobe 给的是 "30000/1001" 这种分数，这里已经算成小数。
+    pub fps: f64,
+    /// 视频流自己的码率（kbps）。容器不记单流码率时是 0。
+    pub video_bitrate_kbps: u64,
+}
+
+impl MediaInfo {
+    /// 有没有真正的画面（内嵌封面不算）
+    pub fn has_video(&self) -> bool {
+        self.video_codec.is_some() || (self.width > 0 && self.height > 0)
+    }
+
+    /// 视频编码的短标签；没有画面就 None
+    pub fn video_label(&self) -> Option<&str> {
+        let c = self.video_codec.as_deref()?;
+        Some(match c {
+            "h264" => "H.264",
+            "hevc" => "H.265",
+            "vp8" => "VP8",
+            "vp9" => "VP9",
+            "av1" => "AV1",
+            "mpeg4" => "MPEG-4",
+            "mpeg2video" => "MPEG-2",
+            "msmpeg4v3" => "DivX",
+            "mjpeg" => "MJPEG",
+            other => other,
+        })
+    }
 }
 
 impl MediaInfo {
@@ -206,11 +244,21 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
     }
     let parsed: ProbeOut = serde_json::from_slice(&out.stdout).context("解析 ffprobe 输出失败")?;
 
-    let st = parsed
+    let audio = parsed
         .streams
         .iter()
-        .find(|s| s.codec_type.as_deref() == Some("audio"))
-        .ok_or_else(|| anyhow!("文件里没有音频流。如果是加密文件（.ncm / .mflac / OpenMG .oma），音频数据被加密，无法解码。"))?;
+        .find(|s| s.codec_type.as_deref() == Some("audio"));
+    // 内嵌封面也是一条 video 流，不算画面
+    let video = parsed.streams.iter().find(|s| {
+        s.codec_type.as_deref() == Some("video")
+            && s.disposition
+                .as_ref()
+                .map(|d| d.attached_pic == 0)
+                .unwrap_or(true)
+    });
+    if audio.is_none() && video.is_none() {
+        return Err(anyhow!("文件里没有音频流，也没有画面。可能是 DRM 加密文件，或文件损坏。"));
+    }
 
     let fmt = parsed.format.unwrap_or(Format {
         format_name: None,
@@ -226,7 +274,8 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         if d > 0.0 {
             d
         } else {
-            parse_f64(&st.duration)
+            let st = audio.or(video);
+            st.map(|s| parse_f64(&s.duration)).unwrap_or(0.0)
         }
     };
     if duration_s <= 0.0 {
@@ -239,31 +288,26 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
 
     // 位深：优先 ffprobe 的 bits_per_raw_sample（FLAC/ALAC 会给），
     // 其次 bits_per_sample，最后按 PCM 的 codec 名兜底
-    let bits = st
-        .bits_per_raw_sample
-        .as_deref()
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|b| *b > 0)
-        .or_else(|| st.bits_per_sample.filter(|b| *b > 0))
-        .or_else(|| match st.codec_name.as_deref() {
-            Some("pcm_s16le") | Some("pcm_s16be") => Some(16),
-            Some("pcm_s24le") | Some("pcm_s24be") => Some(24),
-            Some("pcm_s32le") | Some("pcm_s32be") => Some(32),
-            Some("pcm_f32le") | Some("pcm_f32be") => Some(32),
-            _ => None,
-        });
+    let bits = audio.and_then(|st| {
+        st.bits_per_raw_sample
+            .as_deref()
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|b| *b > 0)
+            .or_else(|| st.bits_per_sample.filter(|b| *b > 0))
+            .or_else(|| match st.codec_name.as_deref() {
+                Some("pcm_s16le") | Some("pcm_s16be") => Some(16),
+                Some("pcm_s24le") | Some("pcm_s24be") => Some(24),
+                Some("pcm_s32le") | Some("pcm_s32be") => Some(32),
+                Some("pcm_f32le") | Some("pcm_f32be") => Some(32),
+                _ => None,
+            })
+    });
 
     // 视频容器的 format.bit_rate 是"画面 + 声音"的总码率。有音轨码率就优先用它；
     // 像 MKV 这种容器不记音轨码率的，宁可不填（0），也别把总码率当成音频码率
-    // ——"353kbps 的 AAC"这种假数据比空着更糟。内嵌封面不算视频轨。
-    let has_video = parsed.streams.iter().any(|s| {
-        s.codec_type.as_deref() == Some("video")
-            && s.disposition
-                .as_ref()
-                .map(|d| d.attached_pic == 0)
-                .unwrap_or(true)
-    });
-    let st_kbps = parse_u64(&st.bit_rate) / 1000;
+    // ——"353kbps 的 AAC"这种假数据比空着更糟。
+    let has_video = video.is_some();
+    let st_kbps = audio.map(|s| parse_u64(&s.bit_rate) / 1000).unwrap_or(0);
     let bitrate_kbps = if st_kbps > 0 {
         st_kbps
     } else if has_video {
@@ -272,16 +316,48 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         parse_u64(&fmt.bit_rate) / 1000
     };
 
+    // 帧率：avg_frame_rate 更有代表性（可变帧率会写成 r_frame_rate 的上限）；
+    // 有些容器给 "0/0"，这时退回 r_frame_rate。
+    let fps = video
+        .and_then(|v| {
+            parse_rate(&v.avg_frame_rate)
+                .filter(|f| *f > 0.0)
+                .or_else(|| parse_rate(&v.r_frame_rate))
+        })
+        .unwrap_or(0.0);
+
     Ok(MediaInfo {
-        codec: st.codec_name.clone().unwrap_or_default(),
+        codec: audio
+            .and_then(|s| s.codec_name.clone())
+            .unwrap_or_default(),
         container: fmt.format_name.clone().unwrap_or_default(),
-        sample_rate: parse_u64(&st.sample_rate) as u32,
-        channels: st.channels.unwrap_or(0),
+        sample_rate: audio
+            .map(|s| parse_u64(&s.sample_rate) as u32)
+            .unwrap_or(0),
+        channels: audio.and_then(|s| s.channels).unwrap_or(0),
         bitrate_kbps,
         duration_s,
         size_bytes: parse_u64(&fmt.size),
         bits,
+        video_codec: video.and_then(|v| v.codec_name.clone()),
+        width: video.and_then(|v| v.width).unwrap_or(0),
+        height: video.and_then(|v| v.height).unwrap_or(0),
+        fps,
+        video_bitrate_kbps: video.map(|v| parse_u64(&v.bit_rate) / 1000).unwrap_or(0),
     })
+}
+
+/// ffprobe 的帧率是 "30000/1001" 这种分数，算成小数方便显示和比较。
+fn parse_rate(s: &Option<String>) -> Option<f64> {
+    let v = s.as_deref()?;
+    let (num, den) = match v.split_once('/') {
+        Some((a, b)) => (a.parse::<f64>().ok()?, b.parse::<f64>().ok()?),
+        None => (v.parse::<f64>().ok()?, 1.0),
+    };
+    if den <= 0.0 {
+        return None;
+    }
+    Some(num / den)
 }
 
 /// 转换进度回调

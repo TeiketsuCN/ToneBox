@@ -161,7 +161,7 @@ impl App {
                     let y0 = cy - mx.clamp(-1.0, 1.0) * half;
                     let y1 = cy - mn.clamp(-1.0, 1.0) * half;
                     let played = x <= wrect.left() + wrect.width() * frac;
-                    let col = if played { ACCENT } else { tint(Color32::WHITE, 90) };
+                    let col = if played { accent() } else { tint(Color32::WHITE, 90) };
                     p.line_segment(
                         [egui::pos2(x, y0), egui::pos2(x, y1.max(y0 + 1.0))],
                         Stroke::new(1.2, col),
@@ -212,7 +212,7 @@ impl App {
             if frac > 0.0 {
                 let mut f = track;
                 f.set_width(track.width() * frac);
-                p.rect_filled(f, Rounding::same(2.0), ACCENT);
+                p.rect_filled(f, Rounding::same(2.0), accent());
             }
             let knob_r = if resp.hovered() || resp.dragged() {
                 6.0
@@ -485,7 +485,7 @@ pub(crate) fn spec_button(ui: &mut egui::Ui) -> bool {
             Color32::TRANSPARENT
         },
     );
-    let c = if hot { ACCENT } else { MUTED };
+    let c = if hot { accent() } else { MUTED };
     let heights = [6.0, 11.0, 8.0, 13.0];
     for (i, h) in heights.iter().enumerate() {
         let x = rect.center().x - 7.5 + i as f32 * 5.0;
@@ -503,7 +503,7 @@ pub(crate) fn spec_button(ui: &mut egui::Ui) -> bool {
 
 /// 播放控制图标。不用字符（字体里没有 ⏸⏹），直接用 painter 画。
 /// `enabled = false` 时只画不接点击（没在播的时候按钮要灰着但别消失）。
-pub(crate) fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool, enabled: bool) -> bool {
+pub(crate) fn icon_button(ui: &mut egui::Ui, icon: Icon, hot: bool, enabled: bool) -> bool {
     let sense = if enabled {
         egui::Sense::click()
     } else {
@@ -523,8 +523,8 @@ pub(crate) fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool, enabled: 
     let c = rect.center();
     let col = if !enabled {
         DIM
-    } else if accent {
-        ACCENT
+    } else if hot {
+        accent()
     } else {
         TEXT
     };

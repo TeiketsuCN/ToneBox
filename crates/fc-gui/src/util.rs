@@ -17,6 +17,38 @@ use crate::output::*;
 use crate::library::*;
 use crate::overlays::*;
 
+// ── 强调色：跟着背景走 ────────────────────────────────────
+//
+// 强调色在 90 多个地方用（选中条、圆点、进度条、波形、徽章……），
+// 换成"每次调用都问一遍全局"最省事：背景一换，`update()` 开头重算一次，
+// 这一帧所有控件画出来就是新颜色，不用给每个函数加参数。
+static ACCENT_NOW: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::from_le_bytes([122, 226, 214, 255]));
+
+pub(crate) fn set_accent(c: Color32) {
+    let [r, g, b, a] = c.to_array();
+    ACCENT_NOW.store(u32::from_le_bytes([r, g, b, a]), std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn accent() -> Color32 {
+    let [r, g, b, a] = ACCENT_NOW.load(std::sync::atomic::Ordering::Relaxed).to_le_bytes();
+    Color32::from_rgba_premultiplied(r, g, b, a)
+}
+
+/// 压在强调色上的文字/图标：强调色亮的时候用深色，暗的时候用浅色。
+///
+/// 强调色现在会随背景变（亮底会给深强调色），写死 `from_rgb(10, 26, 24)`
+/// 在深强调色上会变成"深底深字"。
+pub(crate) fn on_accent() -> Color32 {
+    let c = accent();
+    let lum = (c.r() as f32 * 0.299 + c.g() as f32 * 0.587 + c.b() as f32 * 0.114) / 255.0;
+    if lum > 0.55 {
+        Color32::from_rgb(12, 20, 24)
+    } else {
+        Color32::from_rgb(245, 249, 255)
+    }
+}
+
 pub(crate) fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
     Color32::from_rgba_premultiplied(
@@ -74,6 +106,15 @@ pub(crate) fn fmt_rate(hz: u32) -> String {
         format!("{}k", hz / 1000)
     } else {
         format!("{:.1}k", hz as f64 / 1000.0)
+    }
+}
+
+/// 帧率：整数就写整数，23.976 这种保留三位
+pub(crate) fn fmt_fps(f: f64) -> String {
+    if (f - f.round()).abs() < 0.01 {
+        format!("{:.0} fps", f)
+    } else {
+        format!("{:.3} fps", f)
     }
 }
 
@@ -139,12 +180,12 @@ pub(crate) fn tiny_text_button(ui: &mut egui::Ui, label: &str) -> bool {
 /// 音乐库顶部的小按钮（主按钮是青色实心）
 pub(crate) fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool {
     let b = egui::Button::new(RichText::new(label).size(10.0).color(if primary {
-        Color32::from_rgb(10, 26, 24)
+        on_accent()
     } else {
         MUTED
     }))
     .fill(if primary {
-        ACCENT
+        accent()
     } else {
         tint(Color32::WHITE, 10)
     })
@@ -161,8 +202,25 @@ pub(crate) fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool 
 /// 和整体风格一致的小滑杆：细轨道 + 小圆点 +（可选）刻度 + 右侧数值。
 /// 压缩等级 / Vorbis 质量 / 背景暗化都用它，别用 egui 默认 Slider（那个跟界面完全不搭）。
 pub(crate) fn bar_slider(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32, ticks: bool) -> bool {
+    bar_slider_w(ui, v, min, max, ticks, None)
+}
+
+/// `bar_slider` 的显式宽度版：设置页那两栏要留出固定宽度，不能吃满可用宽度。
+pub(crate) fn bar_slider_w(
+    ui: &mut egui::Ui,
+    v: &mut i32,
+    min: i32,
+    max: i32,
+    ticks: bool,
+    width: Option<f32>,
+) -> bool {
     let mut changed = false;
-    let w = (ui.available_width() - 22.0).max(80.0);
+    // 数字槽位固定 30px 且右对齐：0~99 和 100~210 之间不会再把整行宽度拉来拉去，
+    // 三位数也不会被挤出列宽（设置页「暗化」顶到右边「关于」栏就是这个原因）。
+    const NUM_W: f32 = 30.0;
+    let w = width
+        .unwrap_or_else(|| ui.available_width() - NUM_W - 10.0)
+        .max(60.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::click_and_drag());
     let p = ui.painter();
     let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 5.0));
@@ -172,7 +230,7 @@ pub(crate) fn bar_slider(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32, tic
     if t > 0.0 {
         let mut f = track;
         f.set_width(track.width() * t);
-        p.rect_filled(f, Rounding::same(2.5), tint(ACCENT, 220));
+        p.rect_filled(f, Rounding::same(2.5), tint(accent(), 220));
     }
     if ticks {
         // 档位少的时候画点，让人知道一共几档
@@ -197,7 +255,15 @@ pub(crate) fn bar_slider(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32, tic
             }
         }
     }
-    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
+    // 数字自己占固定槽位，右对齐：位数变化不会带动整行宽度
+    let (nrect, _) = ui.allocate_exact_size(egui::vec2(NUM_W, 18.0), egui::Sense::hover());
+    ui.painter().text(
+        nrect.right_center(),
+        Align2::RIGHT_CENTER,
+        format!("{v}"),
+        egui::FontId::proportional(9.0),
+        DIM,
+    );
     changed
 }
 
@@ -241,12 +307,12 @@ pub(crate) fn rate_slider(ui: &mut egui::Ui, choices: &[u32], sel: Option<u32>, 
         p.rect_filled(
             f,
             Rounding::same(2.5),
-            if active { tint(ACCENT, 200) } else { tint(Color32::WHITE, 40) },
+            if active { tint(accent(), 200) } else { tint(Color32::WHITE, 40) },
         );
         p.circle_filled(
             egui::pos2(track.left() + track.width() * t, track.center().y),
             4.5,
-            if active { ACCENT } else { MUTED },
+            if active { accent() } else { MUTED },
         );
     }
     if resp.hovered() {
@@ -278,8 +344,8 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
     let rounding = Rounding::same(10.0);
 
     if running {
-        p.rect_filled(rect, rounding, tint(ACCENT, 22));
-        p.rect_stroke(rect, rounding, Stroke::new(1.0, tint(ACCENT, 70)));
+        p.rect_filled(rect, rounding, tint(accent(), 22));
+        p.rect_stroke(rect, rounding, Stroke::new(1.0, tint(accent(), 70)));
         p.text(
             egui::pos2(rect.left() + 14.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
@@ -295,7 +361,7 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
         p.rect_filled(track, Rounding::same(2.5), tint(Color32::WHITE, 26));
         let mut fill = track;
         fill.set_width(track.width() * progress.clamp(0.0, 1.0));
-        p.rect_filled(fill, Rounding::same(2.5), ACCENT);
+        p.rect_filled(fill, Rounding::same(2.5), accent());
         return false;
     }
 
@@ -304,9 +370,9 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
         rounding,
         if can {
             if resp.hovered() {
-                blend(ACCENT, Color32::WHITE, 0.12)
+                blend(accent(), Color32::WHITE, 0.12)
             } else {
-                ACCENT
+                accent()
             }
         } else {
             tint(Color32::WHITE, 10)
@@ -318,7 +384,7 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
         "开始转换",
         egui::FontId::proportional(13.0),
         if can {
-            Color32::from_rgb(10, 26, 24)
+            on_accent()
         } else {
             DIM
         },
@@ -328,16 +394,39 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
 
 /// 分段选择按钮（位深 / 码率这类互斥选项）
 pub(crate) fn seg_button(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
-    let b = egui::Button::new(RichText::new(label).size(10.0).color(if on {
-        Color32::from_rgb(10, 26, 24)
-    } else {
+    seg_button_state(ui, label, on, true)
+}
+
+/// `seg_button` 的"不可用"版：这个编码器二进制里没有时画暗，点了不生效。
+/// 视频编码要这么处理——没编进 ffmpeg 的 libx265 不能画成一个能点的按钮。
+pub(crate) fn seg_button_state(ui: &mut egui::Ui, label: &str, on: bool, enabled: bool) -> bool {
+    let text_col = if on {
+        on_accent()
+    } else if enabled {
         MUTED
-    }))
-    .fill(if on { ACCENT } else { tint(Color32::WHITE, 8) })
-    .stroke(if on { Stroke::NONE } else { line(Color32::WHITE, 18) })
-    .rounding(Rounding::same(7.0))
-    .min_size(egui::vec2(0.0, 22.0));
-    ui.add(b).clicked()
+    } else {
+        DIM
+    };
+    let b = egui::Button::new(RichText::new(label).size(10.0).color(text_col))
+        .fill(if on {
+            accent()
+        } else if enabled {
+            tint(Color32::WHITE, 8)
+        } else {
+            tint(Color32::WHITE, 4)
+        })
+        .stroke(if on || !enabled {
+            Stroke::NONE
+        } else {
+            line(Color32::WHITE, 18)
+        })
+        .rounding(Rounding::same(7.0))
+        .min_size(egui::vec2(0.0, 22.0));
+    let resp = ui.add(b);
+    if !enabled {
+        return false;
+    }
+    resp.clicked()
 }
 
 /// 设置页的小节标题
@@ -413,7 +502,7 @@ pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool
         Stroke::new(
             1.2,
             if on {
-                ACCENT
+                accent()
             } else if resp.hovered() {
                 tint(Color32::WHITE, 110)
             } else {
@@ -422,7 +511,7 @@ pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool
         ),
     );
     if on {
-        p.circle_filled(c, 3.3, ACCENT);
+        p.circle_filled(c, 3.3, accent());
     }
     p.text(
         egui::pos2(c.x + 14.0, rect.center().y),
@@ -476,7 +565,7 @@ pub(crate) fn paint_lock(p: &egui::Painter, rect: egui::Rect) {
     p.circle_filled(c, r_badge, Color32::from_rgba_premultiplied(8, 10, 14, 230));
     p.circle_stroke(c, r_badge, Stroke::new(0.9 * k, tint(Color32::WHITE, 28)));
 
-    let col = ACCENT;
+    let col = accent();
     // 锁梁：上半圆
     let r = 2.2 * k;
     let top = c.y - 0.7 * k;
@@ -520,7 +609,7 @@ pub(crate) fn radio_dot(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
         Stroke::new(
             1.2,
             if on {
-                ACCENT
+                accent()
             } else if resp.hovered() {
                 tint(Color32::WHITE, 110)
             } else {
@@ -529,7 +618,7 @@ pub(crate) fn radio_dot(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
         ),
     );
     if on {
-        p.circle_filled(c, 3.3, ACCENT);
+        p.circle_filled(c, 3.3, accent());
     }
     p.text(
         egui::pos2(c.x + 14.0, rect.center().y),
@@ -553,7 +642,7 @@ pub(crate) fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
     if frac > 0.0 {
         let mut fill = rect;
         fill.set_width(rect.width() * frac);
-        p.rect_filled(fill, Rounding::same(6.0), ACCENT);
+        p.rect_filled(fill, Rounding::same(6.0), accent());
     }
     if resp.clicked() || resp.dragged() {
         if let Some(pp) = resp.interact_pointer_pos() {

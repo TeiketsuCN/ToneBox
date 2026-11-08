@@ -58,7 +58,7 @@ impl App {
             egui::vec2(24.0, 24.0),
         );
         ui.painter()
-            .rect_filled(logo, Rounding::same(7.0), ACCENT);
+            .rect_filled(logo, Rounding::same(7.0), accent());
         // 里面三条"电平条"：一眼能看出是音频工具
         for (fx, fh) in [(0.30, 0.40), (0.50, 0.64), (0.70, 0.30)] {
             let bx = logo.left() + logo.width() * fx;
@@ -185,7 +185,7 @@ pub(crate) fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, 
     let col = if resp.hovered() && kind == TitleBtn::Close {
         Color32::WHITE
     } else if active {
-        ACCENT
+        accent()
     } else {
         MUTED
     };
@@ -293,15 +293,15 @@ pub(crate) fn progress_ring(
                         c + egui::vec2(a.cos(), a.sin()) * r
                     })
                     .collect();
-                p.add(egui::Shape::line(pts, Stroke::new(w, ACCENT)));
+                p.add(egui::Shape::line(pts, Stroke::new(w, accent())));
             }
         }
         BatchRing::Done => {
-            p.circle_stroke(c, r, Stroke::new(w, ACCENT));
+            p.circle_stroke(c, r, Stroke::new(w, accent()));
             let a = c + egui::vec2(-4.2, 0.2);
             let b = c + egui::vec2(-1.2, 3.2);
             let d = c + egui::vec2(4.4, -3.4);
-            p.add(egui::Shape::line(vec![a, b, d], Stroke::new(2.2, ACCENT)));
+            p.add(egui::Shape::line(vec![a, b, d], Stroke::new(2.2, accent())));
         }
         BatchRing::Error => {
             p.circle_stroke(c, r, Stroke::new(w, DANGER));

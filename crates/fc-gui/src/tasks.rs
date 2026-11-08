@@ -30,9 +30,9 @@ pub(crate) fn add_task_button(ui: &mut egui::Ui, can: bool) -> bool {
     let bg = if !can {
         tint(Color32::WHITE, 14)
     } else if resp.hovered() {
-        blend(ACCENT, Color32::WHITE, 0.12)
+        blend(accent(), Color32::WHITE, 0.12)
     } else {
-        ACCENT
+        accent()
     };
     p.rect_filled(rect, Rounding::same(10.0), bg);
     p.text(
@@ -40,7 +40,7 @@ pub(crate) fn add_task_button(ui: &mut egui::Ui, can: bool) -> bool {
         Align2::CENTER_CENTER,
         "添加任务",
         FontId::proportional(12.5),
-        if can { Color32::from_rgb(10, 26, 24) } else { DIM },
+        if can { on_accent() } else { DIM },
     );
     if can && resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -77,8 +77,8 @@ impl App {
             let fmt = spec.map(|s| s.name).unwrap_or("?");
             let (label, color) = match &t.state {
                 State::Pending => ("待转换".to_string(), DIM),
-                State::Running(p) => (format!("{:.0}%", p * 100.0), ACCENT),
-                State::Done(_, _) => ("完成".to_string(), ACCENT),
+                State::Running(p) => (format!("{:.0}%", p * 100.0), accent()),
+                State::Done(_, _) => ("完成".to_string(), accent()),
                 State::Failed(_) => ("失败".to_string(), DANGER),
             };
             let (rect, resp) =
@@ -110,7 +110,7 @@ impl App {
                 p.rect_filled(bar, Rounding::same(1.5), tint(Color32::WHITE, 18));
                 let mut f = bar;
                 f.set_width(bar.width() * pr.clamp(0.0, 1.0));
-                p.rect_filled(f, Rounding::same(1.5), ACCENT);
+                p.rect_filled(f, Rounding::same(1.5), accent());
                 animating = true;
             }
             // 删除按钮

@@ -103,15 +103,17 @@ pub(crate) enum LibMsg {
 pub(crate) const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
 pub(crate) const MUTED: Color32 = Color32::from_rgb(158, 168, 186);
 pub(crate) const DIM: Color32 = Color32::from_rgb(112, 122, 140);
-pub(crate) const ACCENT: Color32 = Color32::from_rgb(122, 226, 214);
+/// 强调色现在跟着背景走（见 `util::accent`）：选中条 / 圆点 / 进度条 / 徽章
+/// 全部在绘制时读它。这里的 `pub(crate) use` 让各子模块 `use crate::*` 直接拿到。
+pub(crate) use util::{accent, on_accent, set_accent};
 pub(crate) const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 pub(crate) const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
 pub(crate) const BG: Color32 = Color32::from_rgb(14, 16, 22);
 
 /// 队列能接受的输入扩展名：音频 + 视频容器。
 ///
-/// 视频不转视频——ffmpeg 那边固定 `-map 0:a:0`，只取第一条音轨，
-/// 导出的还是上面选的那个音频格式。
+/// 视频容器现在也是正式的输出目标（`Group::Video`）：可以只换容器（copy），
+/// 也可以选 H.264/H.265/VP9/AV1 重编码。默认只处理第一条画面 + 第一条音轨。
 pub(crate) const INPUT_EXTS: &[&str] = &[
     "mp3", "mp2", "flac", "wav", "m4a", "aac", "ogg", "oga", "opus", "wma", "ape", "wv", "tta",
     "oma", "aa3", "at3", "at9", "aiff", "aif", "caf", "w64", "ac3", "eac3",
@@ -274,6 +276,8 @@ pub(crate) struct App {
     cover_big_rx: Receiver<(usize, Option<(Vec<u8>, u32, u32)>)>,
     // 背景与动效
     bg: bg::WallpaperBg,
+    /// 当前生效的强调色（背景/底色一变就重算，然后重设一遍 egui style 里沾色的项）
+    accent_now: Color32,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
     blurb_t: f32,
@@ -377,7 +381,7 @@ impl App {
         // 输入框：默认的深底 + 亮边框在玻璃背景上很脏，这里统一成"一块浅玻璃"。
         // 内边距也在 TextEdit 自己的 margin 里设，别指望 spacing。
         style.visuals.extreme_bg_color = tint(Color32::WHITE, 16);
-        style.visuals.selection.bg_fill = tint(ACCENT, 90);
+        style.visuals.selection.bg_fill = tint(accent(), 90);
         style.visuals.selection.stroke = Stroke::new(1.0, TEXT);
         for w in [
             &mut style.visuals.widgets.inactive,
@@ -387,8 +391,8 @@ impl App {
             w.rounding = Rounding::same(8.0);
         }
         style.visuals.widgets.inactive.bg_stroke = line(Color32::WHITE, 26);
-        style.visuals.widgets.hovered.bg_stroke = line(ACCENT, 90);
-        style.visuals.widgets.active.bg_stroke = line(ACCENT, 130);
+        style.visuals.widgets.hovered.bg_stroke = line(accent(), 90);
+        style.visuals.widgets.active.bg_stroke = line(accent(), 130);
         // 滚动条：平时完全隐藏（不挡内容），鼠标进到那一栏才浮出来
         style.spacing.scroll = egui::style::ScrollStyle::floating();
         style.spacing.scroll.foreground_color = false;
@@ -478,6 +482,7 @@ impl App {
             cover_big_tx: btx,
             cover_big_rx: brx,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
+            accent_now: bg::DEFAULT_ACCENT,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
             blurb_t: 1.0,
@@ -543,6 +548,29 @@ impl App {
             rename_focus: false,
             profile_msg: String::new(),
         }
+    }
+
+    /// 背景色/壁纸一变，强调色就跟着换。
+    ///
+    /// 90 多个控件在绘制时读 `accent()`，所以这里只要在画界面之前把全局值换掉；
+    /// 剩下几项（输入框选区、hover/focus 描边）是 egui style 里的，要单独重设。
+    fn refresh_accent(&mut self, ctx: &egui::Context) {
+        let want = bg::accent_for(
+            self.cfg.bg_mode,
+            self.cfg.bg_gradient,
+            self.cfg.bg_color,
+            self.bg.average(),
+        );
+        if want == self.accent_now {
+            return;
+        }
+        self.accent_now = want;
+        set_accent(want);
+        let mut style = (*ctx.style()).clone();
+        style.visuals.selection.bg_fill = tint(accent(), 90);
+        style.visuals.widgets.hovered.bg_stroke = line(accent(), 90);
+        style.visuals.widgets.active.bg_stroke = line(accent(), 130);
+        ctx.set_style(style);
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
@@ -657,11 +685,13 @@ impl App {
                 continue;
             }
 
-            // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
-            let mut args = fc_core::args_for(spec, &self.tasks[i].opts);
+            // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行。
+            // 视频容器要看见源流的编码（能不能 copy / 音轨要不要重编），所以把 info 也传进去。
+            let src_item = self.items.iter().find(|x| x.path == self.tasks[i].path);
+            let src_info = src_item.and_then(|x| x.info.as_ref());
+            let mut args = fc_core::args_for_with(spec, &self.tasks[i].opts, src_info);
 
             // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢
-            let src_item = self.items.iter().find(|x| x.path == self.tasks[i].path);
             if self.cfg.write_tags {
                 let mut tags = src_item.map(|x| x.tags.clone()).unwrap_or_default();
                 if let Some(v) = src_item
@@ -1076,13 +1106,22 @@ impl App {
     }
 }
 
-/// 全屏开关：进出都顺手把窗口尺寸对回配置里那一档
-pub(crate) fn set_fullscreen(
-    full: &mut bool,
-    ctx: &egui::Context,
-    size_px: (f32, f32),
-) {
+/// 全屏开关：铺满显示器工作区，退出时还原原来的窗口矩形。
+///
+/// 不发给 winit `ViewportCommand::Fullscreen`：那会切显示模式 / 色彩空间，
+/// Win11 + HDR 下退出后整个桌面会变暗（关一次 HDR 才恢复）。
+/// 我们本来就是无边框自绘标题栏，铺满工作区看起来就是全屏，而且不碰 HDR。
+pub(crate) fn set_fullscreen(full: &mut bool, ctx: &egui::Context, size_px: (f32, f32)) {
     *full = !*full;
+    #[cfg(windows)]
+    {
+        if frame::set_fill_work_area(*full) {
+            // 窗口大小是原生改的，让 egui 下一帧重新对齐一次布局
+            ctx.request_repaint();
+            return;
+        }
+    }
+    // 兜底（非 Windows，或窗口句柄还没拿到）：退回 eframe 的真全屏
     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(*full));
     if !*full {
         let (w, h) = size_px;
@@ -1102,6 +1141,8 @@ impl eframe::App for App {
             frame::install(APP_NAME);
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
+        // 强调色必须先于任何面板计算：这一帧画出去的所有选中条/圆点都用它
+        self.refresh_accent(ctx);
 
         // F11 / Esc 切换全屏（Esc 只在全屏时退出）
         let f11 = ctx.input(|i| i.key_pressed(egui::Key::F11));

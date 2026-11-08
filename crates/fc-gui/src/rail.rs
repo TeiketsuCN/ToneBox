@@ -73,7 +73,7 @@ impl App {
                 self.profile_msg = "已新建一套配置".into();
             }
             if !self.profile_msg.is_empty() {
-                ui.label(RichText::new(&self.profile_msg).size(9.0).color(ACCENT));
+                ui.label(RichText::new(&self.profile_msg).size(9.0).color(accent()));
             }
         });
         ui.add_space(2.0);
@@ -117,7 +117,7 @@ impl App {
             );
             let p = ui.painter();
             let fill = if on {
-                tint(ACCENT, 26)
+                tint(accent(), 26)
             } else if resp.hovered() {
                 tint(Color32::WHITE, 10)
             } else {
@@ -134,7 +134,7 @@ impl App {
                 ui,
                 name_rect,
                 10.5,
-                if on { ACCENT } else { MUTED },
+                if on { accent() } else { MUTED },
                 &self.cfg.profiles[i].name,
             );
             // 改名按钮（✎）
@@ -370,17 +370,10 @@ impl App {
                     }
                 }
 
-                // 视频容器也能当输入：放在列表最后，不占输出格式的位置
-                ui.add_space(12.0);
-                ui.label(RichText::new("视频输入").size(9.5).color(DIM));
-                ui.add_space(2.0);
-                para(
-                    ui,
-                    "MKV · MP4 · MOV · AVI · WEBM · TS · M2TS · WMV · FLV · 3GP",
-                    9.0,
-                    MUTED,
-                );
-                para(ui, "只取第一条音轨，按上面选的音频格式导出", 8.5, DIM);
+                // 视频容器也是正式格式行（见 Group::Video），只留一行很短的边界说明：
+                // 详细的"容器收什么编码"在输出列和百科里，不在这里堆字
+                ui.add_space(8.0);
+                para(ui, "视频只处理第一条画面和音轨。", 8.5, DIM);
             });
 
         animating
@@ -413,7 +406,7 @@ impl App {
                 ui,
                 &format!("扫描中… {}/{}", self.lib_entries.len(), total),
                 9.0,
-                ACCENT,
+                accent(),
             );
         } else if !self.lib_status.is_empty() {
             para(ui, &self.lib_status, 9.0, DIM);
@@ -450,8 +443,8 @@ impl App {
             }
         };
 
-        let fill = blend(Color32::TRANSPARENT, tint(ACCENT, 34), cur);
-        let stroke_c = blend(Color32::TRANSPARENT, tint(ACCENT, 80), cur);
+        let fill = blend(Color32::TRANSPARENT, tint(accent(), 34), cur);
+        let stroke_c = blend(Color32::TRANSPARENT, tint(accent(), 80), cur);
         let base = if !enc_ok {
             DIM
         } else if selectable {
@@ -459,7 +452,7 @@ impl App {
         } else {
             MUTED
         };
-        let text_c = blend(base, ACCENT, cur);
+        let text_c = blend(base, accent(), cur);
 
         let mut label = RichText::new(spec.name).size(11.5).color(text_c);
         if !enc_ok {
@@ -553,7 +546,7 @@ pub(crate) fn rail_big(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     );
     let p = ui.painter();
     let fill = if on {
-        tint(ACCENT, 30)
+        tint(accent(), 30)
     } else if resp.hovered() {
         tint(Color32::WHITE, 12)
     } else {
@@ -567,7 +560,7 @@ pub(crate) fn rail_big(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
         egui::Align2::LEFT_CENTER,
         label,
         egui::FontId::proportional(12.5),
-        if on { ACCENT } else { TEXT },
+        if on { accent() } else { TEXT },
     );
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -583,7 +576,7 @@ pub(crate) fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -
     );
     let p = ui.painter();
     let fill = if on {
-        tint(ACCENT, 26)
+        tint(accent(), 26)
     } else if resp.hovered() {
         tint(Color32::WHITE, 10)
     } else {
@@ -597,7 +590,7 @@ pub(crate) fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -
         egui::Align2::LEFT_CENTER,
         label,
         egui::FontId::proportional(11.0),
-        if on { ACCENT } else { MUTED },
+        if on { accent() } else { MUTED },
     );
     if count > 0 {
         p.text(

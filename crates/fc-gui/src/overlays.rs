@@ -102,13 +102,13 @@ impl App {
                                             let on = f.id == self.wiki_sel;
                                             let b = egui::Button::new(
                                                 RichText::new(f.name).size(11.0).color(if on {
-                                                    ACCENT
+                                                    accent()
                                                 } else {
                                                     MUTED
                                                 }),
                                             )
                                             .fill(if on {
-                                                tint(ACCENT, 20)
+                                                tint(accent(), 20)
                                             } else {
                                                 Color32::TRANSPARENT
                                             })
@@ -151,7 +151,7 @@ impl App {
                                                 _ => "设备专用",
                                             };
                                             ui.label(
-                                                RichText::new(kind).size(9.5).color(ACCENT),
+                                                RichText::new(kind).size(9.5).color(accent()),
                                             );
                                             ui.label(RichText::new("·").size(9.5).color(DIM));
                                             ui.label(
@@ -169,7 +169,7 @@ impl App {
                                             let (w, wc) = if !spec.can_encode {
                                                 ("只能读，不能转出", WARN)
                                             } else if self.target_available(spec) {
-                                                ("可以转成这个", ACCENT)
+                                                ("可以转成这个", accent())
                                             } else {
                                                 ("要装外部编码器才能转出", WARN)
                                             };
@@ -188,12 +188,12 @@ impl App {
                                                     format!("把输出格式设为 {}", spec.name)
                                                 })
                                                 .size(10.5)
-                                                .color(Color32::from_rgb(10, 26, 24)),
+                                                .color(on_accent()),
                                             )
                                             .fill(if is_target {
-                                                tint(ACCENT, 110)
+                                                tint(accent(), 110)
                                             } else {
-                                                ACCENT
+                                                accent()
                                             })
                                             .stroke(Stroke::NONE)
                                             .rounding(Rounding::same(9.0))
@@ -314,12 +314,12 @@ impl App {
                                             .add(
                                                 egui::Button::new(
                                                     RichText::new(m.label()).size(10.5).color(if on {
-                                                        Color32::from_rgb(10, 26, 24)
+                                                        on_accent()
                                                     } else {
                                                         MUTED
                                                     }),
                                                 )
-                                                .fill(if on { ACCENT } else { tint(Color32::WHITE, 10) })
+                                                .fill(if on { accent() } else { tint(Color32::WHITE, 10) })
                                                 .stroke(if on {
                                                     Stroke::NONE
                                                 } else {
@@ -352,7 +352,7 @@ impl App {
                                                 p.rect_stroke(
                                                     rect.expand(2.0),
                                                     Rounding::same(7.0),
-                                                    Stroke::new(1.5, ACCENT),
+                                                    Stroke::new(1.5, accent()),
                                                 );
                                             }
                                             if resp.hovered() {
@@ -390,12 +390,12 @@ impl App {
                                                     egui::Button::new(RichText::new(*name).size(
                                                         10.5,
                                                     ).color(if on {
-                                                        Color32::from_rgb(10, 26, 24)
+                                                        on_accent()
                                                     } else {
                                                         MUTED
                                                     }))
                                                     .fill(if on {
-                                                        ACCENT
+                                                        accent()
                                                     } else {
                                                         tint(Color32::WHITE, 10)
                                                     })
@@ -526,7 +526,7 @@ impl App {
                                         ui,
                                         &format!("atracdenc：已找到  {}", p.display()),
                                         9.0,
-                                        ACCENT,
+                                        accent(),
                                     ),
                                     None => para(
                                         ui,
@@ -550,7 +550,7 @@ impl App {
                                         ui.label(
                                             RichText::new("ATRAC 输出已可用")
                                                 .size(9.0)
-                                                .color(ACCENT),
+                                                .color(accent()),
                                         );
                                     }
                                 });
@@ -683,13 +683,13 @@ impl App {
                                             ui.painter().circle_filled(
                                                 dot.center(),
                                                 3.0,
-                                                if n.ok { ACCENT } else { DANGER },
+                                                if n.ok { accent() } else { DANGER },
                                             );
                                             ui.vertical(|ui| {
                                                 ui.label(
                                                     RichText::new(&n.title)
                                                         .size(10.5)
-                                                        .color(if n.ok { ACCENT } else { DANGER }),
+                                                        .color(if n.ok { accent() } else { DANGER }),
                                                 );
                                                 ui.add_space(2.0);
                                                 para(ui, &n.body, 9.0, MUTED);

@@ -220,13 +220,13 @@ impl App {
                                 egui::pos2(b.x, plot.bottom()),
                                 egui::pos2(a.x, plot.bottom()),
                             ],
-                            tint(ACCENT, 26),
+                            tint(accent(), 26),
                             Stroke::NONE,
                         ));
                     }
                     p.add(egui::Shape::line(
                         pts,
-                        Stroke::new(1.4, ACCENT),
+                        Stroke::new(1.4, accent()),
                     ));
                 }
 

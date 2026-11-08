@@ -88,10 +88,10 @@ impl App {
                     };
 
                     let base = blend(tint(Color32::WHITE, 6), tint(Color32::WHITE, 16), hov_t);
-                    let fill = blend(base, tint(ACCENT, 30), sel_t);
+                    let fill = blend(base, tint(accent(), 30), sel_t);
                     let stroke_c = blend(
                         blend(Color32::TRANSPARENT, tint(Color32::WHITE, 22), hov_t),
-                        tint(ACCENT, 90),
+                        tint(accent(), 90),
                         sel_t,
                     );
 
@@ -119,6 +119,10 @@ impl App {
                                 let q_w = info
                                     .as_ref()
                                     .and_then(|m| {
+                                        // 视频文件的音质徽章容易被当成"画面质量"，队列里不画
+                                        if m.has_video() {
+                                            return None;
+                                        }
                                         quality_of(m)
                                             .map(|q| quality_width(ui.ctx(), q, m.bitrate_kbps))
                                     })
@@ -135,8 +139,18 @@ impl App {
                                     Some(m) => {
                                         // 数值音质：编码 · 采样率/位深 · 码率 · 时长 → 目标
                                         // 用 44.1k/16bit 这种紧凑写法，一行放得下
-                                        let mut parts: Vec<String> =
-                                            vec![m.codec_label().to_string()];
+                                        let mut parts: Vec<String> = Vec::new();
+                                        if m.has_video() {
+                                            // 视频文件先报画面：只写音频编码会让人以为这是个纯音频
+                                            let v = m.video_label().unwrap_or("视频");
+                                            if m.width > 0 && m.height > 0 {
+                                                parts.push(format!("{v} {}×{}", m.width, m.height));
+                                            } else {
+                                                parts.push(v.to_string());
+                                            }
+                                        } else {
+                                            parts.push(m.codec_label().to_string());
+                                        }
                                         if m.sample_rate > 0 {
                                             if is_dsd(&m.codec) {
                                                 // DSD 是 1-bit：kHz 和"8 bit"都是字节口径，换成 1-bit 写法
@@ -213,7 +227,7 @@ impl App {
                                     .and_then(fc_core::by_id)
                                     .map(|f| f.name.to_string());
                                 let (label, label_col) = match &pick {
-                                    Some(n) => (n.clone(), ACCENT),
+                                    Some(n) => (n.clone(), accent()),
                                     None => ("···".to_string(), DIM),
                                 };
                                 let menu_resp = ui.menu_button(
@@ -246,14 +260,14 @@ impl App {
                                         ui.add(
                                             egui::ProgressBar::new(*p)
                                                 .desired_width(78.0)
-                                                .fill(ACCENT),
+                                                .fill(accent()),
                                         );
                                     }
                                     State::Done(_, sz) => {
                                         ui.label(
                                             RichText::new(format!("✓ {}", fmt_size(*sz)))
                                                 .size(10.0)
-                                                .color(ACCENT),
+                                                .color(accent()),
                                         );
                                     }
                                     State::Failed(_) => {
@@ -264,7 +278,9 @@ impl App {
                                 // ④ 音质标识（Hi-Res 会呼吸、CD 会转）；窄行里不画
                                 if !narrow {
                                     if let Some(m) = &info {
-                                        if let Some(q) = quality_of(m) {
+                                        if m.has_video() {
+                                            // 同上：画面文件不画音频音质徽章
+                                        } else if let Some(q) = quality_of(m) {
                                             ui.add_space(4.0);
                                             animating |= quality_badge(ui, q, m.bitrate_kbps);
                                         }

@@ -18,10 +18,12 @@
 pub mod device;
 pub mod lossless;
 pub mod lossy;
+pub mod video;
 
 pub use device::DEVICE;
 pub use lossless::LOSSLESS;
 pub use lossy::LOSSY;
+pub use video::VIDEO;
 
 use crate::ffmpeg::MediaInfo;
 
@@ -60,6 +62,8 @@ pub enum Group {
     Lossless,
     Lossy,
     Device,
+    /// 视频容器（mkv/mp4/webm/avi）。既有只读输入，也能当输出目标。
+    Video,
 }
 
 impl Group {
@@ -68,10 +72,13 @@ impl Group {
             Group::Lossless => "无损",
             Group::Lossy => "有损",
             Group::Device => "设备专用",
+            Group::Video => "视频容器",
         }
     }
-    pub fn all() -> [Group; 3] {
-        [Group::Lossless, Group::Lossy, Group::Device]
+    pub fn all() -> [Group; 4] {
+        // 视频容器排在设备专用前面：ATRAC 那组还要装外部工具，
+        // 视频是所有人都可能用到的目标，不该埋在最底下。
+        [Group::Lossless, Group::Lossy, Group::Video, Group::Device]
     }
 }
 
@@ -99,9 +106,19 @@ pub struct FormatSpec {
     pub size_ratio: f32,
 }
 
-/// 全部格式（无损 → 有损 → 设备专用）
+/// 全部格式（无损 → 有损 → 设备专用 → 视频容器）
 pub fn all() -> impl Iterator<Item = &'static FormatSpec> {
-    LOSSLESS.iter().chain(LOSSY).chain(DEVICE)
+    LOSSLESS.iter().chain(LOSSY).chain(DEVICE).chain(VIDEO)
+}
+
+/// 视频容器（能当输出的那几个）
+pub fn video_containers() -> impl Iterator<Item = &'static FormatSpec> {
+    VIDEO.iter().filter(|f| f.can_encode)
+}
+
+/// 这个格式是不是视频容器
+pub fn is_video(spec: &FormatSpec) -> bool {
+    spec.group == Group::Video
 }
 
 /// 侧栏里展示的格式：能编码的那些
@@ -160,6 +177,9 @@ pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) ->
     if info.duration_s <= 0.0 {
         return 0;
     }
+    if is_video(spec) {
+        return estimate_video_size(info, spec, o);
+    }
     if let Some(kbps) = bitrate_of(spec, o) {
         return (info.duration_s * kbps as f64 * 1000.0 / 8.0) as u64;
     }
@@ -171,6 +191,80 @@ pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) ->
     let bits = if spec.kind == Kind::Uncompressed { 24.0 } else { 16.0 };
     let pcm = info.duration_s * sr as f64 * info.channels.max(1) as f64 * bits / 8.0;
     (pcm * spec.size_ratio as f64) as u64
+}
+
+/// 视频输出的体积：画面 + 声音一起算。
+///
+/// 重编码时按「宽 × 高 × 帧率 × 每像素比特」估，再按 CRF 校正——
+/// 这不是精确码率（x264 的两遍编码会不一样），只用来给个量级。
+pub fn estimate_video_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) -> u64 {
+    if info.duration_s <= 0.0 {
+        return 0;
+    }
+    let audio_kbps = if info.codec.is_empty() {
+        // 纯视频文件没有音轨，别在估算里凭空加 900k
+        0
+    } else {
+        match audio_plan(spec.id, &info.codec) {
+            AudioPlan::Copy => info.bitrate_kbps,
+            AudioPlan::Encode { kbps, .. } => kbps as u64,
+        }
+    };
+    let video_kbps = match info.video_codec.as_deref() {
+        Some(src_v) => {
+            let vc = effective_video_codec(spec.id, o, src_v);
+            video_estimate_kbps(info, o, vc)
+        }
+        None => 0,
+    };
+    (info.duration_s * (audio_kbps + video_kbps) as f64 * 1000.0 / 8.0) as u64
+}
+
+/// 估算视频流的码率（kbps）。copy 时尽量用源视频码率，没有就按总码率倒推。
+fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> u64 {
+    if vc == VideoCodec::Copy {
+        if info.video_bitrate_kbps > 0 {
+            return info.video_bitrate_kbps;
+        }
+        // MKV 这类容器不记单流码率：用总码率减掉音频，至少不会差一个数量级
+        let total = (info.size_bytes as f64 * 8.0 / info.duration_s / 1000.0) as u64;
+        return total.saturating_sub(info.bitrate_kbps);
+    }
+    if info.width == 0 || info.height == 0 {
+        return 0;
+    }
+    let (w, h) = output_dims(info, o);
+    let fps = if o.video_fps > 0 {
+        o.video_fps as f64
+    } else if info.fps > 0.0 {
+        info.fps
+    } else {
+        30.0
+    };
+    // bits per pixel per frame：经验值，H.265/VP9/AV1 依次更省
+    let bpp = match vc {
+        VideoCodec::H264 => 0.09,
+        VideoCodec::Hevc => 0.055,
+        VideoCodec::Vp9 => 0.06,
+        VideoCodec::Av1 => 0.045,
+        VideoCodec::Copy => return 0,
+    };
+    // CRF 每差 6，码率大约差一倍；以 23 为基准
+    let crf_factor = 2f64
+        .powf((23.0 - o.video_crf.clamp(1, 51) as f64) / 6.0)
+        .clamp(0.25, 4.0);
+    ((w * h * fps * bpp * crf_factor) / 1000.0).clamp(150.0, 80_000.0) as u64
+}
+
+/// 实际输出的画面尺寸（保持宽高比，宽取偶数——H.264 要求）
+pub fn output_dims(info: &MediaInfo, o: &ConvertOptions) -> (f64, f64) {
+    let (w, h) = (info.width as f64, info.height as f64);
+    if o.video_height == 0 || h <= 0.0 {
+        return (w, h);
+    }
+    let nh = o.video_height as f64;
+    let nw = ((w / h) * nh / 2.0).round() * 2.0;
+    (nw, nh)
 }
 
 // ── 质量风险提示 ──────────────────────────────────────────
@@ -214,6 +308,9 @@ pub fn quality_warnings(
     spec: &FormatSpec,
     o: &ConvertOptions,
 ) -> Vec<QualityWarning> {
+    if is_video(spec) {
+        return video_warnings(src, spec, o);
+    }
     let mut out = Vec::new();
     let target_lossless = matches!(spec.kind, Kind::Lossless | Kind::Uncompressed);
     let target_kbps = bitrate_of(spec, o);
@@ -360,6 +457,128 @@ pub fn quality_warnings(
     out
 }
 
+/// 视频目标的提示：只说"会不会重编码 / 会不会掉分辨率"，
+/// 不套音频那套"有损→无损"的判断（对视频容器没有意义）。
+fn video_warnings(
+    src: &MediaInfo,
+    spec: &FormatSpec,
+    o: &ConvertOptions,
+) -> Vec<QualityWarning> {
+    let mut out = Vec::new();
+    let src_v = src.video_codec.clone().unwrap_or_default();
+    let has_video = !src_v.is_empty();
+    let vc = effective_video_codec(spec.id, o, &src_v);
+
+    if has_video {
+        let copy_ok = copy_video_ok(spec.id, &src_v);
+        if o.video_codec == VideoCodec::Copy && !copy_ok {
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "这个容器装不了原来的画面",
+                body: format!(
+                    "{} 不在 {} 接受的视频编码里，会自动改用 {} 重新编码；画质会掉一点，速度也慢。想无损换容器就选 MKV。",
+                    src_v.to_uppercase(),
+                    spec.name,
+                    vc.label()
+                ),
+            });
+        } else if o.video_codec != VideoCodec::Copy {
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "画面会重新编码",
+                body: format!(
+                    "原画面是 {}，目标是 {} {}（CRF {}）。重编码一定会有损失；只想换容器就把视频编码改回「直接复制」。",
+                    src_v.to_uppercase(),
+                    spec.name,
+                    vc.label(),
+                    o.video_crf
+                ),
+            });
+        } else if o.video_height > 0 || o.video_fps > 0 {
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "改分辨率/帧率必须重新编码",
+                body: "「直接复制」不能缩放画面，所以会自动改成重编码。".into(),
+            });
+        }
+        if o.video_height > 0 && src.height > 0 && o.video_height < src.height {
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "降低分辨率会丢掉画面细节",
+                body: format!(
+                    "源画面 {}×{}，输出高度 {}。降下去之后回不来；要留原画质就选「保持」。",
+                    src.width, src.height, o.video_height
+                ),
+            });
+        }
+        if o.video_fps > 0 && src.fps > 0.0 && (o.video_fps as f64) < src.fps - 0.01 {
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "降低帧率会丢掉运动细节",
+                body: format!(
+                    "源是 {:.3} fps，输出 {} fps。快速运动的画面会变卡顿；要原样保留就选「保持」。",
+                    src.fps, o.video_fps
+                ),
+            });
+        }
+    }
+
+    // 音轨：能复制就复制，不能就得按容器规矩重编——这件事必须说出来
+    if !src.codec.is_empty() {
+        if let AudioPlan::Encode { label, kbps, .. } = audio_plan(spec.id, &src.codec) {
+            let lossy_src = src.is_lossy();
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title: "音轨会被重编码",
+                body: if lossy_src {
+                    format!(
+                        "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。多一次有损编码，细节会再少一点。",
+                        src.codec_label(),
+                        spec.name,
+                        label,
+                        kbps
+                    )
+                } else {
+                    format!(
+                        "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
+                        src.codec_label(),
+                        spec.name,
+                        label,
+                        kbps
+                    )
+                },
+            });
+        }
+    }
+    out
+}
+
+/// 真正会用的视频编码。用户选了 copy 但容器不收 / 要缩放时，自动兜底一个能用的。
+pub fn effective_video_codec(
+    container: &str,
+    o: &ConvertOptions,
+    src_video: &str,
+) -> VideoCodec {
+    let fallback = if container == "webm" {
+        VideoCodec::Vp9
+    } else {
+        VideoCodec::H264
+    };
+    let mut c = o.video_codec;
+    if c == VideoCodec::Copy {
+        let src_bad = !src_video.is_empty() && !copy_video_ok(container, src_video);
+        // copy 不能缩放/改帧率，必须换个真编码器
+        let needs_filter = o.video_height > 0 || o.video_fps > 0;
+        if src_bad || needs_filter {
+            c = fallback;
+        }
+    }
+    if !video_codecs_for(container).contains(&c) {
+        c = fallback;
+    }
+    c
+}
+
 // ── 输出参数 ────────────────────────────────────────────
 
 /// 位深。0 位深这种概念在音频里没有，所以用枚举而不是整数。
@@ -427,6 +646,229 @@ impl BitDepth {
     }
 }
 
+/// 视频流的处理方式。
+///
+/// `Copy` 是默认：绝大多数需求只是换个容器，重编码既慢又掉画质。
+/// 要改分辨率/帧率时才必须选一个真编码器（copy 不能缩放）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum VideoCodec {
+    /// 直接封装，不动画面
+    Copy,
+    H264,
+    Hevc,
+    Vp9,
+    Av1,
+}
+
+impl VideoCodec {
+    pub fn label(self) -> &'static str {
+        match self {
+            VideoCodec::Copy => "直接复制",
+            VideoCodec::H264 => "H.264",
+            VideoCodec::Hevc => "H.265",
+            VideoCodec::Vp9 => "VP9",
+            VideoCodec::Av1 => "AV1",
+        }
+    }
+    /// 短标签（旋钮上放得下）
+    pub fn short(self) -> &'static str {
+        match self {
+            VideoCodec::Copy => "复制",
+            VideoCodec::H264 => "H.264",
+            VideoCodec::Hevc => "H.265",
+            VideoCodec::Vp9 => "VP9",
+            VideoCodec::Av1 => "AV1",
+        }
+    }
+    /// ffmpeg 编码器名；`Copy` 没有编码器
+    pub fn encoder(self) -> Option<&'static str> {
+        Some(match self {
+            VideoCodec::Copy => return None,
+            VideoCodec::H264 => "libx264",
+            VideoCodec::Hevc => "libx265",
+            VideoCodec::Vp9 => "libvpx-vp9",
+            VideoCodec::Av1 => "libsvtav1",
+        })
+    }
+
+    /// 这个编码有哪些可用的 ffmpeg 编码器（按优先级）。
+    ///
+    /// 随包那份 ffmpeg 没有 libx264/libx265（授权原因），但带了
+    /// libopenh264 和 libkvazaar；用户自己的 ffmpeg 可能反过来。
+    /// 所以不能把编码器名写死，运行时按"这个构建里有什么"挑第一个。
+    pub fn candidates(self) -> &'static [&'static str] {
+        match self {
+            VideoCodec::Copy => &[],
+            VideoCodec::H264 => &["libx264", "libopenh264"],
+            VideoCodec::Hevc => &["libx265", "libkvazaar"],
+            VideoCodec::Vp9 => &["libvpx-vp9"],
+            VideoCodec::Av1 => &["libsvtav1", "libaom-av1", "librav1e"],
+        }
+    }
+}
+
+/// 从"这个构建里真有的编码器"里挑一个能编 `codec` 的。
+///
+/// `stored` 是配置里上次记住的编码器名：还在、还对就继续用，
+/// 否则退回优先级列表第一个可用的。都没有就返回 None（界面该画暗）。
+pub fn resolve_video_encoder(
+    codec: VideoCodec,
+    available: &std::collections::HashSet<String>,
+    stored: &str,
+) -> Option<&'static str> {
+    let cands = codec.candidates();
+    if !stored.is_empty() && cands.contains(&stored) && available.contains(stored) {
+        return cands.iter().copied().find(|e| *e == stored);
+    }
+    cands.iter().copied().find(|e| available.contains(*e))
+}
+
+/// args 里实际用的编码器名（配置没记/记的不对时用默认候选）。
+pub fn video_encoder_name(codec: VideoCodec, stored: &str) -> &'static str {
+    let cands = codec.candidates();
+    if cands.is_empty() {
+        return "";
+    }
+    if cands.contains(&stored) {
+        return cands.iter().copied().find(|e| *e == stored).unwrap_or(cands[0]);
+    }
+    cands[0]
+}
+
+/// 某个容器能选哪些视频编码（第一个永远是 copy 能力的占位，
+/// 真正能不能 copy 要看源视频的编码，见 `copy_video_ok`）
+pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
+    match container {
+        "mkv" => &[
+            VideoCodec::Copy,
+            VideoCodec::H264,
+            VideoCodec::Hevc,
+            VideoCodec::Vp9,
+            VideoCodec::Av1,
+        ],
+        "mp4" => &[
+            VideoCodec::Copy,
+            VideoCodec::H264,
+            VideoCodec::Hevc,
+            VideoCodec::Av1,
+        ],
+        "webm" => &[VideoCodec::Copy, VideoCodec::Vp9, VideoCodec::Av1],
+        "avi" => &[VideoCodec::Copy, VideoCodec::H264],
+        _ => &[],
+    }
+}
+
+/// 源视频的编码能不能直接装进这个容器（不能就得重编码或换容器）。
+pub fn copy_video_ok(container: &str, codec: &str) -> bool {
+    let c = codec.to_ascii_lowercase();
+    match container {
+        // Matroska 基本通吃
+        "mkv" => true,
+        "mp4" => matches!(c.as_str(), "h264" | "hevc" | "av1"),
+        // WebM 只认这两个（VP8 也算，但这里只开放 VP9/AV1）
+        "webm" => matches!(c.as_str(), "vp8" | "vp9" | "av1"),
+        // AVI 的老规矩：MPEG-4 Part 2 / H.264 都有人认，但容器里放 H.265 基本没设备能放
+        "avi" => matches!(c.as_str(), "mpeg4" | "msmpeg4v3" | "h264" | "mjpeg"),
+        _ => false,
+    }
+}
+
+/// 视频容器里音频流的处理方式。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AudioPlan {
+    /// 原样复制（源编码这个容器收）
+    Copy,
+    /// 重编码成容器收的编码
+    Encode {
+        codec: &'static str,
+        kbps: u32,
+        label: &'static str,
+    },
+}
+
+impl AudioPlan {
+    pub fn label(self) -> String {
+        match self {
+            AudioPlan::Copy => "从源复制".to_string(),
+            AudioPlan::Encode { label, kbps, .. } => format!("{label} {kbps}k"),
+        }
+    }
+}
+
+/// 这个容器收哪些音频编码（可以直接 `-c:a copy`）
+fn audio_copy_ok(container: &str, codec: &str) -> bool {
+    let c = codec.to_ascii_lowercase();
+    match container {
+        "mkv" => matches!(
+            c.as_str(),
+            "aac" | "aac_latm" | "mp3" | "mp2" | "ac3" | "eac3" | "dts" | "flac"
+                | "vorbis" | "opus" | "alac"
+        ) || c.starts_with("pcm_"),
+        "mp4" => matches!(
+            c.as_str(),
+            "aac" | "aac_latm" | "alac" | "ac3" | "eac3" | "mp3" | "mp2"
+        ),
+        "webm" => matches!(c.as_str(), "opus" | "vorbis"),
+        "avi" => matches!(c.as_str(), "mp3" | "mp2" | "ac3"),
+        _ => false,
+    }
+}
+
+/// 目标容器的音频方案：源编码能 copy 就 copy，否则按容器规矩重编。
+///
+/// 注意这是**有损/无损混着来**的地方：MP4 配 FLAC 源只能转 AAC，
+/// 界面上要把这件事说出来，别让用户以为音轨没动过。
+pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
+    if !src_codec.is_empty() && audio_copy_ok(container, src_codec) {
+        return AudioPlan::Copy;
+    }
+    match container {
+        "mp4" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 256,
+            label: "AAC",
+        },
+        "webm" => AudioPlan::Encode {
+            codec: "libopus",
+            kbps: 128,
+            label: "Opus",
+        },
+        "avi" => AudioPlan::Encode {
+            codec: "libmp3lame",
+            kbps: 192,
+            label: "MP3",
+        },
+        // MKV 什么都收；走到这里说明源是 WMA/ATRAC/DSD 之类，
+        // 转 FLAC 至少不再丢东西（DSD 会被解码成 PCM，这是格式决定的）
+        _ => AudioPlan::Encode {
+            codec: "flac",
+            kbps: 900,
+            label: "FLAC",
+        },
+    }
+}
+
+/// 容器的一句话兼容性说明（输出列常驻）
+pub fn container_note(container: &str) -> &'static str {
+    match container {
+        "mkv" => "Matroska 通吃；视频直接复制，音频能复制就复制。",
+        "mp4" => "MP4 只收 H.264/H.265/AV1；音频只收 AAC/AC-3/ALAC/MP3。",
+        "webm" => "WebM 只收 VP9/AV1 + Opus/Vorbis，浏览器里最省心。",
+        "avi" => "AVI 给老设备用：画面 H.264、声音 MP3 最稳。",
+        _ => "",
+    }
+}
+
+/// 视频参数下面的小字：copy 不能缩放/改帧率，这条比什么都重要
+pub fn video_knob_note(container: &str) -> &'static str {
+    match container {
+        "mp4" => "H.265 会加 hvc1 标记，苹果设备才认。",
+        "webm" => "VP9/AV1 编码很慢，长视频建议先剪短。",
+        "avi" => "AVI 装 H.265 基本没有播放器认，别选。",
+        _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
+    }
+}
+
 /// 用户可调的输出参数。默认值就是各格式的推荐值。
 ///
 /// `#[serde(default)]` 是给旧配置留的后路：新版本加了字段之后，
@@ -457,6 +899,17 @@ pub struct ConvertOptions {
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
+    /// 视频流怎么处理（只有视频容器看它）
+    pub video_codec: VideoCodec,
+    /// 视频质量：CRF，越小越清晰也越大（18~32，默认 23）
+    pub video_crf: u8,
+    /// 输出视频高度（0 = 保持源分辨率；宽按比例自动算）
+    pub video_height: u32,
+    /// 输出帧率（0 = 保持源帧率）
+    pub video_fps: u32,
+    /// 实际用的 ffmpeg 视频编码器名（libx264 / libopenh264 / libx265 …）。
+    /// 空 = 用该编码的首选；换机器后找不到时由 `resolve_video_encoder` 自动换。
+    pub video_encoder: String,
 }
 
 impl Default for ConvertOptions {
@@ -473,6 +926,11 @@ impl Default for ConvertOptions {
             wma_bitrate: 192,
             atrac3_bitrate: 132,
             sample_rate: None,
+            video_codec: VideoCodec::Copy,
+            video_crf: 23,
+            video_height: 0,
+            video_fps: 0,
+            video_encoder: String::new(),
         }
     }
 }
@@ -633,6 +1091,14 @@ pub enum Knob {
     Atrac3Bitrate,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
+    /// 视频容器：视频流编码方式（复制 / H.264 / H.265 / VP9 / AV1）
+    VideoCodec,
+    /// 视频容器：画面质量（CRF）
+    VideoQuality,
+    /// 视频容器：输出高度（保持 / 1080p / 720p …）
+    VideoScale,
+    /// 视频容器：输出帧率（保持 / 30 / 60）
+    VideoFps,
 }
 
 /// 这个格式能调什么。空数组表示"没得调，用默认值"。
@@ -654,6 +1120,13 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "mp2" => &[Knob::SampleRate],
         // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
         "atrac3" => &[Knob::Atrac3Bitrate],
+        // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
+        "mkv" | "mp4" | "webm" | "avi" => &[
+            Knob::VideoCodec,
+            Knob::VideoQuality,
+            Knob::VideoScale,
+            Knob::VideoFps,
+        ],
         _ => &[],
     }
 }
@@ -684,6 +1157,21 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
 ///
 /// 这是把「静态 args」换成「可调参数」的唯一入口，GUI 不要自己拼参数字符串。
 pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
+    args_for_with(spec, o, None)
+}
+
+/// 和 `args_for` 一样，但能看见源文件信息。
+///
+/// 视频容器需要它：音频能不能 `copy`、视频编码能不能直接装进容器，
+/// 都要看源流的编码。音频格式不需要，传 `None` 即可。
+pub fn args_for_with(
+    spec: &FormatSpec,
+    o: &ConvertOptions,
+    src: Option<&MediaInfo>,
+) -> Vec<String> {
+    if is_video(spec) {
+        return video_args(spec, o, src);
+    }
     let s = |v: &str| v.to_string();
     // PCM 系列没有「自动」：默认按 24-bit 处理
     let pcm_bit_depth = |b: BitDepth| if b == BitDepth::Auto { BitDepth::Int24 } else { b };
@@ -776,6 +1264,101 @@ pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
     a
 }
 
+/// 视频容器的完整参数：映射第一条视频 + 第一条音轨，再分别决定 copy/重编码。
+///
+/// `0:v:0?` 的 `?` 是"没有视频流也别报错"：音频文件也能装进 mkv/mp4
+/// （就变成只有声音的容器），比直接拒绝更有用。
+fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) -> Vec<String> {
+    let s = |v: &str| v.to_string();
+    let mut a = vec![
+        s("-map"),
+        s("0:v:0?"),
+        s("-map"),
+        s("0:a:0?"),
+    ];
+    let src_v = src.and_then(|i| i.video_codec.clone()).unwrap_or_default();
+    let vc = effective_video_codec(spec.id, o, &src_v);
+    // 编码器名按配置里记的（可能是 libopenh264 这种），没有就用首选
+    let enc = video_encoder_name(vc, &o.video_encoder);
+    // 质量参数：只有 libx264/libx265 吃 -crf；openh264/kvazaar 这类只认码率，
+    // 就用同一套估算把 CRF 换算成 -b:v，滑块才不会变成摆设。
+    let quality = |a: &mut Vec<String>, codec: VideoCodec| {
+        let crf = o.video_crf.min(63);
+        match enc {
+            "libx264" | "libx265" => {
+                a.extend([s("-crf"), crf.to_string(), s("-preset"), s("medium")]);
+            }
+            "libvpx-vp9" | "libaom-av1" => {
+                a.extend([s("-crf"), crf.to_string(), s("-b:v"), s("0")]);
+            }
+            "libsvtav1" => {
+                a.extend([s("-crf"), crf.to_string()]);
+            }
+            "librav1e" => {
+                a.extend([s("-qp"), crf.to_string()]);
+            }
+            _ => {
+                let kbps = src
+                    .map(|i| video_estimate_kbps(i, o, codec))
+                    .unwrap_or(2500)
+                    .max(300);
+                a.extend([s("-b:v"), format!("{kbps}k")]);
+            }
+        }
+    };
+    match vc {
+        VideoCodec::Copy => {
+            a.push(s("-c:v"));
+            a.push(s("copy"));
+        }
+        VideoCodec::H264 => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
+        VideoCodec::Hevc => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+            // 苹果设备只认带 hvc1 标记的 H.265
+            if spec.id == "mp4" {
+                a.extend([s("-tag:v"), s("hvc1")]);
+            }
+        }
+        VideoCodec::Vp9 => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+            a.extend([s("-row-mt"), s("1")]);
+        }
+        VideoCodec::Av1 => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
+    }
+    // copy 不能缩放/改帧率（effective_video_codec 已经保证这里不会是 copy）
+    if vc != VideoCodec::Copy {
+        if o.video_height > 0 {
+            a.extend([s("-vf"), format!("scale=-2:{}", o.video_height)]);
+        }
+        if o.video_fps > 0 {
+            a.extend([s("-r"), o.video_fps.to_string()]);
+        }
+    }
+
+    let src_a = src.map(|i| i.codec.as_str()).unwrap_or("");
+    // 纯视频文件没有音轨：别再塞 -c:a（ffmpeg 会忽略，但日志里全是噪音）
+    if !src_a.is_empty() {
+        match audio_plan(spec.id, src_a) {
+            AudioPlan::Copy => {
+                a.push(s("-c:a"));
+                a.push(s("copy"));
+            }
+            AudioPlan::Encode { codec, kbps, .. } => {
+                a.extend([s("-c:a"), s(codec), s("-b:a"), format!("{kbps}k")]);
+            }
+        }
+    }
+    a
+}
+
 /// 一把预设——比一屏滑杆有用得多
 pub struct Preset {
     pub id: &'static str,
@@ -843,6 +1426,11 @@ mod tests {
             duration_s: 120.0,
             size_bytes: 0,
             bits: Some(16),
+            video_codec: None,
+            width: 0,
+            height: 0,
+            fps: 0.0,
+            video_bitrate_kbps: 0,
         }
     }
 
@@ -942,7 +1530,14 @@ mod tests {
         for f in all() {
             for k in knobs_for(f) {
                 match k {
-                    Knob::FlacLevel | Knob::VorbisQuality | Knob::BitDepth => {}
+                    Knob::FlacLevel
+                    | Knob::VorbisQuality
+                    | Knob::BitDepth
+                    // 视频旋钮的档位来自枚举/固定表，不走码率档位
+                    | Knob::VideoCodec
+                    | Knob::VideoQuality
+                    | Knob::VideoScale
+                    | Knob::VideoFps => {}
                     Knob::SampleRate => assert!(
                         !rate_choices(f.id).is_empty(),
                         "{} 有采样率旋钮却没有档位表",
@@ -1161,6 +1756,11 @@ mod tests {
             duration_s: 60.0,
             size_bytes: 0,
             bits: Some(16),
+            video_codec: None,
+            width: 0,
+            height: 0,
+            fps: 0.0,
+            video_bitrate_kbps: 0,
         };
         let mut o = ConvertOptions::default();
         o.ac3_bitrate = 448;
@@ -1297,6 +1897,140 @@ mod tests {
             .collect();
         assert!(!kinds.contains(&WarningKind::BitDepthDown), "{kinds:?}");
         assert!(!kinds.contains(&WarningKind::BitDepthUp), "{kinds:?}");
+    }
+
+    // ── 视频容器 ──
+
+    fn miv(codec: &str, video: &str, w: u32, h: u32, fps: f64, vkbps: u64) -> MediaInfo {
+        MediaInfo {
+            video_codec: Some(video.into()),
+            width: w,
+            height: h,
+            fps,
+            video_bitrate_kbps: vkbps,
+            ..mi(codec, 192, 48_000)
+        }
+    }
+
+    #[test]
+    fn video_containers_are_selectable_targets() {
+        for id in ["mkv", "mp4", "webm", "avi"] {
+            let s = spec(id);
+            assert!(s.can_encode, "{id} 应该能当输出");
+            assert_eq!(s.group, Group::Video, "{id} 分组不对");
+            assert!(is_video(s));
+            assert!(
+                knobs_for(s).contains(&Knob::VideoCodec),
+                "{id} 缺视频编码旋钮"
+            );
+            // 容器不是音频编码器，探测那套不该把它当音频格式
+            assert!(encoder_for(id).is_none(), "{id} 不该走音频编码器探测");
+        }
+        assert_eq!(
+            video_containers().map(|f| f.id).collect::<Vec<_>>(),
+            vec!["mkv", "mp4", "webm", "avi"]
+        );
+    }
+
+    #[test]
+    fn video_codec_matrix_respects_container() {
+        // WebM 不收 H.264，MP4 不收 VP9（兼容性太差）
+        assert!(!video_codecs_for("webm").contains(&VideoCodec::H264));
+        assert!(!video_codecs_for("mp4").contains(&VideoCodec::Vp9));
+        assert!(video_codecs_for("mkv").contains(&VideoCodec::Av1));
+        assert!(copy_video_ok("mkv", "hevc"));
+        assert!(!copy_video_ok("mp4", "vp9"));
+        assert!(!copy_video_ok("avi", "hevc"));
+    }
+
+    #[test]
+    fn audio_plan_copies_or_reencodes() {
+        // 容器收就复制，别做无谓的有损重编码
+        assert_eq!(audio_plan("mkv", "flac"), AudioPlan::Copy);
+        assert_eq!(audio_plan("mp4", "aac"), AudioPlan::Copy);
+        assert_eq!(audio_plan("webm", "opus"), AudioPlan::Copy);
+        // MP4 装不了 FLAC → AAC；DSD 这类更不用想
+        assert!(matches!(
+            audio_plan("mp4", "flac"),
+            AudioPlan::Encode { codec: "aac", .. }
+        ));
+        assert!(matches!(
+            audio_plan("webm", "mp3"),
+            AudioPlan::Encode { codec: "libopus", .. }
+        ));
+    }
+
+    #[test]
+    fn video_args_copy_when_possible() {
+        let src = miv("aac", "h264", 1920, 1080, 23.976, 4000);
+        let a = args_for_with(spec("mkv"), &ConvertOptions::default(), Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-c:v" && w[1] == "copy"), "{a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-c:a" && w[1] == "copy"), "{a:?}");
+        // 两个流都要映射，否则音频文件能出画面、视频文件会丢画面
+        assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:v:0?"));
+        assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:0?"));
+    }
+
+    #[test]
+    fn video_args_fall_back_when_container_rejects_copy() {
+        // VP9 装不进 MP4：自动换成 H.264，不能默默产出放不了的 mp4
+        let src = miv("aac", "vp9", 1920, 1080, 30.0, 3000);
+        let a = args_for_with(spec("mp4"), &ConvertOptions::default(), Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-c:v" && w[1] == "libx264"), "{a:?}");
+        // H.265 要打 hvc1 标记，否则苹果设备不认
+        let mut o = ConvertOptions::default();
+        o.video_codec = VideoCodec::Hevc;
+        let a = args_for_with(spec("mp4"), &o, Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-tag:v" && w[1] == "hvc1"), "{a:?}");
+    }
+
+    #[test]
+    fn video_scale_forces_reencode() {
+        // copy 不能缩放：选了 720p 就必须换成真编码器
+        let src = miv("aac", "h264", 1920, 1080, 30.0, 4000);
+        let mut o = ConvertOptions::default();
+        o.video_height = 720;
+        let a = args_for_with(spec("mkv"), &o, Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-c:v" && w[1] == "libx264"), "{a:?}");
+        assert!(
+            a.windows(2)
+                .any(|w| w[0] == "-vf" && w[1] == "scale=-2:720"),
+            "{a:?}"
+        );
+        // 提示也要说清楚"这是在重编码"
+        let w = quality_warnings(&src, spec("mkv"), &o);
+        assert!(w.iter().any(|x| x.title.contains("重新编码")), "{w:?}");
+    }
+
+    #[test]
+    fn video_size_estimate_adds_video_and_audio() {
+        let src = miv("aac", "h264", 1920, 1080, 30.0, 4000);
+        let o = ConvertOptions::default();
+        let est = estimate_size(&src, spec("mkv"), &o);
+        // 120 秒 × (4000 + 192) kbps ≈ 62.9 MB
+        assert!(
+            (62_000_000..64_000_000).contains(&est),
+            "copy 的体积估算不对: {est}"
+        );
+        // 换成 H.265 重编码应该明显更小
+        let mut o2 = ConvertOptions::default();
+        o2.video_codec = VideoCodec::Hevc;
+        assert!(estimate_size(&src, spec("mkv"), &o2) < est);
+    }
+
+    #[test]
+    fn video_warn_only_when_something_changes() {
+        let src = miv("aac", "h264", 1920, 1080, 30.0, 4000);
+        // 原样封装：不该有提示
+        assert!(quality_warnings(&src, spec("mkv"), &ConvertOptions::default()).is_empty());
+        // 装不进容器：提示会重编码
+        let w = quality_warnings(&src, spec("webm"), &ConvertOptions::default());
+        assert!(w.iter().any(|x| x.title.contains("装不了")), "{w:?}");
+        // 降分辨率：提示会丢细节
+        let mut o = ConvertOptions::default();
+        o.video_height = 720;
+        let w = quality_warnings(&src, spec("mkv"), &o);
+        assert!(w.iter().any(|x| x.title.contains("分辨率")), "{w:?}");
     }
 }
 

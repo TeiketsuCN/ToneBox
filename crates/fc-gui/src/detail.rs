@@ -98,10 +98,19 @@ impl App {
 
         if let Some(m) = &it.info {
             ui.horizontal(|ui| {
-                chip(ui, m.codec_label(), ACCENT);
-                if let Some(q) = quality_of(m) {
-                    ui.add_space(6.0);
-                    animating |= quality_badge(ui, q, m.bitrate_kbps);
+                // 纯视频文件没有音频编码，chip 别画成空白
+                let codec = if m.codec.is_empty() && m.has_video() {
+                    m.video_label().unwrap_or("视频").to_string()
+                } else {
+                    m.codec_label().to_string()
+                };
+                chip(ui, &codec, accent());
+                // 视频文件不画音频音质徽章：画面质量跟这条音频码率没有关系
+                if !m.has_video() {
+                    if let Some(q) = quality_of(m) {
+                        ui.add_space(6.0);
+                        animating |= quality_badge(ui, q, m.bitrate_kbps);
+                    }
                 }
             });
             ui.add_space(10.0);
@@ -135,6 +144,19 @@ impl App {
                     if m.channels > 0 {
                         row(ui, "声道", &format!("{}", m.channels));
                     }
+                    // 视频文件只报音频参数没有意义：画面编码/分辨率/帧率才是它的身份
+                    if m.has_video() {
+                        let codec = m.video_label().unwrap_or("画面");
+                        let detail = if m.width > 0 && m.height > 0 {
+                            format!("{codec} · {}×{}", m.width, m.height)
+                        } else {
+                            codec.to_string()
+                        };
+                        row(ui, "画面", &detail);
+                        if m.fps > 0.0 {
+                            row(ui, "帧率", &fmt_fps(m.fps));
+                        }
+                    }
                     if m.duration_s > 0.0 {
                         row(ui, "时长", &fmt_duration(m.duration_s));
                     }
@@ -152,16 +174,136 @@ impl App {
             ui.add_space(14.0);
             match &it.analysis {
                 Analysis::Idle | Analysis::Running => {
-                    para(ui, "正在分析频谱…", 10.0, DIM);
+                    // 纯视频文件不派发分析（没有音轨），所以永远停在 Idle——
+                    // 别再写"正在分析频谱…"，那会一直转下去
+                    let no_audio = it
+                        .info
+                        .as_ref()
+                        .map(|m| m.sample_rate == 0 && m.has_video())
+                        .unwrap_or(false);
+                    if no_audio {
+                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                    } else {
+                        para(ui, "正在分析频谱…", 10.0, DIM);
+                    }
                 }
                 Analysis::Failed(e) => {
-                    ui.vertical(|ui| {
-                        para(ui, "频谱分析失败", 11.0, DANGER);
-                        ui.add_space(4.0);
-                        para(ui, e, 9.5, MUTED);
-                    });
+                    // 纯视频文件没有音轨，分析失败是必然的——别把它显示成红色错误
+                    let no_audio = it
+                        .info
+                        .as_ref()
+                        .map(|m| m.sample_rate == 0 && m.has_video())
+                        .unwrap_or(false);
+                    if no_audio {
+                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                    } else {
+                        ui.vertical(|ui| {
+                            para(ui, "频谱分析失败", 11.0, DANGER);
+                            ui.add_space(4.0);
+                            para(ui, e, 9.5, MUTED);
+                        });
+                    }
                 }
                 Analysis::Done(r) => {
+                    // 内容体检判定为"异常/测试信号/噪声"时，频谱判档没有意义：
+                    // 静音文件也能"频谱到 22.1kHz"，不能因此说它是无损
+                    let bad = it
+                        .health
+                        .as_ref()
+                        .map(|h| {
+                            !matches!(
+                                h.verdict,
+                                fc_analyze::health::Verdict::Normal
+                                    | fc_analyze::health::Verdict::Uncertain
+                            )
+                        })
+                        .unwrap_or(false);
+
+                    // ── 内容体检：先给结论，再列证据 ──
+                    // 用户看详情页第一个问题是"这文件是不是有效内容"，不是"多少 kbps"。
+                    // 判档的加减分证据也是这个结论的依据，所以跟 verdict 放在一起，
+                    // 不留在下面频谱判档的表格里。
+                    if let Some(h) = &it.health {
+                        para(ui, "内容体检", 10.0, DIM);
+                        ui.add_space(6.0);
+                        let (icon, vcol) = match h.verdict {
+                            fc_analyze::health::Verdict::Normal => ("✓", accent()),
+                            // 几乎全是静音 / 大比例削波：内容真的坏了，红叉
+                            fc_analyze::health::Verdict::MostlySilent
+                            | fc_analyze::health::Verdict::Clipped => ("✗", DANGER),
+                            // 测试信号 / 噪声 / 无法判断：不是坏文件，只是"不像歌曲"，
+                            // 用红色问号——红叉只留给内容异常
+                            _ => ("?", DANGER),
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(icon).size(11.0).color(vcol).strong());
+                            let mut line = h.verdict.label().to_string();
+                            // 一句话总结：像正常音乐 · 编码判档 90%
+                            if !bad && r.dsd.is_none() && r.confidence > 0.0 {
+                                line.push_str(&format!(" · 编码判档 {:.0}%", r.confidence * 100.0));
+                            }
+                            para(ui, &line, 10.0, vcol);
+                        });
+                        ui.add_space(4.0);
+                        // 用 Grid 而不是每行一个 horizontal：分项名字长短不一，
+                        // 不对齐的话数值会左右跳，看起来像没排版
+                        egui::Grid::new("health_checks")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for c in &h.checks {
+                                    let col = match c.severity {
+                                        fc_analyze::health::Severity::Ok => tint(TEXT, 150),
+                                        fc_analyze::health::Severity::Warn => WARN,
+                                        fc_analyze::health::Severity::Bad => DANGER,
+                                    };
+                                    ui.label(
+                                        RichText::new(c.name).size(9.5).color(tint(TEXT, 140)),
+                                    );
+                                    ui.label(RichText::new(&c.value).size(9.5).color(col));
+                                    ui.end_row();
+                                }
+                            });
+
+                        // 判档置信度的加减分依据：按分数从高到低排，一眼看出哪几条在撑结论
+                        if !r.confidence_notes.is_empty() && !bad && r.dsd.is_none() {
+                            ui.add_space(8.0);
+                            let mut notes: Vec<&fc_analyze::ConfidenceNote> =
+                                r.confidence_notes.iter().collect();
+                            notes.sort_by(|a, b| {
+                                let key = |n: &fc_analyze::ConfidenceNote| {
+                                    n.delta.map(|(p, _)| p).unwrap_or(-1.0)
+                                };
+                                key(b)
+                                    .partial_cmp(&key(a))
+                                    .unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            for n in notes {
+                                ui.horizontal(|ui| {
+                                    if let Some((pct, good)) = n.delta {
+                                        let (sym, col) = if good {
+                                            ("+", Color32::from_rgb(110, 220, 140))
+                                        } else {
+                                            ("−", Color32::from_rgb(230, 120, 110))
+                                        };
+                                        ui.label(
+                                            RichText::new(format!("{sym}{pct:.0}%"))
+                                                .size(9.5)
+                                                .color(col)
+                                                .strong(),
+                                        );
+                                        ui.add_space(6.0);
+                                    } else {
+                                        ui.add_space(30.0);
+                                    }
+                                    para(ui, &n.reason, 9.0, tint(TEXT, 195));
+                                });
+                                ui.add_space(1.0);
+                            }
+                        }
+                        ui.add_space(12.0);
+                    }
+
                     if let Some(d) = &r.dsd {
                         // DSD 不走"截止频率推码率"那套：只报格式事实，别给一个假的置信度
                         para(ui, "质量评估", 10.0, DIM);
@@ -184,19 +326,6 @@ impl App {
                                 row(ui, "判定", "无损源码");
                             });
                     } else {
-                        // 内容体检判定为"异常/测试信号/噪声"时，频谱判档没有意义：
-                        // 静音文件也能"频谱到 22.1kHz"，不能因此说它是无损
-                        let bad = it
-                            .health
-                            .as_ref()
-                            .map(|h| {
-                                !matches!(
-                                    h.verdict,
-                                    fc_analyze::health::Verdict::Normal
-                                        | fc_analyze::health::Verdict::Uncertain
-                                )
-                            })
-                            .unwrap_or(false);
                         para(ui, "质量评估", 10.0, DIM);
                         ui.add_space(6.0);
                         egui::Grid::new("quality_grid")
@@ -255,7 +384,7 @@ impl App {
                                 p.rect_filled(
                                     f,
                                     Rounding::same(5.0),
-                                    if r.confidence > 0.6 { ACCENT } else { WARN },
+                                    if r.confidence > 0.6 { accent() } else { WARN },
                                 );
                                 ui.label(
                                     RichText::new(if bad {
@@ -271,62 +400,6 @@ impl App {
                                     row(ui, "响度", &format!("{:.1} LUFS", l.lufs));
                                 }
                             });
-
-                        // 置信度是怎么算出来的：一条条列出来，别只给个数字
-                        // 内容体检：静音/削波/噪声/测试信号
-                        if let Some(h) = &it.health {
-                            ui.add_space(12.0);
-                            let (icon, vcol) = match h.verdict {
-                                fc_analyze::health::Verdict::Normal => ("✓", ACCENT),
-                                fc_analyze::health::Verdict::Uncertain => ("?", WARN),
-                                _ => ("✗", DANGER),
-                            };
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(icon).size(11.0).color(vcol).strong());
-                                para(ui, h.verdict.label(), 10.0, vcol);
-                            });
-                            ui.add_space(4.0);
-                            for c in &h.checks {
-                                let col = match c.severity {
-                                    fc_analyze::health::Severity::Ok => tint(TEXT, 150),
-                                    fc_analyze::health::Severity::Warn => WARN,
-                                    fc_analyze::health::Severity::Bad => DANGER,
-                                };
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new(c.name).size(9.5).color(tint(TEXT, 140)),
-                                    );
-                                    ui.add_space(8.0);
-                                    ui.label(RichText::new(&c.value).size(9.5).color(col));
-                                });
-                            }
-                        }
-
-                        if !r.confidence_notes.is_empty() && !bad {
-                            ui.add_space(6.0);
-                            for n in &r.confidence_notes {
-                                ui.horizontal(|ui| {
-                                    if let Some((pct, good)) = n.delta {
-                                        let (sym, col) = if good {
-                                            ("+", Color32::from_rgb(110, 220, 140))
-                                        } else {
-                                            ("−", Color32::from_rgb(230, 120, 110))
-                                        };
-                                        ui.label(
-                                            RichText::new(format!("{sym}{pct:.0}%"))
-                                                .size(9.5)
-                                                .color(col)
-                                                .strong(),
-                                        );
-                                        ui.add_space(6.0);
-                                    } else {
-                                        ui.add_space(30.0);
-                                    }
-                                    para(ui, &n.reason, 9.0, tint(TEXT, 195));
-                                });
-                                ui.add_space(1.0);
-                            }
-                        }
                     }
 
                     if !r.caveats.is_empty() {
@@ -385,7 +458,7 @@ impl App {
                 p.rect_filled(
                     f,
                     Rounding::same(6.0),
-                    if enc.confidence > 0.8 { ACCENT } else { WARN },
+                    if enc.confidence > 0.8 { accent() } else { WARN },
                 );
                 ui.label(
                     RichText::new(format!("{:.0}%", enc.confidence * 100.0))
@@ -428,12 +501,15 @@ impl App {
 
         // 完成/失败不再在详情底部堆卡片：状态在队列行（✓ / ✗），通知进标题栏铃铛
 
-        // 选中即分析（结果进缓存，切回来不重跑）
+        // 选中即分析（结果进缓存，切回来不重跑）。纯视频文件没有音轨，别白跑一遍
         if self.cfg.auto_analyze
             && self
                 .items
                 .get(self.selected)
-                .map(|i| matches!(i.analysis, Analysis::Idle) && i.info.is_some())
+                .map(|i| {
+                    matches!(i.analysis, Analysis::Idle)
+                        && i.info.as_ref().map(|m| m.sample_rate > 0).unwrap_or(false)
+                })
                 .unwrap_or(false)
         {
             self.start_analyze(self.selected, ui.ctx());
@@ -462,6 +538,18 @@ impl App {
                     Some(r) => parts.push(fmt_rate(r)),
                     None => parts.push("跟源".into()),
                 },
+                Knob::VideoCodec => parts.push(o.video_codec.short().to_string()),
+                Knob::VideoQuality => parts.push(format!("CRF {}", o.video_crf)),
+                Knob::VideoScale => parts.push(if o.video_height > 0 {
+                    format!("{}p", o.video_height)
+                } else {
+                    "原分辨率".into()
+                }),
+                Knob::VideoFps => parts.push(if o.video_fps > 0 {
+                    format!("{}fps", o.video_fps)
+                } else {
+                    "原帧率".into()
+                }),
             }
         }
         if parts.is_empty() {

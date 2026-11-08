@@ -44,7 +44,7 @@ impl App {
                             self.lib_total.max(self.lib_entries.len())
                         ))
                         .size(9.0)
-                        .color(ACCENT),
+                        .color(accent()),
                     );
                 } else {
                     ui.label(
@@ -364,7 +364,7 @@ impl App {
             p.rect_filled(rect, Rounding::same(3.0), tint(Color32::WHITE, 14));
             let mut f = rect;
             f.set_width(rect.width() * frac);
-            p.rect_filled(f, Rounding::same(3.0), ACCENT);
+            p.rect_filled(f, Rounding::same(3.0), accent());
             ui.add_space(4.0);
         }
         if !self.lib_status.is_empty() {
@@ -579,7 +579,7 @@ pub(crate) fn lib_row(
     let p = ui.painter();
     let hovered = resp.hovered();
     let fill = if selected {
-        tint(ACCENT, 26)
+        tint(accent(), 26)
     } else if hovered {
         tint(Color32::WHITE, 8)
     } else {
@@ -596,7 +596,7 @@ pub(crate) fn lib_row(
                 egui::vec2(3.0, 18.0),
             ),
             Rounding::same(1.5),
-            ACCENT,
+            accent(),
         );
     }
     // 封面：37×37，圆角，没图给一块浅底
@@ -649,7 +649,7 @@ pub(crate) fn lib_row(
         ui,
         title_rect,
         12.0,
-        if playing { ACCENT } else { TEXT },
+        if playing { accent() } else { TEXT },
         &e.title,
     );
     // 副标题：编码 · 艺术家 · 专辑（编码放前面，用户一眼知道是什么格式）

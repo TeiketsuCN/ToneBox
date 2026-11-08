@@ -55,8 +55,12 @@ impl App {
         ui.label(
             RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
                 .size(12.0)
-                .color(ACCENT),
+                .color(accent()),
         );
+        // 视频容器：先把「这个容器收什么」说一句，再看下面具体旋钮
+        if fc_core::is_video(self.target) {
+            out_hint(ui, fc_core::container_note(self.target.id), DIM);
+        }
 
         // 选中文件 → 当前目标的质量提示。提示挂在触发它的控件下面：
         // 容器/格式类在标题下，码率类在码率旋钮下，升采样在采样率下。
@@ -93,18 +97,18 @@ impl App {
                 let on = self.target.id == p.format;
                 let b = egui::Button::new(
                     RichText::new(p.name).size(9.5).color(if on {
-                        ACCENT
+                        accent()
                     } else {
                         MUTED
                     }),
                 )
                 .fill(if on {
-                    tint(ACCENT, 20)
+                    tint(accent(), 20)
                 } else {
                     tint(Color32::WHITE, 8)
                 })
                 .stroke(if on {
-                    line(ACCENT, 45)
+                    line(accent(), 45)
                 } else {
                     line(Color32::WHITE, 16)
                 })
@@ -126,18 +130,18 @@ impl App {
                 let on = self.target.id == p.format && self.cfg.opts == p.opts;
                 let b = egui::Button::new(
                     RichText::new(&p.name).size(9.5).color(if on {
-                        ACCENT
+                        accent()
                     } else {
                         MUTED
                     }),
                 )
                 .fill(if on {
-                    tint(ACCENT, 20)
+                    tint(accent(), 20)
                 } else {
                     tint(Color32::WHITE, 8)
                 })
                 .stroke(if on {
-                    line(ACCENT, 45)
+                    line(accent(), 45)
                 } else {
                     line(Color32::WHITE, 16)
                 })
@@ -187,9 +191,9 @@ impl App {
             }
             if ui
                 .add(
-                    egui::Button::new(RichText::new("＋ 存为预设").size(9.5).color(ACCENT))
-                        .fill(tint(ACCENT, 14))
-                        .stroke(line(ACCENT, 45))
+                    egui::Button::new(RichText::new("＋ 存为预设").size(9.5).color(accent()))
+                        .fill(tint(accent(), 14))
+                        .stroke(line(accent(), 45))
                         .rounding(Rounding::same(7.0)),
                 )
                 .on_hover_text("把当前格式和参数存成一套，可改名，跟着「配置」一起保存")
@@ -285,6 +289,9 @@ impl App {
         for w in warnings.iter().filter(|w| !shown.contains(&w.kind)) {
             hint_below(ui, &w.body, WARN);
         }
+        if fc_core::is_video(self.target) {
+            hint_below(ui, fc_core::video_knob_note(self.target.id), DIM);
+        }
         // 外部编码器：让用户知道这一步不是 ffmpeg 干的
         if let Some(name) = fc_core::external_encoder(self.target.id) {
             ui.add_space(4.0);
@@ -294,6 +301,44 @@ impl App {
                 8.5,
                 DIM,
             );
+        }
+
+        // 视频容器的音轨方案：能复制就复制，不能就得按容器规矩重编——
+        // 不写出来用户会以为"只是换了容器，声音没动"。
+        if fc_core::is_video(self.target) {
+            let src_audio = self
+                .items
+                .get(self.selected)
+                .and_then(|i| i.info.as_ref())
+                .map(|m| m.codec.clone())
+                .unwrap_or_default();
+            let plan = fc_core::audio_plan(self.target.id, &src_audio);
+            field_row(ui, "音频", |ui| {
+                // 纯视频文件没有音轨：写"无音轨"，别假装会转出一条 FLAC 900k
+                let text = if src_audio.is_empty() {
+                    "无音轨（纯视频）".to_string()
+                } else {
+                    plan.label()
+                };
+                ui.label(RichText::new(text).size(10.0).color(TEXT));
+            });
+            if !src_audio.is_empty() {
+                if let fc_core::AudioPlan::Encode { label, .. } = plan {
+                    hint_below(
+                        ui,
+                        &format!(
+                            "源的 {} 不在这个容器支持的音频编码里，音轨会转成 {}。",
+                            self.items
+                                .get(self.selected)
+                                .and_then(|i| i.info.as_ref())
+                                .map(|m| m.codec_label().to_string())
+                                .unwrap_or_else(|| src_audio.clone()),
+                            label
+                        ),
+                        WARN,
+                    );
+                }
+            }
         }
 
         // 响度归一化：和旋钮分开一行，因为它是"处理"不是"编码参数"
@@ -425,7 +470,7 @@ impl App {
                 egui::Align2::LEFT_CENTER,
                 format!("{} 项已填", filled),
                 egui::FontId::proportional(9.0),
-                ACCENT,
+                accent(),
             );
         }
         let tc = hrect.right_center() - egui::vec2(9.0, 0.0);
@@ -795,6 +840,69 @@ impl App {
                 changed |= bitrate_row(ui, "atrac3", &mut self.cfg.opts.atrac3_bitrate)
             }
             Knob::SampleRate => changed |= self.sample_rate_row(ui),
+            // ── 视频容器 ──
+            Knob::VideoCodec => {
+                let choices = fc_core::video_codecs_for(self.target.id);
+                // 实际编码器名要落到配置里：随包 ffmpeg 没有 libx264（授权原因），
+                // 能编 H.264 的是 libopenh264；不记下来 args 里就会是个不存在的名字。
+                if let Some(e) = fc_core::resolve_video_encoder(
+                    self.cfg.opts.video_codec,
+                    &self.encoders,
+                    &self.cfg.opts.video_encoder,
+                ) {
+                    if e != self.cfg.opts.video_encoder {
+                        self.cfg.opts.video_encoder = e.to_string();
+                        changed = true;
+                    }
+                }
+                // 「视频编码」放不下在 field_row 的标签列里（5 个按钮），单独占一行
+                ui.label(RichText::new("视频编码").size(10.0).color(MUTED));
+                ui.add_space(2.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                    for c in choices {
+                        // 复制永远可用；真编码要看这个 ffmpeg 构建里有没有
+                        let enc_ok = *c == fc_core::VideoCodec::Copy
+                            || fc_core::resolve_video_encoder(*c, &self.encoders, "").is_some();
+                        let on = self.cfg.opts.video_codec == *c;
+                        if seg_button_state(ui, c.short(), on, enc_ok) {
+                            self.cfg.opts.video_codec = *c;
+                            if let Some(e) =
+                                fc_core::resolve_video_encoder(*c, &self.encoders, "")
+                            {
+                                self.cfg.opts.video_encoder = e.to_string();
+                            }
+                            changed = true;
+                        }
+                    }
+                });
+            }
+            Knob::VideoQuality => field_row(ui, "质量", |ui| {
+                let mut v = self.cfg.opts.video_crf as i32;
+                if level_slider_inline(ui, &mut v, 16, 32) {
+                    self.cfg.opts.video_crf = v as u8;
+                    changed = true;
+                }
+            }),
+            Knob::VideoScale => field_row(ui, "分辨率", |ui| {
+                // 0 = 保持；只给高度，宽按比例自动算
+                for (label, h) in [("保持", 0u32), ("1080p", 1080), ("720p", 720), ("480p", 480)] {
+                    let on = self.cfg.opts.video_height == h;
+                    if seg_button(ui, label, on) {
+                        self.cfg.opts.video_height = h;
+                        changed = true;
+                    }
+                }
+            }),
+            Knob::VideoFps => field_row(ui, "帧率", |ui| {
+                for (label, f) in [("保持", 0u32), ("24", 24), ("30", 30), ("60", 60)] {
+                    let on = self.cfg.opts.video_fps == f;
+                    if seg_button(ui, label, on) {
+                        self.cfg.opts.video_fps = f;
+                        changed = true;
+                    }
+                }
+            }),
         }
         changed
     }
@@ -843,7 +951,7 @@ impl App {
             ui.label(
                 RichText::new(text)
                     .size(9.0)
-                    .color(if auto_on { DIM } else { ACCENT }),
+                    .color(if auto_on { DIM } else { accent() }),
             );
         });
         changed

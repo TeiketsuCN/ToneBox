@@ -300,7 +300,7 @@ pub(crate) fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbp
         }
         Quality::Hq | Quality::Std | Quality::Lq => {
             let c = match q {
-                Quality::Hq => ACCENT,
+                Quality::Hq => accent(),
                 Quality::Std => MUTED,
                 _ => DIM,
             };

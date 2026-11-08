@@ -12,15 +12,15 @@
 
 #![cfg(windows)]
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering};
 
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 use windows_sys::Win32::UI::WindowsAndMessaging::MINMAXINFO;
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO, MONITOR_DEFAULTTONEAREST};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, FindWindowW, GetClientRect, GetWindowLongPtrW, IsZoomed, SetWindowLongPtrW,
-    GWLP_WNDPROC,
+    CallWindowProcW, FindWindowW, GetClientRect, GetWindowLongPtrW, GetWindowRect, IsZoomed,
+    SetWindowLongPtrW, SetWindowPos, GWLP_WNDPROC, SWP_NOACTIVATE, SWP_NOZORDER,
 };
 
 /// 原生 `WM_NCHITTEST` 是否已经接管
@@ -85,6 +85,72 @@ pub fn set_home_zone(left: f32, right: f32) {
 }
 
 static OLD_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// 窗口句柄。装完子类化之后记下来，全屏/还原要用（FindWindow 每帧找太浪费）。
+static HWND_SAVED: AtomicIsize = AtomicIsize::new(0);
+
+/// 进全屏前的窗口矩形（left, top, right, bottom），退出时原样还原
+static FS_RECT: [AtomicI32; 4] = [
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+    AtomicI32::new(0),
+];
+
+/// 把窗口铺满当前显示器的工作区（F11）/ 还原。
+///
+/// 为什么不用 `ViewportCommand::Fullscreen`：winit 的真全屏会切显示模式和
+/// swapchain 色彩空间，Win11 开了 HDR 之后退出时不还回来，**整个桌面**会暗一截，
+/// 得关一次 HDR 才恢复。本程序本来就是无边框 + 自绘标题栏，
+/// "铺满工作区的普通窗口"视觉上和全屏没区别，而且完全不动显示模式。
+pub fn set_fill_work_area(on: bool) -> bool {
+    let hwnd = HWND_SAVED.load(Ordering::SeqCst) as HWND;
+    if hwnd.is_null() {
+        return false;
+    }
+    unsafe {
+        if on {
+            let mut r: RECT = std::mem::zeroed();
+            if GetWindowRect(hwnd, &mut r) == 0 {
+                return false;
+            }
+            FS_RECT[0].store(r.left, Ordering::SeqCst);
+            FS_RECT[1].store(r.top, Ordering::SeqCst);
+            FS_RECT[2].store(r.right, Ordering::SeqCst);
+            FS_RECT[3].store(r.bottom, Ordering::SeqCst);
+
+            let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if mon.is_null() {
+                return false;
+            }
+            let mut info: MONITORINFO = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(mon, &mut info) == 0 {
+                return false;
+            }
+            let work = info.rcWork;
+            SetWindowPos(
+                hwnd,
+                std::ptr::null_mut(),
+                work.left,
+                work.top,
+                work.right - work.left,
+                work.bottom - work.top,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            ) != 0
+        } else {
+            let x = FS_RECT[0].load(Ordering::SeqCst);
+            let y = FS_RECT[1].load(Ordering::SeqCst);
+            let w = FS_RECT[2].load(Ordering::SeqCst) - x;
+            let h = FS_RECT[3].load(Ordering::SeqCst) - y;
+            // 没记到尺寸（比如刚启动就按 Esc）就先不动窗口
+            if w <= 0 || h <= 0 {
+                return true;
+            }
+            SetWindowPos(hwnd, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE) != 0
+        }
+    }
+}
 
 unsafe extern "system" fn subclass_proc(
     hwnd: HWND,
@@ -218,6 +284,7 @@ pub fn install(title: &str) -> bool {
         if hwnd.is_null() {
             return false;
         }
+        HWND_SAVED.store(hwnd as isize, Ordering::SeqCst);
 
         // Win11 圆角：32 = DWMWCP_ROUND
         const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
