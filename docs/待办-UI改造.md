@@ -519,3 +519,24 @@ let (icon, vcol) = match h.verdict {
 
 （同时注意 `Verdict::Uncertain` 现在是琥珀色 `?`，统一成红色问号还是保留琥珀，做的时候顺带问一下。）
 
+### 4. 「暗化」滑到三位数会顶到右边的「关于」栏
+
+用户反馈：设置页把「暗化」拉到 100 以上（滑条最大 210），右边那一列「关于 / 程序 / 版本 / 开发…」会被挤到、压住。
+
+原因：`overlays.rs` 里这一行是
+
+```rust
+ui.label(RichText::new("暗化").size(10.5).color(MUTED));
+ui.add_space(12.0);
+let mut dim = self.cfg.dim as i32;
+if bar_slider(ui, &mut dim, 0, 210, false) { ... }
+```
+
+而 `util.rs` 的 `bar_slider` 宽度是 `ui.available_width() - 22.0`，末尾还要再画一个数字（默认两位数'占位，变成三位数 100+ 时宽度不够，数字被挤出列宽，视觉上顶到右栏）。
+
+改法（二选一）：
+- 给 `bar_slider` 一个显式宽度参数（`col_w - 90`），数字标签固定 28px 宽、右对齐；
+- 或者把暗化的数字单独画在滑条右边，用固定宽度的 `allocate_exact_size(vec2(30.0, 16.0))` 再把文字右对齐画进去。
+
+顺手检查：`暗化` 右侧的数字现在没有固定宽度，0~99 和 100~210 之间会让整行宽度跳变，拉的时候会抖。
+
