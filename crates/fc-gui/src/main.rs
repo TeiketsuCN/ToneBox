@@ -275,6 +275,18 @@ struct App {
     lib_last_click: (Option<PathBuf>, f64),
     lib_tx: std::sync::mpsc::Sender<LibMsg>,
     lib_rx: Receiver<LibMsg>,
+    /// 音乐库封面缓存（懒加载：滚到哪加载哪）
+    lib_covers: std::collections::HashMap<PathBuf, Option<egui::TextureHandle>>,
+    lib_cover_pending: std::collections::HashSet<PathBuf>,
+    lib_cover_tx: std::sync::mpsc::Sender<(PathBuf, Option<(Vec<u8>, u32, u32)>)>,
+    lib_cover_rx: Receiver<(PathBuf, Option<(Vec<u8>, u32, u32)>)>,
+    lib_cover_seq: u64,
+    /// 正在重命名的配置下标 + 输入缓冲
+    rename_idx: Option<usize>,
+    rename_buf: String,
+    rename_focus: bool,
+    /// 导入/导出的结果提示
+    profile_msg: String,
 }
 
 impl App {
@@ -308,6 +320,7 @@ impl App {
         let (mtx, mrx) = channel();
         let (btx, brx) = channel();
         let (ltx, lrx) = channel();
+        let (cvt, cvr) = channel();
         let tools = fc_core::locate();
         let encoders = tools
             .as_ref()
@@ -373,6 +386,15 @@ impl App {
             lib_last_click: (None, -10.0),
             lib_tx: ltx,
             lib_rx: lrx,
+            lib_covers: std::collections::HashMap::new(),
+            lib_cover_pending: std::collections::HashSet::new(),
+            lib_cover_tx: cvt,
+            lib_cover_rx: cvr,
+            lib_cover_seq: 0,
+            rename_idx: None,
+            rename_buf: String::new(),
+            rename_focus: false,
+            profile_msg: String::new(),
         }
     }
 
@@ -730,6 +752,7 @@ impl eframe::App for App {
         self.poll_media(ctx);
         self.poll_big_cover(ctx);
         self.poll_library();
+        self.poll_lib_covers(ctx);
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -1152,7 +1175,7 @@ impl App {
 
         // 底部合规提示固定（两页都在）
         egui::TopBottomPanel::bottom("rail_footer")
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 6.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(
@@ -1162,11 +1185,241 @@ impl App {
                 );
             });
 
+        // 用户配置：在合规提示上面，两页都在
+        egui::TopBottomPanel::bottom("rail_profiles")
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
+            .show_inside(ui, |ui| {
+                ui.set_width(ui.available_width());
+                self.profile_panel(ui);
+            });
+
         match self.page {
             Page::Convert => animating |= self.format_list(ui),
             Page::Library => self.library_nav(ui),
         }
         animating
+    }
+
+    /// 左下的用户配置面板：列表 + 重命名 + 导出/导入
+    fn profile_panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("配置").size(9.0).color(DIM));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if tiny_text_button(ui, "+") {
+                    self.cfg.add_profile();
+                    self.profile_msg = "已新建一套配置".into();
+                }
+            });
+        });
+        ui.add_space(2.0);
+
+        let mut switch_to: Option<usize> = None;
+        let mut start_rename: Option<usize> = None;
+        let mut remove: Option<usize> = None;
+        let mut apply_rename: Option<usize> = None;
+        let mut cancel_rename = false;
+
+        for i in 0..self.cfg.profiles.len() {
+            if self.rename_idx == Some(i) {
+                ui.horizontal(|ui| {
+                    // 缓冲从空开始、把原名当提示：直接打字就是新名字，
+                    // 不改直接回车则保持原名（否则会像之前那样接在原名后面）
+                    let hint = self.cfg.profiles[i].name.clone();
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.rename_buf)
+                            .hint_text(hint)
+                            .desired_width((ui.available_width() - 6.0).max(60.0))
+                            .margin(egui::vec2(6.0, 3.0)),
+                    );
+                    if self.rename_focus {
+                        resp.request_focus();
+                        self.rename_focus = false;
+                    }
+                    if resp.lost_focus() || ui.input(|x| x.key_pressed(egui::Key::Enter)) {
+                        apply_rename = Some(i);
+                    }
+                    if ui.input(|x| x.key_pressed(egui::Key::Escape)) {
+                        cancel_rename = true;
+                    }
+                });
+                continue;
+            }
+
+            let on = i == self.cfg.active_profile;
+            let (rect, resp) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 24.0),
+                egui::Sense::click(),
+            );
+            let p = ui.painter();
+            let fill = if on {
+                tint(ACCENT, 26)
+            } else if resp.hovered() {
+                tint(Color32::WHITE, 10)
+            } else {
+                Color32::TRANSPARENT
+            };
+            if fill != Color32::TRANSPARENT {
+                p.rect_filled(rect, Rounding::same(7.0), fill);
+            }
+            let name_rect = egui::Rect::from_min_max(
+                rect.min + egui::vec2(8.0, 0.0),
+                egui::pos2(rect.right() - 26.0, rect.bottom()),
+            );
+            paint_clipped_v(
+                ui,
+                name_rect,
+                10.5,
+                if on { ACCENT } else { MUTED },
+                &self.cfg.profiles[i].name,
+            );
+            // 改名按钮（✎）
+            let er = egui::Rect::from_center_size(
+                rect.right_center() - egui::vec2(12.0, 0.0),
+                egui::vec2(20.0, 20.0),
+            );
+            let edit = ui.interact(er, ui.id().with(("prof_edit", i)), egui::Sense::click());
+            p.text(
+                er.center(),
+                egui::Align2::CENTER_CENTER,
+                "改",
+                egui::FontId::proportional(10.0),
+                if edit.hovered() { TEXT } else { DIM },
+            );
+            if edit.clicked() {
+                start_rename = Some(i);
+            } else if resp.clicked() {
+                switch_to = Some(i);
+            }
+            resp.context_menu(|ui| {
+                if ui.button("重命名").clicked() {
+                    start_rename = Some(i);
+                    ui.close_menu();
+                }
+                if ui.button("删除这套配置").clicked() {
+                    remove = Some(i);
+                    ui.close_menu();
+                }
+            });
+        }
+
+        if let Some(i) = switch_to {
+            self.cfg.switch_profile(i);
+        }
+        if let Some(i) = start_rename {
+            self.rename_idx = Some(i);
+            self.rename_buf.clear();
+            self.rename_focus = true;
+        }
+        if let Some(i) = apply_rename {
+            // 空输入 = 不改名
+            if !self.rename_buf.trim().is_empty() {
+                let name = self.rename_buf.clone();
+                self.cfg.rename_profile(i, name);
+            }
+            self.rename_idx = None;
+            self.rename_buf.clear();
+        }
+        if cancel_rename {
+            self.rename_idx = None;
+        }
+        if let Some(i) = remove {
+            self.cfg.remove_profile(i);
+        }
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if tiny_text_button(ui, "导出") {
+                self.export_profiles();
+            }
+            if tiny_text_button(ui, "导入") {
+                self.import_profiles();
+            }
+        });
+        if !self.profile_msg.is_empty() {
+            ui.add_space(2.0);
+            para(ui, &self.profile_msg, 8.5, DIM);
+        }
+    }
+
+    /// 把全部配置导出成一个 JSON（换机器/备份用）
+    fn export_profiles(&mut self) {
+        self.cfg.snapshot_active();
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("format-converter-profiles.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            return;
+        };
+        let payload = serde_json::json!({
+            "app": "format-converter",
+            "version": 1,
+            "active": self.cfg.active_profile,
+            "profiles": self.cfg.profiles,
+        });
+        match serde_json::to_string_pretty(&payload) {
+            Ok(s) => match std::fs::write(&path, s) {
+                Ok(_) => self.profile_msg = format!("已导出 {}", path.display()),
+                Err(e) => self.profile_msg = format!("导出失败：{e}"),
+            },
+            Err(e) => self.profile_msg = format!("导出失败：{e}"),
+        }
+    }
+
+    /// 导入一份导出的 JSON，追加成新配置（重名自动加后缀）
+    fn import_profiles(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+        #[derive(serde::Deserialize)]
+        struct Pkg {
+            #[serde(default)]
+            profiles: Vec<settings::Profile>,
+        }
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                self.profile_msg = format!("导入失败：{e}");
+                return;
+            }
+        };
+        let pkg: Pkg = match serde_json::from_str(&text) {
+            Ok(p) => p,
+            Err(_) => {
+                self.profile_msg = "导入失败：这不是配置 JSON".into();
+                return;
+            }
+        };
+        if pkg.profiles.is_empty() {
+            self.profile_msg = "导入失败：文件里没有配置".into();
+            return;
+        }
+        self.cfg.snapshot_active();
+        let first = self.cfg.profiles.len();
+        let mut added = 0;
+        for mut p in pkg.profiles {
+            let base = if p.name.trim().is_empty() {
+                "导入的配置".to_string()
+            } else {
+                p.name.trim().to_string()
+            };
+            let mut name = base.clone();
+            let mut k = 2;
+            while self.cfg.profiles.iter().any(|q| q.name == name) {
+                name = format!("{base} ({k})");
+                k += 1;
+            }
+            p.name = name;
+            self.cfg.profiles.push(p);
+            added += 1;
+        }
+        self.cfg.active_profile = first.min(self.cfg.profiles.len() - 1);
+        self.cfg.apply_active();
+        self.cfg.save();
+        self.profile_msg = format!("已导入 {added} 套配置");
     }
 
     /// 转换页的格式列表（就是原来的 sidebar，底部提示已经提到 left_rail）
@@ -2313,6 +2566,7 @@ impl App {
             .map(|it| it.path.clone());
 
         let mut clicked: Option<usize> = None;
+        let mut requests: Vec<PathBuf> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("lib_list")
             .auto_shrink([false, false])
@@ -2335,7 +2589,19 @@ impl App {
                             let e = &self.lib_entries[i];
                             let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
                             let pl = playing_path.as_deref() == Some(e.path.as_path());
-                            if lib_row(ui, e, pl, sel).clicked() {
+                            // 滚到哪加载哪：这一行在视口里才去抽封面
+                            let row_rect = egui::Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width(), 48.0),
+                            );
+                            if ui.clip_rect().intersects(row_rect)
+                                && !self.lib_covers.contains_key(&e.path)
+                                && !self.lib_cover_pending.contains(&e.path)
+                            {
+                                requests.push(e.path.clone());
+                            }
+                            let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
+                            if lib_row(ui, e, pl, sel, tex).clicked() {
                                 clicked = Some(i);
                             }
                         }
@@ -2368,7 +2634,18 @@ impl App {
                             let e = &self.lib_entries[i];
                             let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
                             let pl = playing_path.as_deref() == Some(e.path.as_path());
-                            if lib_row(ui, e, pl, sel).clicked() {
+                            let row_rect = egui::Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width(), 48.0),
+                            );
+                            if ui.clip_rect().intersects(row_rect)
+                                && !self.lib_covers.contains_key(&e.path)
+                                && !self.lib_cover_pending.contains(&e.path)
+                            {
+                                requests.push(e.path.clone());
+                            }
+                            let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
+                            if lib_row(ui, e, pl, sel, tex).clicked() {
                                 clicked = Some(i);
                             }
                         }
@@ -2376,6 +2653,16 @@ impl App {
                     LibTab::Folders => {}
                 }
             });
+
+        if !requests.is_empty() {
+            if let Some(tools) = self.tools.clone() {
+                for p in requests.into_iter().take(64) {
+                    if self.lib_cover_pending.insert(p.clone()) {
+                        spawn_lib_cover(tools.ffmpeg.clone(), p, self.lib_cover_tx.clone());
+                    }
+                }
+            }
+        }
 
         if let Some(i) = clicked {
             let path = self.lib_entries[i].path.clone();
@@ -2460,7 +2747,7 @@ impl App {
                 rect.min + egui::vec2(10.0, 0.0),
                 egui::pos2(rect.right() - 40.0, rect.bottom()),
             );
-            paint_clipped(ui, label_rect, 10.0, MUTED, d);
+            paint_clipped_v(ui, label_rect, 10.0, MUTED, d);
             let xr = egui::Rect::from_center_size(
                 rect.right_center() - egui::vec2(14.0, 0.0),
                 egui::vec2(24.0, 24.0),
@@ -2502,7 +2789,7 @@ impl App {
                 rect.min + egui::vec2(10.0, 0.0),
                 egui::pos2(rect.right() - 40.0, rect.bottom()),
             );
-            paint_clipped(ui, label_rect, 10.0, MUTED, f);
+            paint_clipped_v(ui, label_rect, 10.0, MUTED, f);
             let xr = egui::Rect::from_center_size(
                 rect.right_center() - egui::vec2(14.0, 0.0),
                 egui::vec2(24.0, 24.0),
@@ -2586,6 +2873,9 @@ impl App {
         self.lib_scanning = true;
         self.lib_total = 0;
         self.lib_entries.clear();
+        // 重扫就丢掉旧封面缓存（文件可能换了封面）
+        self.lib_covers.clear();
+        self.lib_cover_pending.clear();
         self.lib_status = "正在扫描…".into();
         let tx = self.lib_tx.clone();
         std::thread::spawn(move || {
@@ -2627,6 +2917,30 @@ impl App {
                     self.lib_status = format!("扫描完成：{} 首", self.lib_entries.len());
                 }
             }
+        }
+    }
+
+    /// 懒加载封面的回传：解码好的 RGBA 在这里变成 GPU 纹理
+    fn poll_lib_covers(&mut self, ctx: &egui::Context) {
+        while let Ok((path, payload)) = self.lib_cover_rx.try_recv() {
+            self.lib_cover_pending.remove(&path);
+            let tex = payload.map(|(rgba, w, h)| {
+                let pixels: Vec<Color32> = rgba
+                    .chunks_exact(4)
+                    .map(|c| Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]))
+                    .collect();
+                let img = egui::ColorImage {
+                    size: [w as usize, h as usize],
+                    pixels,
+                };
+                self.lib_cover_seq += 1;
+                ctx.load_texture(
+                    format!("libcover_{}", self.lib_cover_seq),
+                    img,
+                    egui::TextureOptions::LINEAR,
+                )
+            });
+            self.lib_covers.insert(path, tex);
         }
     }
 
@@ -3962,10 +4276,16 @@ fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -> bool {
     resp.clicked()
 }
 
-/// 音乐库的一首歌：标题 + 艺术家·专辑·风格 + 时长；整行可点
-fn lib_row(ui: &mut egui::Ui, e: &LibEntry, playing: bool, selected: bool) -> egui::Response {
+/// 音乐库的一首歌：封面 + 标题 + 艺术家·专辑·风格 + 时长；整行可点
+fn lib_row(
+    ui: &mut egui::Ui,
+    e: &LibEntry,
+    playing: bool,
+    selected: bool,
+    cover: Option<&egui::TextureHandle>,
+) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 42.0),
+        egui::vec2(ui.available_width(), 48.0),
         egui::Sense::click(),
     );
     let p = ui.painter();
@@ -3984,20 +4304,43 @@ fn lib_row(ui: &mut egui::Ui, e: &LibEntry, playing: bool, selected: bool) -> eg
     if playing {
         p.rect_filled(
             egui::Rect::from_min_size(
-                egui::pos2(left - 4.0, rect.center().y - 8.0),
-                egui::vec2(3.0, 16.0),
+                egui::pos2(left - 6.0, rect.center().y - 9.0),
+                egui::vec2(3.0, 18.0),
             ),
             Rounding::same(1.5),
             ACCENT,
         );
     }
+    // 封面：36×36，圆角，没图给一块浅底
+    let cover_rect = egui::Rect::from_min_size(
+        egui::pos2(left, rect.center().y - 18.0),
+        egui::vec2(36.0, 36.0),
+    );
+    p.rect_filled(cover_rect, Rounding::same(7.0), tint(Color32::WHITE, 10));
+    if let Some(t) = cover {
+        p.image(
+            t.id(),
+            cover_rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    } else {
+        p.text(
+            cover_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "♪",
+            egui::FontId::proportional(13.0),
+            DIM,
+        );
+    }
+    let text_x = cover_rect.right() + 10.0;
     let title_rect = egui::Rect::from_min_max(
-        egui::pos2(left + 6.0, rect.top() + 6.0),
-        egui::pos2(rect.right() - 78.0, rect.top() + 25.0),
+        egui::pos2(text_x, rect.top() + 8.0),
+        egui::pos2(rect.right() - 78.0, rect.top() + 27.0),
     );
     let sub_rect = egui::Rect::from_min_max(
-        egui::pos2(left + 6.0, rect.top() + 24.0),
-        egui::pos2(rect.right() - 78.0, rect.bottom() - 4.0),
+        egui::pos2(text_x, rect.top() + 26.0),
+        egui::pos2(rect.right() - 78.0, rect.bottom() - 6.0),
     );
     paint_clipped(
         ui,
@@ -4161,6 +4504,51 @@ fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool {
     .rounding(Rounding::same(8.0))
     .min_size(egui::vec2(0.0, 24.0));
     ui.add(b).clicked()
+}
+
+/// 很小的文字按钮（导出/导入/＋）
+fn tiny_text_button(ui: &mut egui::Ui, label: &str) -> bool {
+    ui.add(
+        egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
+            .fill(tint(Color32::WHITE, 8))
+            .stroke(line(Color32::WHITE, 14))
+            .rounding(Rounding::same(6.0)),
+    )
+    .clicked()
+}
+
+/// 单行裁剪绘制 + 垂直居中（路径那类文字要居中对齐才不"歪"）
+fn paint_clipped_v(ui: &egui::Ui, rect: egui::Rect, size: f32, color: Color32, text: &str) {
+    if text.trim().is_empty() {
+        return;
+    }
+    let galley = ui.painter().layout(
+        text.to_string(),
+        egui::FontId::proportional(size),
+        color,
+        rect.width().max(1.0),
+    );
+    let y = rect.center().y - galley.size().y / 2.0;
+    ui.painter()
+        .with_clip_rect(rect)
+        .galley(egui::pos2(rect.left(), y), galley, color);
+}
+
+/// 后台抽音乐库封面：48px 左右就够列表用，别把整张图塞进显存
+fn spawn_lib_cover(
+    ffmpeg: PathBuf,
+    path: PathBuf,
+    tx: std::sync::mpsc::Sender<(PathBuf, Option<(Vec<u8>, u32, u32)>)>,
+) {
+    std::thread::spawn(move || {
+        let payload = fc_core::extract_cover(&ffmpeg, &path).and_then(|bytes| {
+            let img = image::load_from_memory(&bytes).ok()?;
+            let small = img.resize_to_fill(40, 40, image::imageops::FilterType::Triangle);
+            let rgba = small.to_rgba8();
+            Some((rgba.as_raw().to_vec(), rgba.width(), rgba.height()))
+        });
+        let _ = tx.send((path, payload));
+    });
 }
 
 /// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。

@@ -2,6 +2,12 @@
 //!
 //! 存到 `%APPDATA%\FormatConverter\config.json`。
 //! 只放**界面侧**的设置；影响 ffmpeg 参数的（位深、压缩等级）等契约变更后再加。
+//!
+//! ## 用户配置（Profile）
+//!
+//! 一套「常用配置」= 转换参数 + 输出位置 + 元数据偏好。用户可以建多套、随时切换、
+//! 改个名字、导出成 JSON 带到另一台机器。`cfg.opts` 这些字段始终是"当前这套"的展开，
+//! 切换/保存时和 `profiles[active]` 互相同步。
 
 use std::path::PathBuf;
 
@@ -47,6 +53,44 @@ pub enum OutputMode {
     Custom,
 }
 
+/// 一套常用配置。切换配置时整块替换。
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Profile {
+    pub name: String,
+    #[serde(default)]
+    pub opts: fc_core::ConvertOptions,
+    #[serde(default)]
+    pub output_mode: OutputMode,
+    #[serde(default)]
+    pub output_dir: String,
+    #[serde(default)]
+    pub delete_source: bool,
+    #[serde(default)]
+    pub write_tags: bool,
+    #[serde(default)]
+    pub meta_artist: String,
+    #[serde(default)]
+    pub meta_album: String,
+    #[serde(default)]
+    pub meta_cover: String,
+}
+
+impl Profile {
+    pub fn from_settings(s: &Settings, name: String) -> Self {
+        Self {
+            name,
+            opts: s.opts.clone(),
+            output_mode: s.output_mode,
+            output_dir: s.output_dir.clone(),
+            delete_source: s.delete_source,
+            write_tags: s.write_tags,
+            meta_artist: s.meta_artist.clone(),
+            meta_album: s.meta_album.clone(),
+            meta_cover: s.meta_cover.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Settings {
     pub bg_mode: BgMode,
@@ -54,7 +98,7 @@ pub struct Settings {
     pub dim: u8,
     /// 选中文件就自动做频谱分析
     pub auto_analyze: bool,
-    /// 输出参数（压缩等级 / 位深 / 码率……）
+    /// 输出参数（压缩等级 / 位深 / 码率……）——当前配置的展开
     #[serde(default)]
     pub opts: fc_core::ConvertOptions,
     /// 输出位置模式
@@ -88,6 +132,12 @@ pub struct Settings {
     /// 单独加进音乐库的文件（不在任何库文件夹里也能听）
     #[serde(default)]
     pub library_files: Vec<String>,
+    /// 用户配置列表
+    #[serde(default)]
+    pub profiles: Vec<Profile>,
+    /// 当前生效的配置下标
+    #[serde(default)]
+    pub active_profile: usize,
 }
 
 impl Default for Settings {
@@ -107,6 +157,8 @@ impl Default for Settings {
             ui_scale: 1.0,
             library_dirs: Vec::new(),
             library_files: Vec::new(),
+            profiles: Vec::new(),
+            active_profile: 0,
         }
     }
 }
@@ -121,16 +173,100 @@ impl Settings {
     }
 
     pub fn load() -> Self {
-        let Some(p) = Self::file() else {
-            return Self::default();
-        };
-        std::fs::read(p)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default()
+        let mut s = Self::file()
+            .and_then(|p| std::fs::read(p).ok())
+            .and_then(|b| serde_json::from_slice::<Settings>(&b).ok())
+            .unwrap_or_default();
+        if s.profiles.is_empty() {
+            // 第一次用（或老配置）：拿当前设置生成三套，用户可以直接改名用
+            let list: Vec<Profile> = (1..=3)
+                .map(|n| Profile::from_settings(&s, format!("配置 {n}")))
+                .collect();
+            s.profiles = list;
+            s.active_profile = 0;
+        }
+        s.active_profile = s.active_profile.min(s.profiles.len().saturating_sub(1));
+        s.apply_active();
+        s
     }
 
-    pub fn save(&self) {
+    /// 把当前展开的设置写回当前配置（切换/保存前调用）
+    pub fn snapshot_active(&mut self) {
+        if self.profiles.is_empty() {
+            return;
+        }
+        let i = self.active_profile.min(self.profiles.len() - 1);
+        let p = &mut self.profiles[i];
+        p.opts = self.opts.clone();
+        p.output_mode = self.output_mode;
+        p.output_dir = self.output_dir.clone();
+        p.delete_source = self.delete_source;
+        p.write_tags = self.write_tags;
+        p.meta_artist = self.meta_artist.clone();
+        p.meta_album = self.meta_album.clone();
+        p.meta_cover = self.meta_cover.clone();
+    }
+
+    /// 把当前配置铺回展开的设置
+    pub fn apply_active(&mut self) {
+        if self.profiles.is_empty() {
+            return;
+        }
+        let i = self.active_profile.min(self.profiles.len() - 1);
+        let p = self.profiles[i].clone();
+        self.opts = p.opts;
+        self.output_mode = p.output_mode;
+        self.output_dir = p.output_dir;
+        self.delete_source = p.delete_source;
+        self.write_tags = p.write_tags;
+        self.meta_artist = p.meta_artist;
+        self.meta_album = p.meta_album;
+        self.meta_cover = p.meta_cover;
+    }
+
+    pub fn switch_profile(&mut self, i: usize) {
+        if i >= self.profiles.len() {
+            return;
+        }
+        self.snapshot_active();
+        self.active_profile = i;
+        self.apply_active();
+        self.save();
+    }
+
+    pub fn add_profile(&mut self) {
+        self.snapshot_active();
+        let n = self.profiles.len() + 1;
+        let p = Profile::from_settings(self, format!("配置 {n}"));
+        self.profiles.push(p);
+        self.active_profile = self.profiles.len() - 1;
+        self.save();
+    }
+
+    pub fn rename_profile(&mut self, i: usize, name: String) {
+        let name = name.trim().to_string();
+        if name.is_empty() || i >= self.profiles.len() {
+            return;
+        }
+        self.profiles[i].name = name;
+        self.save();
+    }
+
+    pub fn remove_profile(&mut self, i: usize) {
+        if self.profiles.len() <= 1 || i >= self.profiles.len() {
+            return;
+        }
+        self.profiles.remove(i);
+        if self.active_profile >= self.profiles.len() {
+            self.active_profile = self.profiles.len() - 1;
+        }
+        self.apply_active();
+        self.save();
+    }
+
+    /// 保存到配置文件。先把当前展开项写回当前配置，避免"改了参数没保存进配置"。
+    pub fn save(&mut self) {
+        self.snapshot_active();
         let Some(dir) = Self::dir() else { return };
         let _ = std::fs::create_dir_all(&dir);
         if let Some(p) = Self::file() {
