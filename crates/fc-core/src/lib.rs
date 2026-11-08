@@ -26,5 +26,5 @@ pub use format::{
     all, args_for, bitrate_choices, bitrate_of, browsable, by_id, default_target, estimate_size,
     external_encoder, knob_note, knobs_for, output_rate, quality_warnings, rate_choices, rate_note,
     split_group, targets_for, BitDepth, Choice, ConvertOptions, FormatSpec, Group, Kind, Knob,
-    Patent, Preset, QualityWarning, PRESETS, encoder_for,
+    Patent, Preset, QualityWarning, WarningKind, PRESETS, encoder_for,
 };

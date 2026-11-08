@@ -178,8 +178,25 @@ pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) ->
 /// 一条「这么转会怎样」的提示，界面直接渲染成警告卡片。
 #[derive(Debug)]
 pub struct QualityWarning {
+    /// 提示挂在哪个控件下面（界面按这个决定放哪儿，不靠猜标题）
+    pub kind: WarningKind,
     pub title: &'static str,
     pub body: String,
+}
+
+/// 提示的归属：容器/格式、码率、采样率
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WarningKind {
+    /// 有损源转无损：只是换了个更大的容器
+    Container,
+    /// 无损源转有损：必然丢细节
+    Lossy,
+    /// 有损→有损，目标码率更低
+    LowerBitrate,
+    /// 有损→有损，目标码率反而调高
+    HigherBitrate,
+    /// 显式选了更高的采样率
+    Upsample,
 }
 
 /// 源文件 → 目标格式 的质量风险。
@@ -198,6 +215,7 @@ pub fn quality_warnings(
 
     if src.is_lossy() && target_lossless {
         out.push(QualityWarning {
+            kind: WarningKind::Container,
             title: "不会增加任何信息量",
             body: format!(
                 "源文件是 {} 有损压缩。转成 {} 只是换了个更大的容器，文件会变大，声音不会变好。",
@@ -207,6 +225,7 @@ pub fn quality_warnings(
         });
     } else if !src.is_lossy() && spec.kind == Kind::Lossy {
         out.push(QualityWarning {
+            kind: WarningKind::Lossy,
             title: "会丢掉一部分细节",
             body: match target_kbps {
                 Some(k) => format!(
@@ -227,6 +246,7 @@ pub fn quality_warnings(
             // 8 kbps 的容差不值得提醒；差 20% 以上才算"调高码率"
             if k + 8 < src_kbps {
                 out.push(QualityWarning {
+                    kind: WarningKind::LowerBitrate,
                     title: "目标码率比源文件低",
                     body: format!(
                         "源是 {} {} kbps，目标是 {} {} kbps。这是一次二次有损编码，细节会再少一点；差得越多越明显。",
@@ -238,6 +258,7 @@ pub fn quality_warnings(
                 });
             } else if k > src_kbps + src_kbps / 5 {
                 out.push(QualityWarning {
+                    kind: WarningKind::HigherBitrate,
                     title: "码率调高也不会变好",
                     body: format!(
                         "源已经是 {} {} kbps 的有损文件。重新编码到 {} {} kbps 只会让文件变大：丢掉的高频不会回来，二次编码还会再掉一点。",
@@ -256,6 +277,7 @@ pub fn quality_warnings(
         if let (Some(out_rate), true) = (output_rate(spec, o), src.sample_rate > 0) {
             if out_rate > src.sample_rate {
                 out.push(QualityWarning {
+                    kind: WarningKind::Upsample,
                     title: "升采样不会增加信息",
                     body: format!(
                         "源是 {} Hz，输出 {} Hz。高出来的那段频段是空的，文件只会变大，不会更接近母带。要原样保留就把采样率改回「自动」。",

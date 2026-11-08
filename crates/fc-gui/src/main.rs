@@ -3728,17 +3728,8 @@ impl App {
                 }
             }
 
-            // 源 → 目标 的质量提示：降码率、无损转有损、升采样都在 core 里判断，
-            // 界面只负责画卡片，不自己写格式判断。
-            let spec = it.spec(self.target);
-            for w in fc_core::quality_warnings(m, spec, &self.cfg.opts) {
-                ui.add_space(14.0);
-                card(ui, WARN, |ui| {
-                    para(ui, w.title, 11.5, WARN);
-                    ui.add_space(5.0);
-                    para(ui, &w.body, 10.0, MUTED);
-                });
-            }
+            // 源 → 目标 的质量提示不再堆在详情页底部：改成挂在输出列对应控件的下方
+            // （容器/格式提示挂在输出标题下，码率提示挂在码率旋钮下，升采样挂在采样率下）。
         }
 
         if let Some(e) = &it.error {
@@ -3842,6 +3833,24 @@ impl App {
                 .size(12.0)
                 .color(ACCENT),
         );
+
+        // 选中文件 → 当前目标的质量提示。提示挂在触发它的控件下面：
+        // 容器/格式类在标题下，码率类在码率旋钮下，升采样在采样率下。
+        let warnings: Vec<fc_core::QualityWarning> = self
+            .items
+            .get(self.selected)
+            .and_then(|i| {
+                i.info.as_ref().map(|m| {
+                    fc_core::quality_warnings(m, i.spec(self.target), &self.cfg.opts)
+                })
+            })
+            .unwrap_or_default();
+        for w in warnings
+            .iter()
+            .filter(|w| w.kind == fc_core::WarningKind::Container)
+        {
+            out_hint(ui, &w.body, WARN);
+        }
         ui.add_space(12.0);
 
         if false {
@@ -4000,8 +4009,44 @@ impl App {
         if knobs.is_empty() {
             para(ui, "这个格式没有可调参数。", 9.0, DIM);
         }
+        let mut shown: Vec<fc_core::WarningKind> = vec![fc_core::WarningKind::Container];
         for k in knobs {
             changed |= self.knob_row(ui, *k);
+            // 挂在旋钮下面的提示：码率类的挂码率，升采样挂采样率
+            let here: &[fc_core::WarningKind] = match k {
+                fc_core::Knob::SampleRate => &[fc_core::WarningKind::Upsample],
+                fc_core::Knob::Mp3Bitrate
+                | fc_core::Knob::OpusBitrate
+                | fc_core::Knob::VorbisQuality
+                | fc_core::Knob::AacBitrate
+                | fc_core::Knob::Ac3Bitrate
+                | fc_core::Knob::Eac3Bitrate
+                | fc_core::Knob::WmaBitrate
+                | fc_core::Knob::Atrac3Bitrate => &[
+                    fc_core::WarningKind::Lossy,
+                    fc_core::WarningKind::LowerBitrate,
+                    fc_core::WarningKind::HigherBitrate,
+                ],
+                _ => &[],
+            };
+            for kind in here {
+                for w in warnings.iter().filter(|w| w.kind == *kind) {
+                    out_hint(ui, &w.body, WARN);
+                }
+            }
+            // 升采样提示已经把话说完了，就别再重复一行通用说明
+            if *k == fc_core::Knob::SampleRate
+                && !warnings
+                    .iter()
+                    .any(|w| w.kind == fc_core::WarningKind::Upsample)
+            {
+                para(ui, fc_core::rate_note(self.target), 8.5, DIM);
+            }
+            shown.extend_from_slice(here);
+        }
+        // 兜底：这个格式没有对应旋钮时，别把提示悄悄吞掉
+        for w in warnings.iter().filter(|w| !shown.contains(&w.kind)) {
+            out_hint(ui, &w.body, WARN);
         }
         // 外部编码器：让用户知道这一步不是 ffmpeg 干的
         if let Some(name) = fc_core::external_encoder(self.target.id) {
@@ -4370,13 +4415,32 @@ impl App {
         changed
     }
 
-    /// 采样率旋钮。档位表来自 core（`rate_choices`），界面不判断哪个编码器支持什么。
+    /// 采样率旋钮：一个条 + 单独的「自动」按钮。档位表来自 core（`rate_choices`），
+    /// 界面不判断哪个编码器支持什么。
     fn sample_rate_row(&mut self, ui: &mut egui::Ui) -> bool {
         let choices = fc_core::rate_choices(self.target.id);
         let mut changed = false;
         let auto_on = self.cfg.opts.sample_rate.is_none();
+        let src_rate = self
+            .items
+            .get(self.selected)
+            .and_then(|i| i.info.as_ref().map(|m| m.sample_rate))
+            .unwrap_or(0);
+        // 配置里可能是别的格式留下的 192k，但当前格式只支持到 48k——
+        // 显示和落点都按 core 吸附后的实际输出值来，别把非法档位画在条上。
         let effective = fc_core::output_rate(self.target, &self.cfg.opts);
-        ui.horizontal_wrapped(|ui| {
+        let shown = if auto_on {
+            effective.or_else(|| {
+                if choices.contains(&src_rate) {
+                    Some(src_rate)
+                } else {
+                    None
+                }
+            })
+        } else {
+            effective
+        };
+        ui.horizontal(|ui| {
             ui.label(RichText::new("采样率").size(9.5).color(MUTED));
             // 「自动」永远在第一个位置，不按状态显示/隐藏——
             // 藏起来的话，点完它自己消失，看起来就像 bug（AC-3 上踩过）。
@@ -4384,17 +4448,21 @@ impl App {
                 self.cfg.opts.sample_rate = None;
                 changed = true;
             }
-            for &v in choices {
-                // 只有显式选过档位才高亮；自动状态下高亮留给「自动」。
-                // 配置里可能是 96k、但当前格式只支持到 48k，所以看的是实际输出值。
-                let on = !auto_on && effective == Some(v);
-                if seg_button(ui, &fmt_rate(v), on) {
-                    self.cfg.opts.sample_rate = Some(v);
-                    changed = true;
-                }
+            if let Some(v) = rate_slider(ui, choices, shown, !auto_on) {
+                self.cfg.opts.sample_rate = Some(v);
+                changed = true;
             }
+            let text = match (auto_on, shown) {
+                (true, _) => "自动".to_string(),
+                (false, Some(r)) => fmt_rate(r),
+                (false, None) => "自动".to_string(),
+            };
+            ui.label(
+                RichText::new(text)
+                    .size(9.0)
+                    .color(if auto_on { DIM } else { ACCENT }),
+            );
         });
-        para(ui, fc_core::rate_note(self.target), 8.5, DIM);
         changed
     }
 }
@@ -5686,6 +5754,59 @@ fn level_slider(ui: &mut egui::Ui, label: &str, v: &mut i32, min: i32, max: i32)
         bar_slider(ui, v, min, max, true)
     })
     .inner
+}
+
+/// 采样率条：档位离散（「自动」由外面的按钮管），点击/拖动吸附到档位；返回新档位。
+fn rate_slider(ui: &mut egui::Ui, choices: &[u32], sel: Option<u32>, active: bool) -> Option<u32> {
+    if choices.is_empty() {
+        return None;
+    }
+    let w = (ui.available_width() - 46.0).max(60.0);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::click_and_drag());
+    let p = ui.painter();
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 5.0));
+    p.rect_filled(track, Rounding::same(2.5), tint(Color32::WHITE, 14));
+    let n = choices.len();
+    let denom = (n.max(2) - 1) as f32;
+    for i in 0..n {
+        let x = track.left() + track.width() * (i as f32 / denom);
+        p.circle_filled(egui::pos2(x, track.center().y), 1.0, tint(Color32::WHITE, 34));
+    }
+    // 自动状态下把点停在"自动实际会输出"的那档上，但画成暗色，和手动选中的亮色区分开
+    if let Some(t) = sel
+        .and_then(|v| choices.iter().position(|c| *c == v))
+        .map(|i| i as f32 / denom)
+    {
+        let mut f = track;
+        f.set_width(track.width() * t);
+        p.rect_filled(
+            f,
+            Rounding::same(2.5),
+            if active { tint(ACCENT, 200) } else { tint(Color32::WHITE, 40) },
+        );
+        p.circle_filled(
+            egui::pos2(track.left() + track.width() * t, track.center().y),
+            4.5,
+            if active { ACCENT } else { MUTED },
+        );
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            let t = ((pp.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            let i = ((t * denom).round() as usize).min(n - 1);
+            return Some(choices[i]);
+        }
+    }
+    None
+}
+
+/// 输出列里跟着控件走的小提示（这些提示原来是详情页底部的警告卡）
+fn out_hint(ui: &mut egui::Ui, text: &str, color: Color32) {
+    ui.add_space(3.0);
+    para(ui, &format!("· {text}"), 8.5, color);
 }
 
 /// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。
