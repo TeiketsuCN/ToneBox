@@ -108,6 +108,8 @@ pub(crate) const DIM: Color32 = Color32::from_rgb(112, 122, 140);
 pub(crate) use util::{accent, on_accent, set_accent};
 pub(crate) const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 pub(crate) const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
+/// "正常 / 加分"的绿：内容体检的 OK 分项、置信度里的 `+X%` 都用它
+pub(crate) const GOOD: Color32 = Color32::from_rgb(110, 220, 140);
 pub(crate) const BG: Color32 = Color32::from_rgb(14, 16, 22);
 
 /// 队列能接受的输入扩展名：音频 + 视频容器。

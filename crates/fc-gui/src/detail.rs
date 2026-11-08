@@ -219,91 +219,7 @@ impl App {
                         })
                         .unwrap_or(false);
 
-                    // ── 内容体检：先给结论，再列证据 ──
-                    // 用户看详情页第一个问题是"这文件是不是有效内容"，不是"多少 kbps"。
-                    // 判档的加减分证据也是这个结论的依据，所以跟 verdict 放在一起，
-                    // 不留在下面频谱判档的表格里。
-                    if let Some(h) = &it.health {
-                        para(ui, "内容体检", 10.0, DIM);
-                        ui.add_space(6.0);
-                        let (icon, vcol) = match h.verdict {
-                            fc_analyze::health::Verdict::Normal => ("✓", accent()),
-                            // 几乎全是静音 / 大比例削波：内容真的坏了，红叉
-                            fc_analyze::health::Verdict::MostlySilent
-                            | fc_analyze::health::Verdict::Clipped => ("✗", DANGER),
-                            // 测试信号 / 噪声 / 无法判断：不是坏文件，只是"不像歌曲"，
-                            // 用红色问号——红叉只留给内容异常
-                            _ => ("?", DANGER),
-                        };
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(icon).size(11.0).color(vcol).strong());
-                            let mut line = h.verdict.label().to_string();
-                            // 一句话总结：像正常音乐 · 编码判档 90%
-                            if !bad && r.dsd.is_none() && r.confidence > 0.0 {
-                                line.push_str(&format!(" · 编码判档 {:.0}%", r.confidence * 100.0));
-                            }
-                            para(ui, &line, 10.0, vcol);
-                        });
-                        ui.add_space(4.0);
-                        // 用 Grid 而不是每行一个 horizontal：分项名字长短不一，
-                        // 不对齐的话数值会左右跳，看起来像没排版
-                        egui::Grid::new("health_checks")
-                            .num_columns(2)
-                            .spacing([12.0, 4.0])
-                            .show(ui, |ui| {
-                                for c in &h.checks {
-                                    let col = match c.severity {
-                                        fc_analyze::health::Severity::Ok => tint(TEXT, 150),
-                                        fc_analyze::health::Severity::Warn => WARN,
-                                        fc_analyze::health::Severity::Bad => DANGER,
-                                    };
-                                    ui.label(
-                                        RichText::new(c.name).size(9.5).color(tint(TEXT, 140)),
-                                    );
-                                    ui.label(RichText::new(&c.value).size(9.5).color(col));
-                                    ui.end_row();
-                                }
-                            });
-
-                        // 判档置信度的加减分依据：按分数从高到低排，一眼看出哪几条在撑结论
-                        if !r.confidence_notes.is_empty() && !bad && r.dsd.is_none() {
-                            ui.add_space(8.0);
-                            let mut notes: Vec<&fc_analyze::ConfidenceNote> =
-                                r.confidence_notes.iter().collect();
-                            notes.sort_by(|a, b| {
-                                let key = |n: &fc_analyze::ConfidenceNote| {
-                                    n.delta.map(|(p, _)| p).unwrap_or(-1.0)
-                                };
-                                key(b)
-                                    .partial_cmp(&key(a))
-                                    .unwrap_or(std::cmp::Ordering::Equal)
-                            });
-                            for n in notes {
-                                ui.horizontal(|ui| {
-                                    if let Some((pct, good)) = n.delta {
-                                        let (sym, col) = if good {
-                                            ("+", Color32::from_rgb(110, 220, 140))
-                                        } else {
-                                            ("−", Color32::from_rgb(230, 120, 110))
-                                        };
-                                        ui.label(
-                                            RichText::new(format!("{sym}{pct:.0}%"))
-                                                .size(9.5)
-                                                .color(col)
-                                                .strong(),
-                                        );
-                                        ui.add_space(6.0);
-                                    } else {
-                                        ui.add_space(30.0);
-                                    }
-                                    para(ui, &n.reason, 9.0, tint(TEXT, 195));
-                                });
-                                ui.add_space(1.0);
-                            }
-                        }
-                        ui.add_space(12.0);
-                    }
-
+                    // 内容体检放到质量评估后面（见下面），先看判档、再看内容是否正常
                     if let Some(d) = &r.dsd {
                         // DSD 不走"截止频率推码率"那套：只报格式事实，别给一个假的置信度
                         para(ui, "质量评估", 10.0, DIM);
@@ -402,6 +318,92 @@ impl App {
                             });
                     }
 
+                    // ── 内容体检：结论 + 加减分证据 ──
+                    // 顺序按用户要的来：先「质量评估」（这文件被压到多少），
+                    // 再「内容体检」（这段音频本身正不正常）。
+                    if let Some(h) = &it.health {
+                        ui.add_space(14.0);
+                        para(ui, "内容体检", 10.0, DIM);
+                        ui.add_space(6.0);
+                        let (icon, vcol) = match h.verdict {
+                            fc_analyze::health::Verdict::Normal => ("✓", GOOD),
+                            // 几乎全是静音 / 大比例削波：内容真的坏了，红叉
+                            fc_analyze::health::Verdict::MostlySilent
+                            | fc_analyze::health::Verdict::Clipped => ("✗", DANGER),
+                            // 测试信号 / 噪声 / 无法判断：不是坏文件，只是"不像歌曲"，
+                            // 用红色问号——红叉只留给内容异常
+                            _ => ("?", DANGER),
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(icon).size(11.0).color(vcol).strong());
+                            let mut line = h.verdict.label().to_string();
+                            // 一句话总结：像正常音乐 · 编码判档 90%
+                            if !bad && r.dsd.is_none() && r.confidence > 0.0 {
+                                line.push_str(&format!(" · 编码判档 {:.0}%", r.confidence * 100.0));
+                            }
+                            para(ui, &line, 10.0, vcol);
+                        });
+
+                        // 加减分证据直接跟在结论句下面（用户要求），按分数从高到低；
+                        // 不要隔着一张分项表，否则"结论 → 证据"的关系就断了。
+                        if !r.confidence_notes.is_empty() && !bad && r.dsd.is_none() {
+                            ui.add_space(5.0);
+                            let mut notes: Vec<&fc_analyze::ConfidenceNote> =
+                                r.confidence_notes.iter().collect();
+                            notes.sort_by(|a, b| {
+                                let key = |n: &fc_analyze::ConfidenceNote| {
+                                    n.delta.map(|(p, _)| p).unwrap_or(-1.0)
+                                };
+                                key(b)
+                                    .partial_cmp(&key(a))
+                                    .unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            for n in notes {
+                                ui.horizontal(|ui| {
+                                    if let Some((pct, good)) = n.delta {
+                                        let (sym, col) = if good {
+                                            ("+", GOOD)
+                                        } else {
+                                            ("−", Color32::from_rgb(230, 120, 110))
+                                        };
+                                        ui.label(
+                                            RichText::new(format!("{sym}{pct:.0}%"))
+                                                .size(9.5)
+                                                .color(col)
+                                                .strong(),
+                                        );
+                                        ui.add_space(6.0);
+                                    } else {
+                                        ui.add_space(30.0);
+                                    }
+                                    para(ui, &n.reason, 9.0, tint(TEXT, 195));
+                                });
+                                ui.add_space(1.0);
+                            }
+                        }
+
+                        // 分项：正常的用绿色（"有效音频 100% 非静音"不该跟灰字混在一起），
+                        // 警告琥珀、异常红。用 Grid 对齐，数值不会左右跳。
+                        ui.add_space(6.0);
+                        egui::Grid::new("health_checks")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for c in &h.checks {
+                                    let col = match c.severity {
+                                        fc_analyze::health::Severity::Ok => GOOD,
+                                        fc_analyze::health::Severity::Warn => WARN,
+                                        fc_analyze::health::Severity::Bad => DANGER,
+                                    };
+                                    ui.label(
+                                        RichText::new(c.name).size(9.5).color(tint(TEXT, 140)),
+                                    );
+                                    ui.label(RichText::new(&c.value).size(9.5).color(col));
+                                    ui.end_row();
+                                }
+                            });
+                    }
+
                     if !r.caveats.is_empty() {
                         ui.add_space(8.0);
                         ui.vertical(|ui| {
@@ -471,7 +473,7 @@ impl App {
             for ev in &enc.evidence {
                 ui.horizontal(|ui| {
                     let (sym, col) = if ev.delta >= 0.0 {
-                        ("+", Color32::from_rgb(110, 220, 140))
+                        ("+", GOOD)
                     } else {
                         ("−", Color32::from_rgb(230, 120, 110))
                     };
