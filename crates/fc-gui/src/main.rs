@@ -179,6 +179,14 @@ struct App {
     player: Option<fc_player::Player>,
     player_for: Option<usize>,
     play_error: Option<String>,
+    /// 播放音量（没有播放器时也记住，下次 open 直接套上）
+    player_volume: f32,
+    /// 正在看大图的队列下标（None = 没开）
+    cover_view: Option<usize>,
+    /// 点击后从文件重新抽的大图封面（96px 的缩略图放大看太糊）
+    cover_big: Option<(usize, egui::TextureHandle)>,
+    cover_big_tx: std::sync::mpsc::Sender<(usize, Option<(Vec<u8>, u32, u32)>)>,
+    cover_big_rx: Receiver<(usize, Option<(Vec<u8>, u32, u32)>)>,
     // 背景与动效
     bg: bg::WallpaperBg,
     dt: f32,
@@ -230,6 +238,7 @@ impl App {
         let target = fc_core::default_target();
         let (atx, arx) = channel();
         let (mtx, mrx) = channel();
+        let (btx, brx) = channel();
         let tools = fc_core::locate();
         let encoders = tools
             .as_ref()
@@ -253,6 +262,11 @@ impl App {
             player: None,
             player_for: None,
             play_error: None,
+            player_volume: 0.75,
+            cover_view: None,
+            cover_big: None,
+            cover_big_tx: btx,
+            cover_big_rx: brx,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
@@ -513,6 +527,8 @@ impl App {
         };
         match fc_player::Player::open(&tools.ffmpeg, &it.path, info.duration_s) {
             Ok(p) => {
+                // 接着上次的音量，不要每次开新文件都跳回默认
+                p.set_volume(self.player_volume);
                 self.player = Some(p);
                 self.player_for = Some(idx);
             }
@@ -630,6 +646,7 @@ impl eframe::App for App {
         self.poll();
         self.poll_analysis();
         self.poll_media(ctx);
+        self.poll_big_cover(ctx);
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -683,26 +700,6 @@ impl eframe::App for App {
         // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。
         let main_visible = !self.settings_open;
         let mut do_start = false;
-
-        if main_visible && self.player.is_some() {
-            let name = self
-                .player_for
-                .and_then(|i| self.items.get(i))
-                .map(|it| it.name())
-                .unwrap_or_else(|| "—".into());
-            egui::TopBottomPanel::bottom("player")
-                .frame(
-                    egui::Frame::none()
-                        .fill(tint(BG, 142))
-                        .inner_margin(egui::Margin {
-                            left: 16.0 + inset,
-                            right: 16.0 + inset,
-                            top: 7.0,
-                            bottom: 7.0 + inset,
-                        }),
-                )
-                .show(ctx, |ui| self.player_bar(ui, &name));
-        }
 
         if main_visible {
             egui::SidePanel::left("formats")
@@ -762,6 +759,21 @@ impl eframe::App for App {
                         });
                 });
 
+            // 播放栏：常驻，只跨"队列 + 详情"两栏（侧栏和输出列在它两侧）
+            egui::TopBottomPanel::bottom("player")
+                .exact_height(64.0)
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 142))
+                        .inner_margin(egui::Margin {
+                            left: 14.0,
+                            right: 14.0,
+                            top: 8.0,
+                            bottom: 8.0,
+                        }),
+                )
+                .show(ctx, |ui| self.player_bar(ui));
+
             egui::SidePanel::right("detail")
                 .exact_width(RIGHT_W)
                 .resizable(false)
@@ -792,6 +804,11 @@ impl eframe::App for App {
         }
         if do_start {
             self.start_batch(ctx);
+        }
+
+        // 大图封面：点播放栏的封面打开，盖在主界面之上、设置/百科之下
+        if self.cover_view.is_some() {
+            self.cover_overlay(ctx);
         }
 
         // 设置覆盖层（最后画，盖住一切）
@@ -2015,63 +2032,131 @@ impl App {
     }
 
     /// 底部全局播放条
-    fn player_bar(&mut self, ui: &mut egui::Ui, name: &str) {
+    /// 底部播放栏：常驻在"队列 + 详情"两栏下面。
+    ///
+    /// 没在播的时候不消失——显示当前选中项的封面和时长，按钮置灰。
+    /// 点封面看大图（队列里那张只有 96px，点开时后台重新抽一次原图）。
+    fn player_bar(&mut self, ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
 
-        let (playing, pos, dur, vol) = match self.player.as_ref() {
-            Some(p) => (p.is_playing(), p.position_s(), p.duration_s().max(0.1), p.volume()),
-            None => return,
+        let display = self
+            .player_for
+            .or_else(|| (!self.items.is_empty()).then_some(self.selected))
+            .filter(|i| *i < self.items.len());
+        let (playing, pos, dur) = match self.player.as_ref() {
+            Some(p) => (p.is_playing(), p.position_s(), p.duration_s().max(0.1)),
+            None => {
+                let d = display
+                    .and_then(|i| self.items[i].info.as_ref())
+                    .map(|m| m.duration_s)
+                    .unwrap_or(0.0);
+                (false, 0.0, d.max(0.1))
+            }
         };
+        let has_player = self.player.is_some();
+        let name = display
+            .map(|i| {
+                let it = &self.items[i];
+                it.tags.display_title(&it.name())
+            })
+            .unwrap_or_else(|| "未在播放".to_string());
+        let cover = display.and_then(|i| self.items[i].cover.clone());
+        let has_cover = cover.is_some();
 
         let mut toggle = false;
         let mut stop = false;
         let mut seek: Option<f64> = None;
         let mut vol_change: Option<f32> = None;
+        let mut open_cover = false;
 
         ui.horizontal(|ui| {
-            if icon_button(ui, if playing { Icon::Pause } else { Icon::Play }, true) {
-                toggle = true;
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+
+            // 封面（点开大图）
+            let resp = bar_cover(ui, cover.as_ref(), 48.0);
+            if resp.clicked() && has_cover {
+                open_cover = true;
             }
+
             ui.add_space(2.0);
-            if icon_button(ui, Icon::Stop, false) {
-                stop = true;
-            }
-            ui.add_space(10.0);
-            ui.add_sized(
-                egui::vec2(190.0, 18.0),
-                egui::Label::new(RichText::new(name).size(10.5).color(MUTED))
-                    .wrap_mode(egui::TextWrapMode::Truncate),
-            );
-            ui.add_space(8.0);
 
-            // 进度条：可点、可拖
-            let bar_w = (ui.available_width() - 200.0).max(80.0);
-            let (rect, resp) =
-                ui.allocate_exact_size(egui::vec2(bar_w, 12.0), egui::Sense::click_and_drag());
-            let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
-            let p = ui.painter();
-            p.rect_filled(rect, Rounding::same(6.0), tint(Color32::WHITE, 14));
-            if frac > 0.0 {
-                let mut f = rect;
-                f.set_width(rect.width() * frac);
-                p.rect_filled(f, Rounding::same(6.0), ACCENT);
-            }
-            if (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
-                if let Some(pp) = resp.interact_pointer_pos() {
-                    seek = Some(((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64 * dur);
-                }
-            }
-
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new(format!("{} / {}", fmt_duration(pos), fmt_duration(dur)))
-                    .size(9.5)
-                    .color(DIM),
+            // 给右边的音量留固定宽度：否则标题那行会吃掉整条横向空间，
+            // 音量条被挤成一个小点（第一次就是这样）。
+            let vol_w = 88.0;
+            let content_w = (ui.available_width() - vol_w).max(160.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(content_w, 48.0),
+                Layout::top_down(Align::LEFT),
+                |ui| {
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        if icon_button(
+                            ui,
+                            if playing { Icon::Pause } else { Icon::Play },
+                            true,
+                            has_player,
+                        ) {
+                            toggle = true;
+                        }
+                        if icon_button(ui, Icon::Stop, false, has_player) {
+                            stop = true;
+                        }
+                        ui.add_space(6.0);
+                        // 左对齐 + 截断（add_sized 会居中，标题会跑到中间）
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(&name)
+                                    .size(11.0)
+                                    .color(if has_player { TEXT } else { MUTED }),
+                            )
+                            .truncate(),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        let time_w = 92.0;
+                        let bar_w = (ui.available_width() - time_w).max(60.0);
+                        let (rect, resp) = ui.allocate_exact_size(
+                            egui::vec2(bar_w, 10.0),
+                            egui::Sense::click_and_drag(),
+                        );
+                        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
+                        let p = ui.painter();
+                        p.rect_filled(rect, Rounding::same(5.0), tint(Color32::WHITE, 14));
+                        if frac > 0.0 {
+                            let mut f = rect;
+                            f.set_width(rect.width() * frac);
+                            p.rect_filled(f, Rounding::same(5.0), ACCENT);
+                        }
+                        if has_player && (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
+                            if let Some(pp) = resp.interact_pointer_pos() {
+                                seek = Some(
+                                    ((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64
+                                        * dur,
+                                );
+                            }
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "{} / {}",
+                                fmt_duration(pos),
+                                fmt_duration(dur)
+                            ))
+                            .size(9.0)
+                            .color(DIM),
+                        );
+                    });
+                },
             );
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let mut v = vol;
-                ui.spacing_mut().slider_width = 70.0;
+                let mut v = self
+                    .player
+                    .as_ref()
+                    .map(|p| p.volume())
+                    .unwrap_or(self.player_volume);
+                ui.spacing_mut().slider_width = 58.0;
                 if ui
                     .add(
                         egui::Slider::new(&mut v, 0.0..=1.0)
@@ -2085,6 +2170,18 @@ impl App {
             });
         });
 
+        if open_cover {
+            if let Some(i) = display {
+                self.cover_view = Some(i);
+                self.start_big_cover(i);
+            }
+        }
+        if let Some(v) = vol_change {
+            self.player_volume = v;
+            if let Some(p) = self.player.as_ref() {
+                p.set_volume(v);
+            }
+        }
         if let Some(p) = self.player.as_mut() {
             if toggle {
                 p.toggle();
@@ -2095,9 +2192,132 @@ impl App {
             if let Some(t2) = seek {
                 p.seek(t2);
             }
-            if let Some(v) = vol_change {
-                p.set_volume(v);
+        }
+    }
+
+    /// 点开大图时后台重新抽一次封面（队列里那张只有 96px）
+    fn start_big_cover(&mut self, idx: usize) {
+        if self
+            .cover_big
+            .as_ref()
+            .map(|(i, _)| *i == idx)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let Some(tools) = self.tools.clone() else { return };
+        let Some(it) = self.items.get(idx) else { return };
+        let path = it.path.clone();
+        let tx = self.cover_big_tx.clone();
+        std::thread::spawn(move || {
+            let payload = fc_core::extract_cover(&tools.ffmpeg, &path).and_then(|bytes| {
+                let img = image::load_from_memory(&bytes).ok()?;
+                // 太大的图缩到 1000px 就够看了，别把显存吃光
+                let img = if img.width() > 1000 || img.height() > 1000 {
+                    img.resize(1000, 1000, image::imageops::FilterType::Triangle)
+                } else {
+                    img
+                };
+                let rgba = img.to_rgba8();
+                Some((rgba.as_raw().to_vec(), rgba.width(), rgba.height()))
+            });
+            let _ = tx.send((idx, payload));
+        });
+    }
+
+    fn poll_big_cover(&mut self, ctx: &egui::Context) {
+        while let Ok((idx, payload)) = self.cover_big_rx.try_recv() {
+            if let Some((rgba, w, h)) = payload {
+                let img = egui::ColorImage {
+                    size: [w as usize, h as usize],
+                    pixels: rgba
+                        .chunks_exact(4)
+                        .map(|c| Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]))
+                        .collect(),
+                };
+                self.cover_big = Some((
+                    idx,
+                    ctx.load_texture(format!("cover_big_{idx}"), img, egui::TextureOptions::LINEAR),
+                ));
             }
+        }
+    }
+
+    /// 大图封面：全屏暗底 + 居中大图，点任意处或 Esc 关闭
+    fn cover_overlay(&mut self, ctx: &egui::Context) {
+        let Some(idx) = self.cover_view else { return };
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.cover_view = None;
+            return;
+        }
+        let screen = ctx.screen_rect();
+        let tex = self
+            .cover_big
+            .as_ref()
+            .filter(|(i, _)| *i == idx)
+            .map(|(_, t)| t.clone())
+            .or_else(|| self.items.get(idx).and_then(|it| it.cover.clone()));
+        let title = self
+            .items
+            .get(idx)
+            .map(|it| it.tags.display_title(&it.name()))
+            .unwrap_or_default();
+
+        let mut close = false;
+        egui::Area::new(egui::Id::new("cover_view"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .show(ctx, |ui| {
+                let resp = ui.allocate_response(screen.size(), egui::Sense::click());
+                let p = ui.painter();
+                p.rect_filled(screen, 0.0, tint(BG, 232));
+                match tex.as_ref() {
+                    Some(t) => {
+                        let max = egui::vec2(screen.width() * 0.8, screen.height() * 0.72);
+                        let ts = t.size_vec2().max(egui::vec2(1.0, 1.0));
+                        let scale = (max.x / ts.x).min(max.y / ts.y).clamp(0.05, 4.0);
+                        let size = ts * scale;
+                        let rect = egui::Rect::from_center_size(
+                            screen.center() - egui::vec2(0.0, 10.0),
+                            size,
+                        );
+                        p.image(
+                            t.id(),
+                            rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            Color32::WHITE,
+                        );
+                        p.text(
+                            egui::pos2(screen.center().x, rect.bottom() + 24.0),
+                            egui::Align2::CENTER_CENTER,
+                            &title,
+                            egui::FontId::proportional(11.5),
+                            MUTED,
+                        );
+                    }
+                    None => {
+                        p.text(
+                            screen.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "这个文件没有内嵌封面",
+                            egui::FontId::proportional(13.0),
+                            MUTED,
+                        );
+                    }
+                }
+                p.text(
+                    egui::pos2(screen.center().x, screen.bottom() - 24.0),
+                    egui::Align2::CENTER_CENTER,
+                    "点击任意处或按 Esc 关闭",
+                    egui::FontId::proportional(9.5),
+                    DIM,
+                );
+                if resp.clicked() {
+                    close = true;
+                }
+            });
+        if close {
+            self.cover_view = None;
         }
     }
 
@@ -2982,10 +3202,18 @@ enum Icon {
 }
 
 /// 播放控制图标。不用字符（字体里没有 ⏸⏹），直接用 painter 画。
-fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::click());
+/// `enabled = false` 时只画不接点击（没在播的时候按钮要灰着但别消失）。
+fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool, enabled: bool) -> bool {
+    let sense = if enabled {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(30.0, 30.0), sense);
     let p = ui.painter();
-    let bg = if resp.hovered() {
+    let bg = if !enabled {
+        tint(Color32::WHITE, 4)
+    } else if resp.hovered() {
         tint(Color32::WHITE, 22)
     } else {
         tint(Color32::WHITE, 8)
@@ -2993,7 +3221,13 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
     p.rect_filled(rect, Rounding::same(8.0), bg);
 
     let c = rect.center();
-    let col = if accent { ACCENT } else { TEXT };
+    let col = if !enabled {
+        DIM
+    } else if accent {
+        ACCENT
+    } else {
+        TEXT
+    };
     match icon {
         Icon::Play => {
             let tri = vec![
@@ -3020,10 +3254,49 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool) -> bool {
             );
         }
     }
-    if resp.hovered() {
+    if enabled && resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// 播放栏的封面按钮：48px 方块，有图显示图，没图给占位；返回 response 供点击。
+fn bar_cover(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) -> egui::Response {
+    // 没封面就别装成能点的样子（不然光标变成手型、点了没反应）
+    let sense = if tex.is_some() {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), sense);
+    let p = ui.painter();
+    p.rect_filled(rect, Rounding::same(9.0), tint(Color32::WHITE, 10));
+    match tex {
+        Some(t) => {
+            p.image(
+                t.id(),
+                rect,
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+        }
+        None => {
+            p.rect_filled(
+                egui::Rect::from_center_size(rect.center(), egui::vec2(16.0, 16.0)),
+                Rounding::same(3.0),
+                tint(Color32::WHITE, 18),
+            );
+        }
+    }
+    if resp.hovered() && tex.is_some() {
+        p.rect_stroke(
+            rect,
+            Rounding::same(9.0),
+            Stroke::new(1.0, tint(Color32::WHITE, 80)),
+        );
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
 }
 
 /// 读一张收款码图片（放程序目录，用户自己换）。没有就返回 None。
