@@ -85,6 +85,9 @@ pub struct Settings {
     /// 音乐库文件夹（绝对路径）。用户自己挑，扫出来的文件不落盘、每次启动可重扫。
     #[serde(default)]
     pub library_dirs: Vec<String>,
+    /// 单独加进音乐库的文件（不在任何库文件夹里也能听）
+    #[serde(default)]
+    pub library_files: Vec<String>,
 }
 
 impl Default for Settings {
@@ -103,6 +106,7 @@ impl Default for Settings {
             write_tags: false,
             ui_scale: 1.0,
             library_dirs: Vec::new(),
+            library_files: Vec::new(),
         }
     }
 }

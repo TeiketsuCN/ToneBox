@@ -844,20 +844,29 @@ impl eframe::App for App {
                     });
             }
 
-            // 播放栏：常驻。转换页跨"队列 + 详情"两栏；音乐库页占满右侧
+            // 播放栏：常驻。做成"浮起来的一块玻璃"，不要贴着窗口底边
             egui::TopBottomPanel::bottom("player")
-                .exact_height(64.0)
-                .frame(
+                .exact_height(80.0)
+                .frame(egui::Frame::none().inner_margin(egui::Margin {
+                    left: 14.0,
+                    right: 14.0,
+                    top: 2.0,
+                    bottom: 10.0,
+                }))
+                .show(ctx, |ui| {
                     egui::Frame::none()
-                        .fill(tint(BG, 142))
-                        .inner_margin(egui::Margin {
-                            left: 14.0,
-                            right: 14.0,
-                            top: 8.0,
-                            bottom: 8.0,
-                        }),
-                )
-                .show(ctx, |ui| self.player_bar(ui));
+                        .fill(tint(BG, 176))
+                        .stroke(line(Color32::WHITE, 20))
+                        .rounding(Rounding::same(14.0))
+                        .shadow(egui::epaint::Shadow {
+                            offset: egui::vec2(0.0, 3.0),
+                            blur: 14.0,
+                            spread: 0.0,
+                            color: Color32::from_black_alpha(70),
+                        })
+                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+                        .show(ui, |ui| self.player_bar(ui));
+                });
 
             if self.page == Page::Convert {
                 egui::SidePanel::right("detail")
@@ -1131,7 +1140,7 @@ impl App {
             // 第一次进库、已经有文件夹但还没扫过：自动扫一次
             if !self.lib_scanning
                 && self.lib_entries.is_empty()
-                && !self.cfg.library_dirs.is_empty()
+                && (!self.cfg.library_dirs.is_empty() || !self.cfg.library_files.is_empty())
             {
                 self.scan_library();
             }
@@ -1238,11 +1247,12 @@ impl App {
         let genres = uniq(&self.lib_entries, |e| &e.genre);
         let artists = uniq(&self.lib_entries, |e| &e.artist);
         let rows: [(LibTab, &str, usize); 5] = [
+            // 「库」放最前：加音乐/加文件夹都在这里，别让人找
+            (LibTab::Folders, "库", self.cfg.library_dirs.len() + self.cfg.library_files.len()),
             (LibTab::Songs, "歌曲", songs),
             (LibTab::Albums, "专辑", albums),
             (LibTab::Genres, "风格", genres),
             (LibTab::Artists, "艺术家", artists),
-            (LibTab::Folders, "库", self.cfg.library_dirs.len()),
         ];
         for (tab, label, n) in rows {
             if rail_sub(ui, label, n, self.lib_tab == tab) {
@@ -2212,13 +2222,6 @@ impl App {
         };
         ui.horizontal(|ui| {
             ui.label(RichText::new(title).size(14.0).color(TEXT).strong());
-            ui.add_space(8.0);
-            if self.lib_tab != LibTab::Folders {
-                let w = (ui.available_width() - 200.0).max(140.0);
-                if search_box(ui, &mut self.lib_filter, "搜歌名 / 艺术家 / 专辑 / 风格…", w) {
-                    animating = true;
-                }
-            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if self.lib_scanning {
                     ui.label(
@@ -2239,15 +2242,46 @@ impl App {
                 }
             });
         });
+        ui.add_space(6.0);
+
+        // 加音乐 / 加文件夹永远在第一行，不藏在「库」页里
+        let mut add_files = false;
+        let mut add_dir = false;
+        let mut rescan = false;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+            add_files = lib_button(ui, "添加音乐", true);
+            add_dir = lib_button(ui, "添加文件夹", false);
+            rescan = lib_button(ui, "重新扫描", false);
+            if self.lib_tab != LibTab::Folders {
+                ui.add_space(6.0);
+                let w = (ui.available_width() - 8.0).max(120.0);
+                if search_box(ui, &mut self.lib_filter, "搜歌名 / 艺术家 / 专辑 / 风格…", w) {
+                    animating = true;
+                }
+            }
+        });
+        if add_files {
+            self.add_library_files();
+            animating = true;
+        }
+        if add_dir {
+            self.add_library_folder();
+            animating = true;
+        }
+        if rescan {
+            self.scan_library();
+            animating = true;
+        }
         ui.add_space(10.0);
 
-        if self.cfg.library_dirs.is_empty() {
+        if self.cfg.library_dirs.is_empty() && self.cfg.library_files.is_empty() {
             card(ui, WARN, |ui| {
                 para(ui, "还没有音乐库", 11.5, WARN);
                 ui.add_space(4.0);
                 para(
                     ui,
-                    "到左侧「库」里添加一个文件夹，这里会按歌曲 / 专辑 / 风格 / 艺术家整理它。只读扫描，不搬文件、不改文件。",
+                    "点上面「添加文件夹」扫一个目录，或者「添加音乐」挑几个文件。只读扫描，不搬文件、不改文件。",
                     9.5,
                     MUTED,
                 );
@@ -2358,42 +2392,60 @@ impl App {
     }
 
     /// 「库」页：管理文件夹 + 扫描状态
+    /// 挑一个文件夹加进库
+    fn add_library_folder(&mut self) {
+        if let Some(p) = rfd::FileDialog::new().pick_folder() {
+            let s = p.to_string_lossy().to_string();
+            if !self.cfg.library_dirs.contains(&s) {
+                self.cfg.library_dirs.push(s);
+                self.cfg.save();
+                self.scan_library();
+            }
+        }
+    }
+
+    /// 挑几个文件单独加进库（不挂在文件夹下）
+    fn add_library_files(&mut self) {
+        const EXT: &[&str] = &[
+            "mp3", "mp2", "flac", "m4a", "aac", "ogg", "oga", "opus", "wav", "aif", "aiff",
+            "wma", "ac3", "eac3", "oma", "aa3", "at3", "at9", "ape", "wv", "tta", "caf", "w64",
+        ];
+        let Some(paths) = rfd::FileDialog::new()
+            .add_filter("音频文件", EXT)
+            .pick_files()
+        else {
+            return;
+        };
+        let mut added = false;
+        for p in paths {
+            if !is_audio(&p) {
+                continue;
+            }
+            let s = p.to_string_lossy().to_string();
+            if !self.cfg.library_files.contains(&s) {
+                self.cfg.library_files.push(s);
+                added = true;
+            }
+        }
+        if added {
+            self.cfg.save();
+            self.scan_library();
+        }
+    }
+
     fn library_folders(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
-        ui.horizontal(|ui| {
-            let add = egui::Button::new(RichText::new("添加文件夹…").size(10.0).color(TEXT))
-                .fill(tint(ACCENT, 30))
-                .stroke(line(ACCENT, 70))
-                .rounding(Rounding::same(8.0));
-            if ui.add(add).clicked() {
-                if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                    let s = p.to_string_lossy().to_string();
-                    if !self.cfg.library_dirs.contains(&s) {
-                        self.cfg.library_dirs.push(s);
-                        self.cfg.save();
-                        changed = true;
-                        self.scan_library();
-                    }
-                }
-            }
-            let rescan = egui::Button::new(RichText::new("重新扫描").size(10.0).color(MUTED))
-                .fill(tint(Color32::WHITE, 10))
-                .stroke(line(Color32::WHITE, 18))
-                .rounding(Rounding::same(8.0));
-            if ui.add(rescan).clicked() {
-                self.scan_library();
-                changed = true;
-            }
-        });
-        ui.add_space(10.0);
 
-        if self.cfg.library_dirs.is_empty() {
+        if self.cfg.library_dirs.is_empty() && self.cfg.library_files.is_empty() {
             para(
                 ui,
-                "还没有文件夹。添加之后程序会只读地扫一遍：读标签和时长，不改任何文件。",
+                "还没有添加任何东西。用上面的「添加文件夹」扫一个目录，或「添加音乐」挑几个文件。",
                 10.0,
                 DIM,
             );
+        } else {
+            ui.label(RichText::new("文件夹").size(9.5).color(DIM));
+            ui.add_space(4.0);
         }
 
         let mut remove: Option<usize> = None;
@@ -2423,6 +2475,54 @@ impl App {
         }
         if let Some(i) = remove {
             self.cfg.library_dirs.remove(i);
+            self.cfg.save();
+            changed = true;
+            self.scan_library();
+        }
+
+        // 单独加进来的文件（不挂在任何文件夹下）
+        if !self.cfg.library_files.is_empty() {
+            ui.add_space(10.0);
+            ui.label(RichText::new("单独添加的文件").size(9.5).color(DIM));
+            ui.add_space(4.0);
+        }
+        let mut remove_file: Option<usize> = None;
+        for (i, f) in self.cfg.library_files.iter().enumerate() {
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 30.0),
+                egui::Sense::hover(),
+            );
+            let p = ui.painter();
+            p.rect_filled(
+                rect.shrink2(egui::vec2(0.0, 2.0)),
+                Rounding::same(8.0),
+                tint(Color32::WHITE, 6),
+            );
+            let label_rect = egui::Rect::from_min_max(
+                rect.min + egui::vec2(10.0, 0.0),
+                egui::pos2(rect.right() - 40.0, rect.bottom()),
+            );
+            paint_clipped(ui, label_rect, 10.0, MUTED, f);
+            let xr = egui::Rect::from_center_size(
+                rect.right_center() - egui::vec2(14.0, 0.0),
+                egui::vec2(24.0, 24.0),
+            );
+            let x = ui.interact(xr, ui.id().with(("lib_file_del", i)), egui::Sense::click());
+            let xc = if x.hovered() { DANGER } else { DIM };
+            p.text(
+                xr.center(),
+                egui::Align2::CENTER_CENTER,
+                "×",
+                egui::FontId::proportional(13.0),
+                xc,
+            );
+            if x.clicked() {
+                remove_file = Some(i);
+            }
+            ui.add_space(2.0);
+        }
+        if let Some(i) = remove_file {
+            self.cfg.library_files.remove(i);
             self.cfg.save();
             changed = true;
             self.scan_library();
@@ -2472,8 +2572,15 @@ impl App {
             .map(PathBuf::from)
             .filter(|p| p.is_dir())
             .collect();
-        if dirs.is_empty() {
-            self.lib_status = "没有可用的文件夹".into();
+        let seed: Vec<PathBuf> = self
+            .cfg
+            .library_files
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .collect();
+        if dirs.is_empty() && seed.is_empty() {
+            self.lib_status = "没有可用的文件夹或文件".into();
             return;
         }
         self.lib_scanning = true;
@@ -2482,7 +2589,7 @@ impl App {
         self.lib_status = "正在扫描…".into();
         let tx = self.lib_tx.clone();
         std::thread::spawn(move || {
-            let mut files = Vec::new();
+            let mut files = seed;
             for d in &dirs {
                 collect_audio(d, &mut files, 0);
             }
@@ -2590,7 +2697,6 @@ impl App {
                 egui::vec2(content_w, 48.0),
                 Layout::top_down(Align::LEFT),
                 |ui| {
-                    ui.add_space(2.0);
                     ui.horizontal(|ui| {
                         if icon_button(
                             ui,
@@ -2614,7 +2720,7 @@ impl App {
                             .truncate(),
                         );
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                     ui.horizontal(|ui| {
                         let time_w = 92.0;
                         let bar_w = (ui.available_width() - time_w).max(60.0);
@@ -4033,6 +4139,28 @@ fn collect_audio(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
             return;
         }
     }
+}
+
+/// 音乐库顶部的小按钮（主按钮是青色实心）
+fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool {
+    let b = egui::Button::new(RichText::new(label).size(10.0).color(if primary {
+        Color32::from_rgb(10, 26, 24)
+    } else {
+        MUTED
+    }))
+    .fill(if primary {
+        ACCENT
+    } else {
+        tint(Color32::WHITE, 10)
+    })
+    .stroke(if primary {
+        Stroke::NONE
+    } else {
+        line(Color32::WHITE, 18)
+    })
+    .rounding(Rounding::same(8.0))
+    .min_size(egui::vec2(0.0, 24.0));
+    ui.add(b).clicked()
 }
 
 /// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。
