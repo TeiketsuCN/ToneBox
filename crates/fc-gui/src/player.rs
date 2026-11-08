@@ -367,6 +367,57 @@ impl App {
                 ],
                 Stroke::new(1.4, hcol),
             );
+
+            // 高度把手：按住上下拖 = 拉高/压矮
+            ui.add_space(2.0);
+            let (vrect, vresp) = ui.allocate_exact_size(
+                egui::vec2(14.0, 16.0),
+                egui::Sense::drag(),
+            );
+            if vresp.hovered() || vresp.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            }
+            if vresp.dragged() {
+                self.bar_h = (self.bar_h + vresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
+            }
+            if vresp.drag_stopped() {
+                self.cfg.bar_height = self.bar_h;
+                self.cfg.save();
+            }
+            let p = ui.painter();
+            let vc = vrect.center();
+            let vcol = tint(
+                Color32::WHITE,
+                if vresp.hovered() || vresp.dragged() { 150 } else { 70 },
+            );
+            p.line_segment(
+                [
+                    egui::pos2(vc.x - 4.0, vc.y - 4.0),
+                    egui::pos2(vc.x, vc.y - 6.0),
+                ],
+                Stroke::new(1.4, vcol),
+            );
+            p.line_segment(
+                [
+                    egui::pos2(vc.x + 4.0, vc.y - 4.0),
+                    egui::pos2(vc.x, vc.y - 6.0),
+                ],
+                Stroke::new(1.4, vcol),
+            );
+            p.line_segment(
+                [
+                    egui::pos2(vc.x - 4.0, vc.y + 4.0),
+                    egui::pos2(vc.x, vc.y + 6.0),
+                ],
+                Stroke::new(1.4, vcol),
+            );
+            p.line_segment(
+                [
+                    egui::pos2(vc.x + 4.0, vc.y + 4.0),
+                    egui::pos2(vc.x, vc.y + 6.0),
+                ],
+                Stroke::new(1.4, vcol),
+            );
         });
 
         if open_spec {
