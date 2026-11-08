@@ -7,6 +7,13 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// 界面缩放档位。只影响显示，不影响转换结果。
+pub const SCALES: [f32; 4] = [0.9, 1.0, 1.1, 1.2];
+
+fn default_ui_scale() -> f32 {
+    1.0
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum BgMode {
     /// 壁纸模糊（默认）
@@ -71,6 +78,10 @@ pub struct Settings {
     /// 是否写标签（默认开：源文件有标签就带过去）
     #[serde(default = "default_true")]
     pub write_tags: bool,
+    /// 界面缩放（1.0 = 100%）。用 egui 的 zoom factor 实现，文字和控件一起放大，
+    /// 否则我们那些写死的 `.size(9.5)` 根本不会变。
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f32,
 }
 
 fn default_true() -> bool {
@@ -91,6 +102,7 @@ impl Default for Settings {
             meta_album: String::new(),
             meta_cover: String::new(),
             write_tags: true,
+            ui_scale: 1.0,
         }
     }
 }

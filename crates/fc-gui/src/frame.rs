@@ -12,7 +12,7 @@
 
 #![cfg(windows)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 use windows_sys::Win32::UI::WindowsAndMessaging::MINMAXINFO;
@@ -25,6 +25,14 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 /// 原生 `WM_NCHITTEST` 是否已经接管
 pub static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// 界面缩放（和 egui 的 zoom_factor 同步），0 = 还没设置
+static UI_SCALE: AtomicU32 = AtomicU32::new(0);
+
+/// 每次改缩放时同步给命中区计算用。
+pub fn set_ui_scale(s: f32) {
+    UI_SCALE.store(s.to_bits(), Ordering::Relaxed);
+}
 
 /// 最大化时窗口会被系统放大到工作区 + 2×8px 并偏移 (-8,-8)，
 /// 这是带 WS_THICKFRAME 的无边框窗口的固有行为（也是 Chromium 处理的那套）。
@@ -48,8 +56,14 @@ const HTBOTTOMRIGHT: isize = 17;
 /// 和 main.rs 里的 TITLEBAR_H 保持一致
 const TITLEBAR_H: f32 = 44.0;
 const RESIZE_BORDER: f32 = 6.0;
-/// 右上角按钮个数（图钉 / 最小化 / 最大化 / 关闭）
-const TITLE_BUTTONS: f32 = 4.0;
+/// 右上角按钮个数（设置 / 图钉 / 最小化 / 最大化 / 关闭）。
+///
+/// ⚠️ 这个数必须和 main.rs 里 `titlebar()` 实际画的按钮数一致：
+/// 少了的话，多出来的按钮会落在 HTCAPTION 区域，点击被系统当成"拖标题栏"，
+/// 按钮看着能点、实际没反应（加设置按钮时踩过）。
+const TITLE_BUTTONS: f32 = 5.0;
+/// main.rs 里标题栏右边距，命中区要把它一起算进去
+const TITLEBAR_RIGHT_MARGIN: f32 = 10.0;
 
 static OLD_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
@@ -82,7 +96,17 @@ unsafe extern "system" fn subclass_proc(
     }
 
     if msg == WM_NCHITTEST {
-        let scale = GetDpiForWindow(hwnd) as f32 / 96.0;
+        // 命中区必须跟着"DPI × 界面缩放"一起放大，否则 120% 时按钮边缘会被当成标题栏
+        let dpi = GetDpiForWindow(hwnd) as f32 / 96.0;
+        let zoom = {
+            let bits = UI_SCALE.load(Ordering::Relaxed);
+            if bits == 0 {
+                1.0
+            } else {
+                f32::from_bits(bits)
+            }
+        };
+        let scale = dpi * zoom;
         // lparam 是屏幕坐标
         let x = (lparam & 0xFFFF) as i16 as i32;
         let y = ((lparam >> 16) & 0xFFFF) as i16 as i32;
@@ -124,7 +148,7 @@ unsafe extern "system" fn subclass_proc(
 
         // 标题栏：右边按钮区留给 egui，其余当原生标题栏
         let title_h = (TITLEBAR_H * scale) as i32;
-        let buttons_w = (TITLEBAR_H * scale * TITLE_BUTTONS) as i32;
+        let buttons_w = ((TITLEBAR_H + TITLEBAR_RIGHT_MARGIN) * scale * TITLE_BUTTONS) as i32;
         if pt.y < title_h && pt.x < rc.right - buttons_w {
             return HTCAPTION;
         }

@@ -235,6 +235,9 @@ impl App {
             .as_ref()
             .map(|t| fc_core::list_encoders(&t.ffmpeg))
             .unwrap_or_default();
+        let cfg = settings::Settings::load();
+        // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
+        cc.egui_ctx.set_zoom_factor(cfg.ui_scale);
         App {
             tools,
             items: Vec::new(),
@@ -263,7 +266,7 @@ impl App {
             analysis_rx: arx,
             media_tx: mtx,
             media_rx: mrx,
-            cfg: settings::Settings::load(),
+            cfg,
             settings_open: false,
             settings_t: 0.0,
             meta_open: false,
@@ -621,6 +624,9 @@ impl eframe::App for App {
             frame::install("格式转换器");
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
+        // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
+        #[cfg(windows)]
+        frame::set_ui_scale(self.cfg.ui_scale);
         self.poll();
         self.poll_analysis();
         self.poll_media(ctx);
@@ -673,7 +679,12 @@ impl eframe::App for App {
             )
             .show(ctx, |ui| self.titlebar(ui));
 
-        if self.player.is_some() {
+        // 设置页打开时把主界面藏起来：设置页是半透明玻璃，
+        // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。
+        let main_visible = !self.settings_open;
+        let mut do_start = false;
+
+        if main_visible && self.player.is_some() {
             let name = self
                 .player_for
                 .and_then(|i| self.items.get(i))
@@ -693,94 +704,95 @@ impl eframe::App for App {
                 .show(ctx, |ui| self.player_bar(ui, &name));
         }
 
-        egui::SidePanel::left("formats")
-            .exact_width(LEFT_W)
-            .resizable(false)
-            .frame(
-                egui::Frame::none()
-                    .fill(tint(BG, 104))
-                    .inner_margin(egui::Margin {
-                        left: 12.0 + inset,
-                        right: 12.0,
-                        top: 12.0,
-                        bottom: 12.0 + inset,
-                    }),
-            )
-            .show(ctx, |ui| animating |= self.sidebar(ui));
+        if main_visible {
+            egui::SidePanel::left("formats")
+                .exact_width(LEFT_W)
+                .resizable(false)
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 104))
+                        .inner_margin(egui::Margin {
+                            left: 12.0 + inset,
+                            right: 12.0,
+                            top: 12.0,
+                            bottom: 12.0 + inset,
+                        }),
+                )
+                .show(ctx, |ui| animating |= self.sidebar(ui));
 
-        let mut do_start = false;
-        egui::SidePanel::right("output")
-            .exact_width(OUT_W)
-            .resizable(false)
-            .frame(
-                egui::Frame::none()
-                    .fill(tint(BG, 128))
-                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
-            )
-            .show(ctx, |ui| {
-                // 开始转换钉在最下面——这一列的终点就是它
-                egui::TopBottomPanel::bottom("out_start")
-                    .frame(
-                        egui::Frame::none()
-                            .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
-                    )
-                    .show_inside(ui, |ui| {
-                        if self.running {
-                            ui.add(
-                                egui::ProgressBar::new(self.overall())
-                                    .desired_width(ui.available_width())
-                                    .fill(ACCENT),
-                            );
-                            ui.add_space(6.0);
-                        }
-                        let can = !self.running
-                            && self.tools.is_some()
-                            && self
-                                .items
-                                .iter()
-                                .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
-                        if start_button(ui, can, self.running) {
-                            do_start = true;
-                        }
-                    });
+            egui::SidePanel::right("output")
+                .exact_width(OUT_W)
+                .resizable(false)
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 128))
+                        .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+                )
+                .show(ctx, |ui| {
+                    // 开始转换钉在最下面——这一列的终点就是它
+                    egui::TopBottomPanel::bottom("out_start")
+                        .frame(
+                            egui::Frame::none()
+                                .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
+                        )
+                        .show_inside(ui, |ui| {
+                            if self.running {
+                                ui.add(
+                                    egui::ProgressBar::new(self.overall())
+                                        .desired_width(ui.available_width())
+                                        .fill(ACCENT),
+                                );
+                                ui.add_space(6.0);
+                            }
+                            let can = !self.running
+                                && self.tools.is_some()
+                                && self
+                                    .items
+                                    .iter()
+                                    .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
+                            if start_button(ui, can, self.running) {
+                                do_start = true;
+                            }
+                        });
 
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        animating |= self.output_panel(ui);
-                    });
-            });
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            animating |= self.output_panel(ui);
+                        });
+                });
+
+            egui::SidePanel::right("detail")
+                .exact_width(RIGHT_W)
+                .resizable(false)
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 104))
+                        .inner_margin(egui::Margin {
+                            left: 16.0,
+                            right: 16.0 + inset,
+                            top: 12.0,
+                            bottom: 12.0 + inset,
+                        }),
+                )
+                .show(ctx, |ui| animating |= self.detail(ui));
+
+            egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::none()
+                        .fill(tint(BG, 92))
+                        .inner_margin(egui::Margin {
+                            left: 16.0,
+                            right: 16.0,
+                            top: 12.0,
+                            bottom: 12.0 + inset,
+                        }),
+                )
+                .show(ctx, |ui| animating |= self.queue(ui, ctx));
+        }
         if do_start {
             self.start_batch(ctx);
         }
-
-        egui::SidePanel::right("detail")
-            .exact_width(RIGHT_W)
-            .resizable(false)
-            .frame(
-                egui::Frame::none()
-                    .fill(tint(BG, 104))
-                    .inner_margin(egui::Margin {
-                        left: 16.0,
-                        right: 16.0 + inset,
-                        top: 12.0,
-                        bottom: 12.0 + inset,
-                    }),
-            )
-            .show(ctx, |ui| animating |= self.detail(ui));
-
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(tint(BG, 92))
-                    .inner_margin(egui::Margin {
-                        left: 16.0,
-                        right: 16.0,
-                        top: 12.0,
-                        bottom: 12.0 + inset,
-                    }),
-            )
-            .show(ctx, |ui| animating |= self.queue(ui, ctx));
 
         // 设置覆盖层（最后画，盖住一切）
         animating |= approach(
@@ -979,6 +991,11 @@ impl App {
                 },
             ));
         }
+        // 设置：放在图钉左边（用户要求"放置顶按钮旁边"）。再点一次就收起来。
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        if title_button(ui, rect, TitleBtn::Settings, self.settings_open) {
+            self.settings_open = !self.settings_open;
+        }
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui) -> bool {
@@ -1025,15 +1042,7 @@ impl App {
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let b = egui::Button::new(RichText::new("设置").size(10.5).color(MUTED))
-                    .fill(tint(Color32::WHITE, 10))
-                    .stroke(line(Color32::WHITE, 18))
-                    .rounding(Rounding::same(8.0))
-                    .min_size(egui::vec2(ui.available_width(), 26.0));
-                if ui.add(b).clicked() {
-                    self.settings_open = true;
-                }
-                ui.add_space(4.0);
+                // 设置按钮已经挪到标题栏（图钉旁边），这里只留那句合规提示
                 ui.label(
                     RichText::new("只处理未加密文件 · 不支持任何 DRM")
                         .size(9.0)
@@ -1518,7 +1527,9 @@ impl App {
                     .fill(tint(BG, 255))
                     .inner_margin(egui::Margin::symmetric(28.0, 18.0))
                     .show(ui, |ui| {
-                        ui.set_min_size(area.size());
+                        // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2），否则 Area 会比区域大，
+                        // egui 会把它往上顶到 y=0、盖住标题栏，关闭/最小化按钮就点不到了。
+                        ui.set_min_size(egui::vec2(area.width() - 56.0, area.height() - 36.0));
                         ui.set_max_width(area.width() - 56.0);
                         ui.add_space(TITLEBAR_H);
 
@@ -1756,10 +1767,14 @@ impl App {
             .fixed_pos(area.min + egui::vec2(0.0, offset))
             .show(ctx, |ui| {
                 egui::Frame::none()
-                    .fill(tint(BG, 255))
+                    // 和主界面同一套"玻璃"：半透明底 + 壁纸透过来。
+                    // 之前是 tint(BG, 255) 的纯黑，用户明确说不要。
+                    .fill(tint(BG, 148))
                     .inner_margin(egui::Margin::symmetric(28.0, 18.0))
                     .show(ui, |ui| {
-                        ui.set_min_size(area.size());
+                        // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2），否则 Area 会比区域大，
+                        // egui 会把它往上顶到 y=0、盖住标题栏，关闭/最小化按钮就点不到了。
+                        ui.set_min_size(egui::vec2(area.width() - 56.0, area.height() - 36.0));
                         ui.set_max_width(area.width() - 56.0);
                         // 顶部 44px 是原生标题栏命中区（HTCAPTION），
                         // 放在那里的按钮点不到，所以内容整体下移避开。
@@ -1801,168 +1816,196 @@ impl App {
                         });
                         ui.add_space(18.0);
 
-                        // ── 外观 ──
-                        section(ui, "外观");
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("背景").size(10.5).color(MUTED));
-                            ui.add_space(12.0);
-                            for m in settings::BgMode::all() {
-                                let on = self.cfg.bg_mode == m;
+                        egui::ScrollArea::vertical()
+                            .id_salt("settings_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                // ── 外观 ──
+                                section(ui, "外观");
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("背景").size(10.5).color(MUTED));
+                                    ui.add_space(12.0);
+                                    for m in settings::BgMode::all() {
+                                        let on = self.cfg.bg_mode == m;
+                                        if ui
+                                            .add(
+                                                egui::Button::new(
+                                                    RichText::new(m.label()).size(10.5).color(if on {
+                                                        Color32::from_rgb(10, 26, 24)
+                                                    } else {
+                                                        MUTED
+                                                    }),
+                                                )
+                                                .fill(if on { ACCENT } else { tint(Color32::WHITE, 10) })
+                                                .stroke(if on {
+                                                    Stroke::NONE
+                                                } else {
+                                                    line(Color32::WHITE, 20)
+                                                })
+                                                .rounding(Rounding::same(8.0)),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.cfg.bg_mode = m;
+                                            changed = true;
+                                        }
+                                    }
+                                });
+
+                                ui.add_space(10.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("暗化").size(10.5).color(MUTED));
+                                    ui.add_space(12.0);
+                                    let mut dim = self.cfg.dim as i32;
+                                    ui.spacing_mut().slider_width = 220.0;
+                                    if ui
+                                        .add(egui::Slider::new(&mut dim, 0..=210).show_value(false))
+                                        .changed()
+                                    {
+                                        self.cfg.dim = dim as u8;
+                                        changed = true;
+                                    }
+                                    ui.label(
+                                        RichText::new(format!("{}", self.cfg.dim)).size(9.0).color(DIM),
+                                    );
+                                });
+
+                                // 界面缩放：字号是写死在各个控件里的，所以这里用 egui 的
+                                // 全局 zoom（文字 + 控件一起放大），而不是只改字体
+                                ui.add_space(10.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("界面缩放").size(10.5).color(MUTED));
+                                    ui.add_space(12.0);
+                                    for s in settings::SCALES {
+                                        let on = (self.cfg.ui_scale - s).abs() < 0.001;
+                                        let label = format!("{}%", (s * 100.0).round() as i32);
+                                        if seg_button(ui, &label, on) {
+                                            self.cfg.ui_scale = s;
+                                            ui.ctx().set_zoom_factor(s);
+                                            changed = true;
+                                        }
+                                    }
+                                });
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new("放大的是整个界面（文字和控件一起）；窗口小的时候建议 100%")
+                                        .size(9.0)
+                                        .color(DIM),
+                                );
+
+                                ui.add_space(18.0);
+
+                                // ── 行为 ──
+                                section(ui, "行为");
+                                let mut auto = self.cfg.auto_analyze;
                                 if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(m.label()).size(10.5).color(if on {
-                                                Color32::from_rgb(10, 26, 24)
-                                            } else {
-                                                MUTED
-                                            }),
-                                        )
-                                        .fill(if on { ACCENT } else { tint(Color32::WHITE, 10) })
-                                        .stroke(if on {
-                                            Stroke::NONE
-                                        } else {
-                                            line(Color32::WHITE, 20)
-                                        })
-                                        .rounding(Rounding::same(8.0)),
-                                    )
-                                    .clicked()
+                                    .checkbox(&mut auto, RichText::new("选中文件时自动分析频谱").size(10.5).color(MUTED))
+                                    .changed()
                                 {
-                                    self.cfg.bg_mode = m;
+                                    self.cfg.auto_analyze = auto;
                                     changed = true;
                                 }
-                            }
-                        });
-
-                        ui.add_space(10.0);
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("暗化").size(10.5).color(MUTED));
-                            ui.add_space(12.0);
-                            let mut dim = self.cfg.dim as i32;
-                            ui.spacing_mut().slider_width = 220.0;
-                            if ui
-                                .add(egui::Slider::new(&mut dim, 0..=210).show_value(false))
-                                .changed()
-                            {
-                                self.cfg.dim = dim as u8;
-                                changed = true;
-                            }
-                            ui.label(
-                                RichText::new(format!("{}", self.cfg.dim)).size(9.0).color(DIM),
-                            );
-                        });
-
-                        ui.add_space(18.0);
-
-                        // ── 行为 ──
-                        section(ui, "行为");
-                        let mut auto = self.cfg.auto_analyze;
-                        if ui
-                            .checkbox(&mut auto, RichText::new("选中文件时自动分析频谱").size(10.5).color(MUTED))
-                            .changed()
-                        {
-                            self.cfg.auto_analyze = auto;
-                            changed = true;
-                        }
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("关掉后不自动分析，省 CPU；每个文件约 1 秒")
-                                .size(9.0)
-                                .color(DIM),
-                        );
-
-                        ui.add_space(18.0);
-
-                        // ── 关于 ──
-                        section(ui, "关于");
-                        egui::Grid::new("about")
-                            .num_columns(2)
-                            .spacing([16.0, 6.0])
-                            .show(ui, |ui| {
-                                row(ui, "版本", "0.1.0");
-                                row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
-                                row(ui, "音频解码", "ffmpeg 子进程");
-                                row(ui, "ATRAC 编码", "atracdenc（LGPL-2.1+，需自行安装）");
-                                row(ui, "频谱分析", "fc-analyze（自研）");
-                                row(ui, "许可", "开源，详见仓库");
-                            });
-
-                        ui.add_space(8.0);
-                        match &self.atracdenc {
-                            Some(p) => para(
-                                ui,
-                                &format!("atracdenc：已找到  {}", p.display()),
-                                9.0,
-                                ACCENT,
-                            ),
-                            None => para(
-                                ui,
-                                "atracdenc：未安装 —— ATRAC1 / ATRAC3 / ATRAC3+ 暂时只能解码，不能转出。",
-                                9.0,
-                                WARN,
-                            ),
-                        }
-                        ui.horizontal(|ui| {
-                            let b = egui::Button::new(
-                                RichText::new("重新检测外部工具").size(9.0).color(MUTED),
-                            )
-                            .fill(tint(Color32::WHITE, 10))
-                            .stroke(line(Color32::WHITE, 18))
-                            .rounding(Rounding::same(7.0));
-                            if ui.add(b).clicked() {
-                                self.atracdenc = fc_core::find_atracdenc();
-                                changed = true;
-                            }
-                            if self.atracdenc.is_some() {
+                                ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("ATRAC 输出已可用")
+                                    RichText::new("关掉后不自动分析，省 CPU；每个文件约 1 秒")
                                         .size(9.0)
-                                        .color(ACCENT),
+                                        .color(DIM),
                                 );
-                            }
-                        });
-                        para(
-                            ui,
-                            "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。",
-                            8.5,
-                            DIM,
-                        );
 
-                        ui.add_space(18.0);
-                        section(ui, "支持开发");
-                        para(
-                            ui,
-                            "这个工具免费、开源、不卖授权。如果它帮你把旧 MD 里的东西救出来了，欢迎请我喝杯咖啡。",
-                            9.5,
-                            MUTED,
-                        );
-                        ui.add_space(10.0);
-                        let has_qr = self.donate_wechat.is_some() || self.donate_alipay.is_some();
-                        if has_qr {
-                            ui.horizontal(|ui| {
-                                if let Some(t) = &self.donate_wechat {
-                                    ui.vertical(|ui| {
-                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
-                                        ui.add_space(3.0);
-                                        ui.label(RichText::new("微信").size(9.0).color(DIM));
+                                ui.add_space(18.0);
+
+                                // ── 关于 ──
+                                section(ui, "关于");
+                                egui::Grid::new("about")
+                                    .num_columns(2)
+                                    .spacing([16.0, 6.0])
+                                    .show(ui, |ui| {
+                                        row(ui, "版本", "0.1.0");
+                                        row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
+                                        row(ui, "音频解码", "ffmpeg 子进程");
+                                        row(ui, "ATRAC 编码", "atracdenc（LGPL-2.1+，需自行安装）");
+                                        row(ui, "频谱分析", "fc-analyze（自研）");
+                                        row(ui, "许可", "开源，详见仓库");
                                     });
+
+                                ui.add_space(8.0);
+                                match &self.atracdenc {
+                                    Some(p) => para(
+                                        ui,
+                                        &format!("atracdenc：已找到  {}", p.display()),
+                                        9.0,
+                                        ACCENT,
+                                    ),
+                                    None => para(
+                                        ui,
+                                        "atracdenc：未安装 —— ATRAC1 / ATRAC3 / ATRAC3+ 暂时只能解码，不能转出。",
+                                        9.0,
+                                        WARN,
+                                    ),
                                 }
-                                ui.add_space(16.0);
-                                if let Some(t) = &self.donate_alipay {
-                                    ui.vertical(|ui| {
-                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
-                                        ui.add_space(3.0);
-                                        ui.label(RichText::new("支付宝").size(9.0).color(DIM));
+                                ui.horizontal(|ui| {
+                                    let b = egui::Button::new(
+                                        RichText::new("重新检测外部工具").size(9.0).color(MUTED),
+                                    )
+                                    .fill(tint(Color32::WHITE, 10))
+                                    .stroke(line(Color32::WHITE, 18))
+                                    .rounding(Rounding::same(7.0));
+                                    if ui.add(b).clicked() {
+                                        self.atracdenc = fc_core::find_atracdenc();
+                                        changed = true;
+                                    }
+                                    if self.atracdenc.is_some() {
+                                        ui.label(
+                                            RichText::new("ATRAC 输出已可用")
+                                                .size(9.0)
+                                                .color(ACCENT),
+                                        );
+                                    }
+                                });
+                                para(
+                                    ui,
+                                    "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。",
+                                    8.5,
+                                    DIM,
+                                );
+
+                                ui.add_space(18.0);
+                                section(ui, "支持开发");
+                                para(
+                                    ui,
+                                    "这个工具免费、开源、不卖授权。如果它帮你把旧 MD 里的东西救出来了，欢迎请我喝杯咖啡。",
+                                    9.5,
+                                    MUTED,
+                                );
+                                ui.add_space(10.0);
+                                let has_qr = self.donate_wechat.is_some() || self.donate_alipay.is_some();
+                                if has_qr {
+                                    ui.horizontal(|ui| {
+                                        if let Some(t) = &self.donate_wechat {
+                                            ui.vertical(|ui| {
+                                                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
+                                                ui.add_space(3.0);
+                                                ui.label(RichText::new("微信").size(9.0).color(DIM));
+                                            });
+                                        }
+                                        ui.add_space(16.0);
+                                        if let Some(t) = &self.donate_alipay {
+                                            ui.vertical(|ui| {
+                                                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
+                                                ui.add_space(3.0);
+                                                ui.label(RichText::new("支付宝").size(9.0).color(DIM));
+                                            });
+                                        }
                                     });
+                                } else {
+                                    para(
+                                        ui,
+                                        "（把收款码放到程序目录，命名 donate-wechat.png / donate-alipay.png 即可显示）",
+                                        8.5,
+                                        DIM,
+                                    );
                                 }
                             });
-                        } else {
-                            para(
-                                ui,
-                                "（把收款码放到程序目录，命名 donate-wechat.png / donate-alipay.png 即可显示）",
-                                8.5,
-                                DIM,
-                            );
-                        }
                     });
             });
 
@@ -2825,6 +2868,7 @@ fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
 #[derive(Clone, Copy, PartialEq)]
 enum TitleBtn {
     Pin,
+    Settings,
     Minimize,
     Maximize,
     Restore,
@@ -2911,6 +2955,17 @@ fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, active: boo
                 [head + egui::vec2(0.0, 3.8), head + egui::vec2(0.0, 8.0)],
                 Stroke::new(1.2, col),
             );
+        }
+        TitleBtn::Settings => {
+            // 三条滑杆（设置图标）。画成齿轮也行，但滑杆在小尺寸下更清楚。
+            for (i, dy) in [-4.6_f32, 0.0, 4.6].into_iter().enumerate() {
+                p.line_segment(
+                    [c + egui::vec2(-6.5, dy), c + egui::vec2(6.5, dy)],
+                    Stroke::new(1.2, col),
+                );
+                let kx = [-2.5_f32, 2.0, -1.0][i];
+                p.circle_filled(c + egui::vec2(kx, dy), 1.9, col);
+            }
         }
     }
     if resp.hovered() {
