@@ -146,6 +146,9 @@ impl MediaInfo {
             "atrac1" => "ATRAC1",
             "atrac3" => "ATRAC3",
             "atrac3p" | "atrac3plus" => "ATRAC3+",
+            // ATRAC Advanced Lossless 的两个 codec 名（只解不编）
+            "atrac3al" => "ATRAC3 AL",
+            "atrac3plusal" => "ATRAC3+ AL",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",

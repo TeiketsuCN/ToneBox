@@ -49,6 +49,20 @@ pub static DEVICE: &[FormatSpec] = &[
         size_ratio: 0.06,
     },
     FormatSpec {
+        id: "atrac_al",
+        name: "ATRAC AL",
+        ext: "oma",
+        kind: Kind::Lossless,
+        group: Group::Device,
+        // 2006 年前后的申请，按 20 年算也就这几年到期；但反正没有开源编码器
+        patent: Patent::Expiring,
+        can_encode: false,
+        primary: false,
+        blurb: "索尼 2006 年的无损编码（ATRAC Advanced Lossless）。\n.oma 里通常是「有损核 + 无损残差」，解出来能还原 CD。\n只能解码，没有开源编码器。",
+        args: &[],
+        size_ratio: 0.55,
+    },
+    FormatSpec {
         id: "atrac9",
         name: "ATRAC9",
         ext: "at9",

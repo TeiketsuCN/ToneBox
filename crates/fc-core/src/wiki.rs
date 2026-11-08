@@ -221,6 +221,13 @@ static TABLE: &[(&str, &str)] = &[
          和 ATRAC3 比它低码率更强，和 ATRAC9 比它更老。",
     ),
     (
+        "atrac_al",
+        "2006 年索尼给 SonicStage 推出的无损格式（ATRAC Advanced Lossless）：本质是 ATRAC3/3+ 的核加一层无损残差，\
+         解码后能逐比特还原原文件。坑是它几乎只存在于 SonicStage 导出的 .oma/.aa3 里，而且常常套着 OpenMG；\
+         ffmpeg 只认 atrac3al / atrac3plusal 两个 codec 名、只解不编，本项目也没有真实样本做端到端验证。\
+         和 FLAC 比它没有跨平台生态，和 ATRAC3+ 比它无损但体积大。",
+    ),
+    (
         "atrac9",
         "2013 年索尼为 PS4/PS Vita 推出的编码，.at9，定位游戏和便携设备的高效率有损。\
          它比 ATRAC3+ 新，但生态只限索尼平台，公开资料和工具都少。\

@@ -223,7 +223,17 @@ fn is_lossless_codec(codec: &str) -> bool {
     c.starts_with("pcm_")
         || matches!(
             c.as_str(),
-            "flac" | "alac" | "wavpack" | "ape" | "tta" | "truehd" | "mlp" | "shorten"
+            "flac"
+                | "alac"
+                | "wavpack"
+                | "ape"
+                | "tta"
+                | "truehd"
+                | "mlp"
+                | "shorten"
+                // ATRAC Advanced Lossless：解出来是无损的，别按 ATRAC 码率表去猜
+                | "atrac3al"
+                | "atrac3plusal"
         )
 }
 

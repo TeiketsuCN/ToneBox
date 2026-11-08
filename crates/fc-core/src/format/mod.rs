@@ -945,6 +945,11 @@ mod tests {
         assert!(external_encoder("atrac9").is_none());
         assert!(!spec("atrac9").can_encode);
 
+        // ATRAC Advanced Lossless：只能读，而且它是真无损（别按 ATRAC 码率表猜）
+        assert!(!spec("atrac_al").can_encode);
+        assert!(external_encoder("atrac_al").is_none());
+        assert_eq!(spec("atrac_al").kind, Kind::Lossless);
+
         // ATRAC3 只有 LP2 / LP4 两档
         assert_eq!(bitrate_choices("atrac3"), &[66, 132]);
         let mut o = ConvertOptions::default();
@@ -963,6 +968,18 @@ mod tests {
         assert_eq!(crate::external::codec_for("atrac3", 66), Some("atrac3_lp4"));
         assert_eq!(crate::external::codec_for("atrac3p", 352), Some("atrac3plus"));
         assert_eq!(crate::external::codec_for("flac", 132), None);
+    }
+
+    #[test]
+    fn atrac_lossless_is_recognised_as_lossless() {
+        // 这两个 codec 名是 ffmpeg 的：atrac3al / atrac3plusal。
+        // 它们解出来是无损的，所以 is_lossy 必须是 false，
+        // 否则界面会劝用户"转无损不会增加信息量"——正好说反。
+        for (codec, label) in [("atrac3al", "ATRAC3 AL"), ("atrac3plusal", "ATRAC3+ AL")] {
+            let m = mi(codec, 900, 44100);
+            assert_eq!(m.codec_label(), label);
+            assert!(!m.is_lossy(), "{codec} 不该被判成有损");
+        }
     }
 
     #[test]
