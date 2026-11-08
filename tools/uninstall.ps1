@@ -1,7 +1,11 @@
 ﻿# 卸载：删快捷方式 + 注册表项 + 程序目录
 $ErrorActionPreference = 'SilentlyContinue'
 
-$AppDir  = 'D:\Apps\FormatConverter'
+# 卸载脚本就装在 $AppDir 里，路径从自己位置推；换机器、换目录都不用改
+$AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not (Test-Path (Join-Path $AppDir 'format-converter.exe'))) {
+    Write-Host "这里看起来不是安装目录：$AppDir"; exit 1
+}
 $Display = 'ToneBox'
 # 只有真正的旧中文名要额外删；'tonebox' 在 NTFS 上和 'ToneBox' 是同一个文件
 $OldDisplay = '格式转换器'

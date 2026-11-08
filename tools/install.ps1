@@ -10,7 +10,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-$AppDir   = 'D:\Apps\FormatConverter'
+# 脚本在 tools\ 下，项目根目录 = 上一级；换机器、换盘符都不用改
+$src = Split-Path -Parent $PSScriptRoot
+# D 盘没有就装到用户目录（新机器可能只有 C:）
+$AppDir = if (Test-Path 'D:\') { 'D:\Apps\FormatConverter' } else { Join-Path $env:LOCALAPPDATA 'Programs\FormatConverter' }
+
 $Version  = '0.1.0'
 $ExeName  = 'format-converter.exe'
 $Display  = 'ToneBox'
@@ -21,9 +25,9 @@ Write-Host "== 1/4 构建 release ==" -ForegroundColor Cyan
 # cargo 往 stderr 写 warning，配合 $ErrorActionPreference='Stop' 会被当成错误中断，
 # 所以构建阶段临时放宽，构建完再收紧。
 $ErrorActionPreference = 'Continue'
-& "D:\FormatConverter\build.ps1" release 2>&1 | Out-Null
+& (Join-Path $src "build.ps1") release 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
-$built = 'D:\FormatConverter\target\release\format-converter.exe'
+$built = Join-Path $src 'target\release\format-converter.exe'
 if (-not (Test-Path $built)) { throw "构建产物不存在: $built" }
 
 Write-Host "== 2/4 安装到 $AppDir ==" -ForegroundColor Cyan
@@ -36,7 +40,7 @@ Start-Sleep -Milliseconds 500
 Copy-Item -LiteralPath $built -Destination "$AppDir\$ExeName" -Force
 
 # 随包 ffmpeg（LGPL 共享版，由 tools\fetch-ffmpeg.ps1 下载）
-$ffSrc = "D:\FormatConverter\vendor\ffmpeg"
+$ffSrc = Join-Path $src 'vendor\ffmpeg'
 if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
     Get-ChildItem -LiteralPath $ffSrc -File | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination "$AppDir\ffmpeg\$($_.Name)" -Force
@@ -48,7 +52,7 @@ if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
 @"
 ToneBox $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
-源码: D:\FormatConverter
+源码: $src
 "@ | Set-Content -Path "$AppDir\version.txt" -Encoding UTF8
 
 Write-Host "== 3/4 创建快捷方式 ==" -ForegroundColor Cyan
@@ -87,7 +91,7 @@ Set-ItemProperty -Path $key -Name NoModify        -Value 1 -Type DWord
 Set-ItemProperty -Path $key -Name NoRepair        -Value 1 -Type DWord
 Set-ItemProperty -Path $key -Name UninstallString -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`""
 
-Copy-Item -LiteralPath 'D:\FormatConverter\tools\uninstall.ps1' -Destination "$AppDir\uninstall.ps1" -Force
+Copy-Item -LiteralPath (Join-Path $src 'tools\uninstall.ps1') -Destination "$AppDir\uninstall.ps1" -Force
 
 Write-Host "`n安装完成: $AppDir\$ExeName" -ForegroundColor Green
 Write-Host "桌面 + 开始菜单快捷方式已就位，可在「应用和功能」里卸载。"
