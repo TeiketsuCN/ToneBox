@@ -52,6 +52,15 @@ enum LibTab {
 }
 
 /// 扫描出来的一首歌（只放界面要用的字段）
+/// 编码名 -> 是否有损（老缓存没有 lossy 字段时用）
+fn label_is_lossy(label: &str) -> bool {
+    matches!(
+        label,
+        "MP3" | "AAC" | "Vorbis" | "Opus" | "WMA" | "AC-3" | "E-AC-3" | "MP2" | "ATRAC1"
+            | "ATRAC3" | "ATRAC3+" | "Musepack" | "Speex"
+    )
+}
+
 #[derive(Clone)]
 struct LibEntry {
     path: PathBuf,
@@ -64,6 +73,7 @@ struct LibEntry {
     bits: Option<u32>,
     sample_rate: u32,
     bitrate_kbps: u64,
+    lossy: bool,
 }
 
 enum LibMsg {
@@ -86,6 +96,9 @@ const BG: Color32 = Color32::from_rgb(14, 16, 22);
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
 pub const APP_NAME: &str = "ToneBox";
+
+/// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
+pub const BASE_ZOOM: f32 = 1.2;
 
 // ── 布局规范 ────────────────────────────────────────────
 // 面板宽度必须是常量，内容宽度在面板内锁死。
@@ -289,6 +302,18 @@ struct App {
     lib_cover_tx: std::sync::mpsc::Sender<(PathBuf, Option<(Vec<u8>, u32, u32)>)>,
     lib_cover_rx: Receiver<(PathBuf, Option<(Vec<u8>, u32, u32)>)>,
     lib_cover_seq: u64,
+    /// 频谱视图：开/关、算没算完、曲线、错误
+    spec_open: bool,
+    spec_busy: bool,
+    spec_curve: Vec<(f64, f64)>,
+    spec_for: Option<usize>,
+    spec_err: Option<String>,
+    spec_tx: std::sync::mpsc::Sender<Result<Vec<(f64, f64)>, String>>,
+    spec_rx: Receiver<Result<Vec<(f64, f64)>, String>>,
+    /// 正在重命名的预设下标 + 输入缓冲
+    preset_rename: Option<usize>,
+    preset_rename_buf: String,
+    preset_rename_focus: bool,
     /// 正在重命名的配置下标 + 输入缓冲
     rename_idx: Option<usize>,
     rename_buf: String,
@@ -329,6 +354,7 @@ impl App {
         let (btx, brx) = channel();
         let (ltx, lrx) = channel();
         let (cvt, cvr) = channel();
+        let (spt, spr) = channel();
         let tools = fc_core::locate();
         let encoders = tools
             .as_ref()
@@ -336,7 +362,7 @@ impl App {
             .unwrap_or_default();
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
-        cc.egui_ctx.set_zoom_factor(cfg.ui_scale);
+        cc.egui_ctx.set_zoom_factor(BASE_ZOOM * cfg.ui_scale);
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
         let cached_lib: Vec<LibEntry> = cfg
             .library_cache
@@ -352,6 +378,8 @@ impl App {
                 bits: c.bits,
                 sample_rate: c.sample_rate,
                 bitrate_kbps: c.bitrate_kbps,
+                // 老缓存没有 lossy 字段：按编码名兜底，别把 MP3 当成无损
+                lossy: c.lossy || label_is_lossy(&c.codec),
             })
             .collect();
         let cached_status = if cached_lib.is_empty() {
@@ -421,6 +449,16 @@ impl App {
             lib_cover_tx: cvt,
             lib_cover_rx: cvr,
             lib_cover_seq: 0,
+            spec_open: false,
+            spec_busy: false,
+            spec_curve: Vec::new(),
+            spec_for: None,
+            spec_err: None,
+            spec_tx: spt,
+            spec_rx: spr,
+            preset_rename: None,
+            preset_rename_buf: String::new(),
+            preset_rename_focus: false,
             rename_idx: None,
             rename_buf: String::new(),
             rename_focus: false,
@@ -776,13 +814,18 @@ impl eframe::App for App {
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
         #[cfg(windows)]
-        frame::set_ui_scale(self.cfg.ui_scale);
+        frame::set_ui_scale(BASE_ZOOM * self.cfg.ui_scale);
         self.poll();
         self.poll_analysis();
         self.poll_media(ctx);
         self.poll_big_cover(ctx);
         self.poll_library();
         self.poll_lib_covers(ctx);
+        self.poll_spectrum();
+        // F2 = 看频谱（按钮之外的快捷方式）
+        if ctx.input(|i| i.key_pressed(egui::Key::F2)) {
+            self.open_spectrum();
+        }
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -838,7 +881,7 @@ impl eframe::App for App {
         let mut do_start = false;
 
         if main_visible {
-            egui::SidePanel::left("rail")
+            egui::SidePanel::left("rail").show_separator_line(false)
                 .exact_width(LEFT_W)
                 .resizable(false)
                 .frame(
@@ -855,7 +898,7 @@ impl eframe::App for App {
 
             // 输出列只在"输出"页出现；"音乐库"页把整块宽度留给列表
             if self.page == Page::Convert {
-                egui::SidePanel::right("output")
+                egui::SidePanel::right("output").show_separator_line(false)
                     .exact_width(OUT_W)
                     .resizable(false)
                     .frame(
@@ -865,7 +908,7 @@ impl eframe::App for App {
                     )
                     .show(ctx, |ui| {
                         // 开始转换钉在最下面——这一列的终点就是它
-                        egui::TopBottomPanel::bottom("out_start").resizable(false)
+                        egui::TopBottomPanel::bottom("out_start").resizable(false).show_separator_line(false)
                             .frame(
                                 egui::Frame::none()
                                     .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
@@ -898,7 +941,7 @@ impl eframe::App for App {
             }
 
             // 播放栏：常驻。做成"浮起来的一块玻璃"，不要贴着窗口底边
-            egui::TopBottomPanel::bottom("player").resizable(false)
+            egui::TopBottomPanel::bottom("player").resizable(false).show_separator_line(false)
                 .exact_height(80.0)
                 .frame(egui::Frame::none().inner_margin(egui::Margin {
                     left: 14.0,
@@ -921,7 +964,7 @@ impl eframe::App for App {
                 });
 
             if self.page == Page::Convert {
-                egui::SidePanel::right("detail")
+                egui::SidePanel::right("detail").show_separator_line(false)
                     .exact_width(RIGHT_W)
                     .resizable(false)
                     .frame(
@@ -974,6 +1017,10 @@ impl eframe::App for App {
         if self.cover_view.is_some() {
             self.cover_overlay(ctx);
         }
+        // 频谱：在封面之上、设置/百科之下
+        if self.spec_open {
+            self.spectrum_overlay(ctx);
+        }
 
         // 设置覆盖层（最后画，盖住一切）
         animating |= approach(
@@ -991,6 +1038,9 @@ impl eframe::App for App {
 
         // 扫描 / 封面还在后台跑时，界面得自己醒过来取结果，
         // 否则没鼠标事件就一直停在占位图上
+        if self.spec_busy {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         if self.lib_scanning || !self.lib_cover_pending.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(150));
         }
@@ -1216,20 +1266,8 @@ impl App {
         }
         ui.add_space(10.0);
 
-        // 底部合规提示固定（两页都在）
-        egui::TopBottomPanel::bottom("rail_footer").resizable(false)
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 6.0)))
-            .show_inside(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.label(
-                    RichText::new("只处理未加密文件 · 不支持任何 DRM")
-                        .size(9.0)
-                        .color(DIM),
-                );
-            });
-
-        // 用户配置：在合规提示上面，两页都在
-        egui::TopBottomPanel::bottom("rail_profiles").resizable(false)
+        // 用户配置：钉在最下面，两页都在
+        egui::TopBottomPanel::bottom("rail_profiles").resizable(false).show_separator_line(false)
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
             .show_inside(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -2427,7 +2465,7 @@ impl App {
                                         let label = format!("{}%", (s * 100.0).round() as i32);
                                         if seg_button(ui, &label, on) {
                                             self.cfg.ui_scale = s;
-                                            ui.ctx().set_zoom_factor(s);
+                                            ui.ctx().set_zoom_factor(BASE_ZOOM * s);
                                             changed = true;
                                         }
                                     }
@@ -3025,6 +3063,7 @@ impl App {
                     bits: info.bits,
                     sample_rate: info.sample_rate,
                     bitrate_kbps: info.bitrate_kbps,
+                    lossy: info.is_lossy(),
                 };
                 let _ = tx.send(LibMsg::Entry(entry));
             }
@@ -3055,6 +3094,7 @@ impl App {
                             bits: e.bits,
                             sample_rate: e.sample_rate,
                             bitrate_kbps: e.bitrate_kbps,
+                            lossy: e.lossy,
                         })
                         .collect();
                     self.cfg.save();
@@ -3139,6 +3179,7 @@ impl App {
         let mut seek: Option<f64> = None;
         let mut vol_change: Option<f32> = None;
         let mut open_cover = false;
+        let mut open_spec = false;
 
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
@@ -3153,7 +3194,8 @@ impl App {
 
             // 给右边的音量留固定宽度：否则标题那行会吃掉整条横向空间，
             // 音量条被挤成一个小点（第一次就是这样）。
-            let vol_w = 88.0;
+            // 右边要放音量条 + 频谱按钮，宽度不够的话频谱按钮会画到布局外面、点不到
+            let vol_w = 122.0;
             let content_w = (ui.available_width() - vol_w).max(160.0);
             ui.allocate_ui_with_layout(
                 egui::vec2(content_w, 48.0),
@@ -3245,8 +3287,16 @@ impl App {
                 if volume_bar(ui, &mut v) {
                     vol_change = Some(v);
                 }
+                ui.add_space(6.0);
+                if spec_button(ui) {
+                    open_spec = true;
+                }
             });
         });
+
+        if open_spec {
+            self.open_spectrum();
+        }
 
         if open_cover {
             if let Some(i) = display {
@@ -3748,6 +3798,113 @@ impl App {
                     changed = true;
                 }
             }
+
+            // ── 用户自设预设（跟着配置 1/2/3 走）──
+            let mut apply_preset: Option<usize> = None;
+            let mut rename_preset: Option<usize> = None;
+            let mut delete_preset: Option<usize> = None;
+            for (i, p) in self.cfg.presets.iter().enumerate() {
+                let on = self.target.id == p.format && self.cfg.opts == p.opts;
+                let b = egui::Button::new(
+                    RichText::new(&p.name).size(9.5).color(if on {
+                        ACCENT
+                    } else {
+                        MUTED
+                    }),
+                )
+                .fill(if on {
+                    tint(ACCENT, 20)
+                } else {
+                    tint(Color32::WHITE, 8)
+                })
+                .stroke(if on {
+                    line(ACCENT, 45)
+                } else {
+                    line(Color32::WHITE, 16)
+                })
+                .rounding(Rounding::same(7.0));
+                let resp = ui
+                    .add(b)
+                    .on_hover_text("点一下套用这套参数；右键改名 / 删除");
+                if resp.clicked() {
+                    apply_preset = Some(i);
+                }
+                resp.context_menu(|ui| {
+                    if ui.button("重命名").clicked() {
+                        rename_preset = Some(i);
+                        ui.close_menu();
+                    }
+                    if ui.button("删除").clicked() {
+                        delete_preset = Some(i);
+                        ui.close_menu();
+                    }
+                });
+            }
+            // 正在改名：就地换成输入框
+            if let Some(i) = self.preset_rename {
+                if i < self.cfg.presets.len() {
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.preset_rename_buf)
+                            .hint_text(self.cfg.presets[i].name.clone())
+                            .desired_width(96.0)
+                            .margin(egui::vec2(6.0, 3.0)),
+                    );
+                    if self.preset_rename_focus {
+                        resp.request_focus();
+                        self.preset_rename_focus = false;
+                    }
+                    if resp.lost_focus() || ui.input(|x| x.key_pressed(egui::Key::Enter)) {
+                        let name = self.preset_rename_buf.trim().to_string();
+                        if !name.is_empty() {
+                            self.cfg.presets[i].name = name;
+                        }
+                        self.preset_rename = None;
+                        self.preset_rename_buf.clear();
+                        changed = true;
+                    }
+                } else {
+                    self.preset_rename = None;
+                }
+            }
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("＋ 存为预设").size(9.5).color(ACCENT))
+                        .fill(tint(ACCENT, 14))
+                        .stroke(line(ACCENT, 45))
+                        .rounding(Rounding::same(7.0)),
+                )
+                .on_hover_text("把当前格式和参数存成一套，可改名，跟着「配置」一起保存")
+                .clicked()
+            {
+                let n = self.cfg.presets.len() + 1;
+                self.cfg.presets.push(settings::UserPreset {
+                    name: format!("预设 {n}"),
+                    format: self.target.id.to_string(),
+                    opts: self.cfg.opts.clone(),
+                });
+                changed = true;
+            }
+            if let Some(i) = apply_preset {
+                if let Some(p) = self.cfg.presets.get(i).cloned() {
+                    if let Some(f) = fc_core::by_id(&p.format) {
+                        self.target = f;
+                    }
+                    self.cfg.opts = p.opts;
+                    changed = true;
+                }
+            }
+            if let Some(i) = rename_preset {
+                self.preset_rename = Some(i);
+                self.preset_rename_buf.clear();
+                self.preset_rename_focus = true;
+            }
+            if let Some(i) = delete_preset {
+                if i < self.cfg.presets.len() {
+                    self.cfg.presets.remove(i);
+                    self.preset_rename = None;
+                    changed = true;
+                }
+            }
         });
 
         ui.add_space(8.0);
@@ -4063,6 +4220,12 @@ impl App {
             .sum::<u64>();
         if est > 0 {
             para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
+        }
+
+        // 这一列改了任何设置就落盘（以前只把 changed 当"要不要重绘"用，
+        // 结果预设、码率这些改动重启就没了）
+        if changed {
+            self.cfg.save();
         }
 
         changed
@@ -4431,7 +4594,7 @@ fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -> bool {
     resp.clicked()
 }
 
-/// 音乐库的一首歌：封面 + 标题 + 艺术家·专辑·风格 + 时长；整行可点
+/// 音乐库的一首歌：封面 + 标题 + 艺术家·专辑 + 编码 + 音质标识 + 时长
 fn lib_row(
     ui: &mut egui::Ui,
     e: &LibEntry,
@@ -4440,7 +4603,7 @@ fn lib_row(
     cover: Option<&egui::TextureHandle>,
 ) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 48.0),
+        egui::vec2(ui.available_width(), 50.0),
         egui::Sense::click(),
     );
     let p = ui.painter();
@@ -4466,10 +4629,10 @@ fn lib_row(
             ACCENT,
         );
     }
-    // 封面：36×36，圆角，没图给一块浅底
+    // 封面：37×37，圆角，没图给一块浅底
     let cover_rect = egui::Rect::from_min_size(
-        egui::pos2(left, rect.center().y - 18.0),
-        egui::vec2(36.0, 36.0),
+        egui::pos2(left, rect.center().y - 18.5),
+        egui::vec2(37.0, 37.0),
     );
     p.rect_filled(cover_rect, Rounding::same(7.0), tint(Color32::WHITE, 10));
     if let Some(t) = cover {
@@ -4488,14 +4651,23 @@ fn lib_row(
             DIM,
         );
     }
+
+    // 右边的音质标识（上方）+ 时长（下方）
+    let q = if e.codec == "DSD" {
+        Some(Quality::Dsd)
+    } else {
+        quality_from(e.lossy, e.sample_rate, e.bits, e.bitrate_kbps)
+    };
+    let badge_w = q.map(quality_size).unwrap_or(0.0);
+    let text_right = rect.right() - 12.0 - badge_w.max(46.0) - 8.0;
     let text_x = cover_rect.right() + 10.0;
     let title_rect = egui::Rect::from_min_max(
-        egui::pos2(text_x, rect.top() + 8.0),
-        egui::pos2(rect.right() - 78.0, rect.top() + 27.0),
+        egui::pos2(text_x, rect.top() + 7.0),
+        egui::pos2(text_right, rect.top() + 27.0),
     );
     let sub_rect = egui::Rect::from_min_max(
         egui::pos2(text_x, rect.top() + 26.0),
-        egui::pos2(rect.right() - 78.0, rect.bottom() - 6.0),
+        egui::pos2(text_right, rect.bottom() - 5.0),
     );
     paint_clipped(
         ui,
@@ -4504,7 +4676,8 @@ fn lib_row(
         if playing { ACCENT } else { TEXT },
         &e.title,
     );
-    let mut parts = Vec::new();
+    // 副标题：编码 · 艺术家 · 专辑（编码放前面，用户一眼知道是什么格式）
+    let mut parts: Vec<String> = vec![e.codec.clone()];
     if !e.artist.is_empty() {
         parts.push(e.artist.clone());
     }
@@ -4515,8 +4688,20 @@ fn lib_row(
         parts.push(e.genre.clone());
     }
     paint_clipped(ui, sub_rect, 9.5, MUTED, &parts.join(" · "));
+
+    if let Some(q) = q {
+        let r = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - 12.0 - badge_w, rect.top() + 6.0),
+            egui::vec2(badge_w, 17.0),
+        );
+        let t = ui.input(|i| i.time);
+        if paint_quality(ui.painter(), r, q, t) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(45));
+        }
+    }
     p.text(
-        egui::pos2(rect.right() - 12.0, rect.center().y),
+        egui::pos2(rect.right() - 12.0, rect.top() + 33.0),
         egui::Align2::RIGHT_CENTER,
         fmt_duration(e.duration_s),
         egui::FontId::proportional(9.5),
@@ -4706,9 +4891,283 @@ fn spawn_lib_cover(
     });
 }
 
+// ── 频谱视图 ──────────────────────────────────────────
+
+/// 播放栏里的"看频谱"按钮：三根小电平条
+fn spec_button(ui: &mut egui::Ui) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::click());
+    let p = ui.painter();
+    let hot = resp.hovered();
+    p.rect_filled(
+        rect,
+        Rounding::same(8.0),
+        if hot {
+            tint(Color32::WHITE, 16)
+        } else {
+            Color32::TRANSPARENT
+        },
+    );
+    let c = if hot { ACCENT } else { MUTED };
+    let heights = [6.0, 11.0, 8.0, 13.0];
+    for (i, h) in heights.iter().enumerate() {
+        let x = rect.center().x - 7.5 + i as f32 * 5.0;
+        let r = egui::Rect::from_center_size(
+            egui::pos2(x, rect.center().y + 1.0),
+            egui::vec2(2.4, *h),
+        );
+        p.rect_filled(r, Rounding::same(1.2), c);
+    }
+    if hot {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
+impl App {
+    /// 打开频谱视图：用当前播放（没在播就用选中项）的文件
+    fn open_spectrum(&mut self) {
+        let idx = self
+            .player_for
+            .or(if self.items.is_empty() {
+                None
+            } else {
+                Some(self.selected)
+            });
+        let Some(i) = idx else { return };
+        let Some(item) = self.items.get(i) else { return };
+        let Some(tools) = self.tools.clone() else {
+            self.spec_err = Some("找不到 ffmpeg，读不了频谱".into());
+            self.spec_open = true;
+            return;
+        };
+        let path = item.path.clone();
+        let sr = item
+            .info
+            .as_ref()
+            .map(|m| m.sample_rate)
+            .filter(|v| *v > 0)
+            .unwrap_or(44100);
+        self.spec_open = true;
+        self.spec_busy = true;
+        self.spec_curve.clear();
+        self.spec_for = Some(i);
+        self.spec_err = None;
+        let tx = self.spec_tx.clone();
+        std::thread::spawn(move || {
+            let r = fc_analyze::spectrum(&tools.ffmpeg, &path, sr, 260)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(r);
+        });
+    }
+
+    fn poll_spectrum(&mut self) {
+        while let Ok(r) = self.spec_rx.try_recv() {
+            self.spec_busy = false;
+            match r {
+                Ok(c) => self.spec_curve = c,
+                Err(e) => self.spec_err = Some(e),
+            }
+        }
+    }
+
+    /// 全屏频谱：对数频率轴 + dB 网格 + 曲线
+    fn spectrum_overlay(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.spec_open = false;
+            return;
+        }
+        let screen = ctx.screen_rect();
+        let title = self
+            .spec_for
+            .and_then(|i| self.items.get(i))
+            .map(|it| it.tags.display_title(&it.name()))
+            .unwrap_or_default();
+        let spec = self
+            .spec_for
+            .and_then(|i| self.items.get(i))
+            .and_then(|it| it.info.clone())
+            .map(|m| {
+                let mut s = m.codec_label().to_string();
+                if m.sample_rate > 0 {
+                    s.push_str(&format!(" · {}", fmt_khz(m.sample_rate)));
+                }
+                if let Some(b) = m.bits {
+                    s.push_str(&format!(" · {b} bit"));
+                }
+                if m.bitrate_kbps > 0 {
+                    s.push_str(&format!(" · {} kbps", m.bitrate_kbps));
+                }
+                s
+            })
+            .unwrap_or_default();
+        let curve = self.spec_curve.clone();
+        let busy = self.spec_busy;
+        let err = self.spec_err.clone();
+        let mut close = false;
+        egui::Area::new(egui::Id::new("spectrum_view"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .show(ctx, |ui| {
+                let resp = ui.allocate_response(screen.size(), egui::Sense::click());
+                let p = ui.painter();
+                p.rect_filled(screen, 0.0, tint(BG, 236));
+                if resp.clicked() {
+                    close = true;
+                }
+
+                let panel = egui::Rect::from_center_size(
+                    screen.center() - egui::vec2(0.0, 6.0),
+                    egui::vec2(screen.width() * 0.74, 380.0),
+                );
+                p.rect_filled(panel, Rounding::same(18.0), tint(BG, 228));
+                p.rect_stroke(
+                    panel,
+                    Rounding::same(18.0),
+                    Stroke::new(1.0, tint(Color32::WHITE, 26)),
+                );
+
+                p.text(
+                    panel.min + egui::vec2(24.0, 22.0),
+                    egui::Align2::LEFT_CENTER,
+                    "频谱",
+                    egui::FontId::proportional(13.0),
+                    TEXT,
+                );
+                p.text(
+                    panel.min + egui::vec2(66.0, 22.0),
+                    egui::Align2::LEFT_CENTER,
+                    &title,
+                    egui::FontId::proportional(10.5),
+                    MUTED,
+                );
+                p.text(
+                    egui::pos2(panel.right() - 24.0, panel.min.y + 22.0),
+                    egui::Align2::RIGHT_CENTER,
+                    &spec,
+                    egui::FontId::proportional(9.0),
+                    DIM,
+                );
+
+                // 绘图区（留左边给 dB 刻度、下面给频率刻度）
+                let plot = egui::Rect::from_min_max(
+                    panel.min + egui::vec2(52.0, 46.0),
+                    panel.max - egui::vec2(24.0, 40.0),
+                );
+                p.rect_filled(plot, Rounding::same(8.0), tint(Color32::BLACK, 40));
+
+                // dB 网格：0 / -30 / -60 / -90
+                for db in [0.0f32, -30.0, -60.0, -90.0] {
+                    let y = plot.bottom() - ((db + 90.0) / 90.0) * plot.height();
+                    p.line_segment(
+                        [egui::pos2(plot.left(), y), egui::pos2(plot.right(), y)],
+                        Stroke::new(1.0, tint(Color32::WHITE, 12)),
+                    );
+                    p.text(
+                        egui::pos2(plot.left() - 6.0, y),
+                        egui::Align2::RIGHT_CENTER,
+                        format!("{db:.0}"),
+                        egui::FontId::proportional(8.0),
+                        DIM,
+                    );
+                }
+                // 频率网格：100 / 1k / 10k
+                let f_lo = 20.0f64;
+                let f_hi = 20000.0f64;
+                for (f, label) in [
+                    (100.0, "100"),
+                    (1000.0, "1k"),
+                    (10000.0, "10k"),
+                ] {
+                    let x = plot.left()
+                        + ((f / f_lo).log10() / (f_hi / f_lo).log10()) as f32 * plot.width();
+                    p.line_segment(
+                        [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+                        Stroke::new(1.0, tint(Color32::WHITE, 10)),
+                    );
+                    p.text(
+                        egui::pos2(x, plot.bottom() + 10.0),
+                        egui::Align2::CENTER_CENTER,
+                        label,
+                        egui::FontId::proportional(8.0),
+                        DIM,
+                    );
+                }
+
+                if !curve.is_empty() {
+                    let pts: Vec<egui::Pos2> = curve
+                        .iter()
+                        .map(|(f, db)| {
+                            let t = ((f / f_lo).log10() / (f_hi / f_lo).log10())
+                                .clamp(0.0, 1.0) as f32;
+                            let y =
+                                plot.bottom() - (((db + 90.0) / 90.0).clamp(0.0, 1.0) as f32) * plot.height();
+                            egui::pos2(plot.left() + t * plot.width(), y)
+                        })
+                        .collect();
+                    // 一段一段填（每段是凸四边形），整条曲线不是凸的，不能一次画
+                    for w in pts.windows(2) {
+                        let (a, b) = (w[0], w[1]);
+                        p.add(egui::Shape::convex_polygon(
+                            vec![
+                                a,
+                                b,
+                                egui::pos2(b.x, plot.bottom()),
+                                egui::pos2(a.x, plot.bottom()),
+                            ],
+                            tint(ACCENT, 26),
+                            Stroke::NONE,
+                        ));
+                    }
+                    p.add(egui::Shape::line(
+                        pts,
+                        Stroke::new(1.4, ACCENT),
+                    ));
+                }
+
+                if busy {
+                    p.text(
+                        plot.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "正在算频谱…",
+                        egui::FontId::proportional(11.0),
+                        MUTED,
+                    );
+                } else if let Some(e) = &err {
+                    p.text(
+                        plot.center(),
+                        egui::Align2::CENTER_CENTER,
+                        e,
+                        egui::FontId::proportional(10.0),
+                        DANGER,
+                    );
+                } else if curve.is_empty() {
+                    p.text(
+                        plot.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "没有可显示的数据",
+                        egui::FontId::proportional(10.0),
+                        DIM,
+                    );
+                }
+
+                p.text(
+                    egui::pos2(panel.center().x, panel.bottom() - 16.0),
+                    egui::Align2::CENTER_CENTER,
+                    "点击任意处或按 Esc 关闭",
+                    egui::FontId::proportional(8.5),
+                    DIM,
+                );
+            });
+        if close {
+            self.spec_open = false;
+        }
+    }
+}
+
 /// 音质档位：列表/详情里的小标识
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Quality {
+    Dsd,
     HiRes,
     Cd,
     Hq,
@@ -4716,98 +5175,158 @@ enum Quality {
     Lq,
 }
 
-fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
-    if m.codec.is_empty() || m.sample_rate == 0 {
+/// 从"有没有损 + 采样率 + 位深 + 码率"判档（音乐库的缓存里只有这些字段）
+fn quality_from(lossy: bool, sr: u32, bits: Option<u32>, kbps: u64) -> Option<Quality> {
+    if sr == 0 {
         return None;
     }
-    if !m.is_lossy() {
-        // 无损：>44.1k 或 >16bit 就算 Hi-Res，44.1/16 是 CD
-        let bits = m.bits.unwrap_or(16);
-        return Some(if m.sample_rate > 44100 || bits > 16 {
+    if !lossy {
+        let bits = bits.unwrap_or(16);
+        return Some(if sr > 44100 || bits > 16 {
             Quality::HiRes
         } else {
             Quality::Cd
         });
     }
-    let kb = m.bitrate_kbps;
-    Some(if kb >= 192 {
+    Some(if kbps >= 192 {
         Quality::Hq
-    } else if kb >= 96 {
+    } else if kbps >= 96 {
         Quality::Std
     } else {
         Quality::Lq
     })
 }
 
-/// 画一个音质标识，返回 true 表示这一帧有动画（需要继续重绘）
-fn quality_badge(ui: &mut egui::Ui, q: Quality) -> bool {
-    let t = ui.input(|i| i.time);
-    let (label, w) = match q {
-        Quality::HiRes => ("Hi-Res", 50.0),
-        Quality::Cd => ("CD", 36.0),
-        Quality::Hq => ("HQ", 28.0),
-        Quality::Std => ("STD", 32.0),
-        Quality::Lq => ("LQ", 28.0),
-    };
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
-    let p = ui.painter();
-    let font = egui::FontId::proportional(8.5);
-    // 动画交给 20fps 的重绘，不用整窗口 60fps 空转
-    if matches!(q, Quality::HiRes | Quality::Cd) {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(50));
+fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
+    if m.codec.is_empty() || m.sample_rate == 0 {
+        return None;
     }
+    if m.codec.starts_with("dsd") {
+        return Some(Quality::Dsd);
+    }
+    quality_from(m.is_lossy(), m.sample_rate, m.bits, m.bitrate_kbps)
+}
+
+fn quality_size(q: Quality) -> f32 {
+    match q {
+        Quality::Dsd => 48.0,
+        Quality::HiRes => 56.0,
+        Quality::Cd => 38.0,
+        Quality::Hq => 28.0,
+        Quality::Std => 32.0,
+        Quality::Lq => 28.0,
+    }
+}
+
+/// 在给定矩形里画标识。返回 true = 有动画（调用方负责请求重绘）。
+fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> bool {
+    let r = Rounding::same(8.5);
+    let label = match q {
+        Quality::Dsd => "DSD",
+        Quality::HiRes => "Hi-Res",
+        Quality::Cd => "CD",
+        Quality::Hq => "HQ",
+        Quality::Std => "STD",
+        Quality::Lq => "LQ",
+    };
     match q {
         Quality::HiRes => {
-            // 金色呼吸 + 一条从左扫到右的高光
-            let pulse = 0.5 + 0.5 * (t * 2.2).sin() as f32;
-            let gold = Color32::from_rgb(255, 208, 122);
-            p.rect_filled(rect, Rounding::same(8.0), tint(gold, (24.0 + 20.0 * pulse) as u8));
+            // 金属金：上深下亮的渐变 + 呼吸外发光 + 斜向扫光
+            let pulse = 0.5 + 0.5 * (t * 1.7).sin() as f32;
+            let gold = Color32::from_rgb(247, 199, 108);
+            let gold_hi = Color32::from_rgb(255, 238, 186);
+            let deep = Color32::from_rgb(92, 62, 18);
+            for k in 1..=3 {
+                let grow = k as f32 * 1.1;
+                p.rect_filled(
+                    rect.expand(grow),
+                    Rounding::same(8.5 + grow),
+                    tint(gold, (5.0 + 4.0 * pulse) as u8 * (4 - k) as u8),
+                );
+            }
+            p.rect_filled(rect, r, deep);
+            let clip = p.with_clip_rect(rect);
+            let steps = 5;
+            for i in 0..steps {
+                let f = i as f32 / steps as f32;
+                let band = egui::Rect::from_min_max(
+                    egui::pos2(rect.left(), rect.top() + f * rect.height()),
+                    egui::pos2(
+                        rect.right(),
+                        rect.top() + (i + 1) as f32 / steps as f32 * rect.height() + 1.0,
+                    ),
+                );
+                clip.rect_filled(band, Rounding::ZERO, blend(deep, gold, 0.25 + f * 0.85));
+            }
+            let phase = ((t * 0.4) % 1.0) as f32;
+            let bx = rect.left() - 20.0 + phase * (rect.width() + 40.0);
+            let slant = 7.0;
+            clip.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(bx, rect.top()),
+                    egui::pos2(bx + 9.0, rect.top()),
+                    egui::pos2(bx + 9.0 - slant, rect.bottom()),
+                    egui::pos2(bx - slant, rect.bottom()),
+                ],
+                tint(Color32::WHITE, (40.0 + 30.0 * pulse) as u8),
+                Stroke::NONE,
+            ));
             p.rect_stroke(
                 rect,
-                Rounding::same(8.0),
-                Stroke::new(1.0, tint(gold, (110.0 + 60.0 * pulse) as u8)),
-            );
-            // 高光只在圆角内
-            let clip = p.with_clip_rect(rect.shrink(1.0));
-            let sweep = ((t * 0.55) % 1.0) as f32;
-            let bx = rect.left() - 14.0 + sweep * (rect.width() + 28.0);
-            clip.rect_filled(
-                egui::Rect::from_min_size(egui::pos2(bx, rect.top()), egui::vec2(10.0, rect.height())),
-                Rounding::same(5.0),
-                tint(Color32::WHITE, 34),
+                r,
+                Stroke::new(1.0, tint(gold_hi, (150.0 + 80.0 * pulse) as u8)),
             );
             p.text(
-                rect.center(),
+                rect.center() + egui::vec2(0.0, -0.2),
                 egui::Align2::CENTER_CENTER,
                 label,
-                font,
-                Color32::from_rgb(255, 226, 168),
+                egui::FontId::proportional(8.5),
+                Color32::from_rgb(38, 24, 4),
             );
-            false
+            true
+        }
+        Quality::Dsd => {
+            // 深紫底 + 一条流动的"1-bit 码流"（点串），右边写 DSD
+            let violet = Color32::from_rgb(186, 160, 255);
+            p.rect_filled(rect, r, Color32::from_rgb(30, 22, 54));
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(violet, 140)));
+            let clip = p.with_clip_rect(rect.shrink(1.5));
+            let n = 12;
+            for i in 0..n {
+                let f = i as f32 / (n - 1) as f32;
+                let phase = t as f32 * 3.2 + f * 9.0;
+                let y = rect.center().y + phase.sin() * 4.0;
+                let x = rect.left() + 7.0 + f * (rect.width() - 30.0);
+                let a = (110.0 + 120.0 * phase.sin().abs()) as u8;
+                clip.circle_filled(egui::pos2(x, y), 1.15, tint(violet, a));
+            }
+            p.text(
+                egui::pos2(rect.right() - 6.5, rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                violet,
+            );
+            true
         }
         Quality::Cd => {
-            // 一张小 CD：银底 + 中心孔 + 一条转动的反光
-            p.rect_filled(rect, Rounding::same(8.0), tint(Color32::WHITE, 16));
-            p.rect_stroke(
-                rect,
-                Rounding::same(8.0),
-                Stroke::new(1.0, tint(Color32::WHITE, 70)),
-            );
-            let disc = egui::pos2(rect.left() + 9.0, rect.center().y);
-            p.circle_filled(disc, 5.5, Color32::from_rgb(206, 216, 228));
-            p.circle_filled(disc, 1.6, BG);
-            let ang = (t * 2.4) as f32;
-            let tip = disc + egui::vec2(ang.cos() * 4.2, ang.sin() * 4.2);
-            p.line_segment([disc, tip], Stroke::new(1.4, tint(Color32::WHITE, 190)));
+            // 小 CD：银底 + 中心孔 + 转动的反光条
+            p.rect_filled(rect, r, tint(Color32::WHITE, 18));
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(Color32::WHITE, 80)));
+            let disc = egui::pos2(rect.left() + 9.5, rect.center().y);
+            p.circle_filled(disc, 5.6, Color32::from_rgb(214, 223, 234));
+            p.circle_filled(disc, 1.7, BG);
+            let ang = (t * 2.2) as f32;
+            let tip = disc + egui::vec2(ang.cos() * 4.3, ang.sin() * 4.3);
+            p.line_segment([disc, tip], Stroke::new(1.5, tint(Color32::WHITE, 200)));
             p.text(
-                egui::pos2(rect.left() + 18.0, rect.center().y),
+                egui::pos2(rect.left() + 19.0, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 label,
-                font,
+                egui::FontId::proportional(8.5),
                 MUTED,
             );
-            false
+            true
         }
         Quality::Hq | Quality::Std | Quality::Lq => {
             let c = match q {
@@ -4815,12 +5334,33 @@ fn quality_badge(ui: &mut egui::Ui, q: Quality) -> bool {
                 Quality::Std => MUTED,
                 _ => DIM,
             };
-            p.rect_filled(rect, Rounding::same(8.0), tint(c, 16));
-            p.rect_stroke(rect, Rounding::same(8.0), Stroke::new(1.0, tint(c, 60)));
-            p.text(rect.center(), egui::Align2::CENTER_CENTER, label, font, c);
+            p.rect_filled(rect, r, tint(c, 16));
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(c, 60)));
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                c,
+            );
             false
         }
     }
+}
+
+/// 布局里放一个标识（会占位），返回 true 表示这一帧有动画
+fn quality_badge(ui: &mut egui::Ui, q: Quality) -> bool {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(quality_size(q), 17.0),
+        egui::Sense::hover(),
+    );
+    let t = ui.input(|i| i.time);
+    let anim = paint_quality(ui.painter(), rect, q, t);
+    if anim {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(45));
+    }
+    anim
 }
 
 /// 采样率写法：44100 -> "44.1 kHz"，48000 -> "48 kHz"
@@ -5251,8 +5791,8 @@ fn main() -> eframe::Result<()> {
     };
 
     let mut viewport = egui::ViewportBuilder::default()
-            .with_inner_size([1302.0, 700.0])
-            .with_min_inner_size([1212.0, 600.0])
+            .with_inner_size([1302.0 * BASE_ZOOM, 700.0 * BASE_ZOOM])
+            .with_min_inner_size([1212.0 * BASE_ZOOM, 600.0 * BASE_ZOOM])
             .with_decorations(false)
             .with_transparent(true)
             .with_title(APP_NAME);

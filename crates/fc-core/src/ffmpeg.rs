@@ -161,6 +161,7 @@ impl MediaInfo {
             // ATRAC Advanced Lossless 的两个 codec 名（只解不编）
             "atrac3al" => "ATRAC3 AL",
             "atrac3plusal" => "ATRAC3+ AL",
+            "dsd_lsbf" | "dsd_msbf" | "dsd_lsbf_planar" | "dsd_msbf_planar" => "DSD",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",

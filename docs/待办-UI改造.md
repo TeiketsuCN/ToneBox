@@ -236,6 +236,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 29 | 库列表显示专辑封面（懒加载）+ 左下用户配置（切换/改名/导出/导入） | ✅ 完成（`spawn_lib_cover` / `Profile`） |
 | 30 | 左上角换成 logo + 改名 tonebox | ✅ 完成（`APP_NAME` + 电平条 logo） |
 | 31 | 显示名 ToneBox；配置改用 `···` 菜单；队列数值音质 + Hi-Res/CD/HQ 标识；库扫描结果持久化 | ✅ 完成（`quality_badge` / `library_cache`） |
+| 32 | 基准缩放 1.2（旧 120% 变新 100%）；删 DRM 行；Hi-Res 重做 + DSD；用户预设；库行标识；频谱视图 | ✅ 完成（`BASE_ZOOM` / `quality_from` / `UserPreset` / `fc_analyze::spectrum`） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -359,6 +360,15 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
   egui 不会重绘，界面就永远停在占位图。`lib_cover_pending` 非空时 `request_repaint_after(150ms)`。
 - **音乐库别每次启动都扫**：结果写 `config.json` 的 `library_cache`（路径 + 标签 + 编码 + 码率 +
   采样率 + 位深 + 时长），启动铺出来；只有用户点「重新扫描」/加目录/加文件才重扫并回写。
+- **"播放栏上面那条线"是 `show_separator_line`**：`TopBottomPanel` / `SidePanel` 默认
+  `show_separator_line(true)`，即使 `resizable(false)` 也会在边上画一根细线。全部加
+  `.show_separator_line(false)` 才干净。
+- **播放栏右侧要留够宽度**：`vol_w` 是"音量 + 间隔 + 频谱按钮"的总宽，不够的话按钮会画在
+  布局外面——看得见、点不到（这个坑找了半天）。
+- **频谱别整首解码**：只解 8 秒（`decode_segment(..., None, Some(8.0))`）；显示前按峰值归一化，
+  否则整条曲线贴着 0 dB；填充必须一段段画四边形，整条曲线不是凸的，`convex_polygon` 会画出斜线。
+- **改基准缩小时窗口尺寸也要乘**：`BASE_ZOOM` 乘在 `set_zoom_factor` 上，同时 `with_inner_size`
+  也要乘，否则 UI 点位不够、布局被挤。
 
 ---
 

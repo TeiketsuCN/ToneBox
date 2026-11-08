@@ -526,6 +526,54 @@ fn decode_segment(
         .collect())
 }
 
+
+/// 给界面画频谱用：对数频率轴上的 (Hz, dB) 点。
+///
+/// 跟 `analyze` 用同一条解码 + FFT 路径，只是不判质量：按对数频率分带，
+/// 每个带取带内平均 dB（比"最近邻 bin"平整得多，不会出现锯齿和台阶）。
+pub fn spectrum(
+    ffmpeg: &Path,
+    path: &Path,
+    sample_rate: u32,
+    bins: usize,
+) -> Result<Vec<(f64, f64)>> {
+    let sr = sample_rate.clamp(8_000, 192_000);
+    // 只解 8 秒就够画曲线，别为了一张图把整首歌解一遍
+    let samples = decode_segment(&ffmpeg.to_path_buf(), path, sr, None, Some(8.0))?;
+    let (freqs, db) = mean_spectrum(&samples, sr as f64);
+    let bins = bins.clamp(16, 2048);
+    let f_lo = 20.0f64;
+    let f_hi = (sr as f64 / 2.0).min(22_050.0);
+    let ratio = f_hi / f_lo;
+    let mut out: Vec<(f64, f64)> = Vec::with_capacity(bins);
+    for i in 0..bins {
+        let t = i as f64 / (bins - 1) as f64;
+        let f = f_lo * ratio.powf(t);
+        let f_next = f_lo * ratio.powf((i + 1) as f64 / (bins - 1) as f64);
+        // 这个对数带覆盖的线性 bin 区间（至少一个 bin）
+        let k0 = ((f / (sr as f64) * NFFT as f64).floor() as usize).max(1);
+        let k1 = (((f_next / (sr as f64) * NFFT as f64).ceil() as usize).max(k0 + 1))
+            .min(freqs.len() - 1);
+        let slice = &db[k0..=k1.min(freqs.len() - 1)];
+        // 带内平均（dB 平均），再夹到 -110..0
+        let v = (slice.iter().sum::<f64>() / slice.len() as f64).clamp(-110.0, 0.0);
+        out.push((f, v));
+    }
+    // 三点平滑，抹掉带边界的小台阶
+    let mut smooth = out.clone();
+    for i in 1..out.len().saturating_sub(1) {
+        smooth[i].1 = (out[i - 1].1 + out[i].1 * 2.0 + out[i + 1].1) / 4.0;
+    }
+    // 峰值归一到 0 dB，图上看起来才有意义（绝对电平跟增益有关）
+    let peak = smooth.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    if peak.is_finite() {
+        for p in smooth.iter_mut() {
+            p.1 = (p.1 - peak).max(-100.0);
+        }
+    }
+    Ok(smooth)
+}
+
 fn mean_spectrum(x: &[f32], sample_rate: f64) -> (Vec<f64>, Vec<f64>) {
     let n_frames = 1 + x.len().saturating_sub(NFFT) / HOP;
     let frame_indices: Vec<usize> = if n_frames <= MAX_FRAMES {

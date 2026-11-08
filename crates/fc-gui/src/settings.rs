@@ -53,6 +53,16 @@ pub enum OutputMode {
     Custom,
 }
 
+/// 用户自设的预设：一套格式 + 参数，可以改名。跟着「配置 1/2/3」走。
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct UserPreset {
+    pub name: String,
+    /// 目标格式 id（fc_core::by_id 用）
+    pub format: String,
+    #[serde(default)]
+    pub opts: fc_core::ConvertOptions,
+}
+
 /// 一套常用配置。切换配置时整块替换。
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Profile {
@@ -73,6 +83,9 @@ pub struct Profile {
     pub meta_album: String,
     #[serde(default)]
     pub meta_cover: String,
+    /// 这套配置里用户自设的预设
+    #[serde(default)]
+    pub presets: Vec<UserPreset>,
 }
 
 impl Profile {
@@ -87,6 +100,7 @@ impl Profile {
             meta_artist: s.meta_artist.clone(),
             meta_album: s.meta_album.clone(),
             meta_cover: s.meta_cover.clone(),
+            presets: s.presets.clone(),
         }
     }
 }
@@ -114,6 +128,9 @@ pub struct CachedTrack {
     pub sample_rate: u32,
     #[serde(default)]
     pub bitrate_kbps: u64,
+    /// 有损压缩过（DSD/FLAC 之类为 false）
+    #[serde(default)]
+    pub lossy: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -160,6 +177,9 @@ pub struct Settings {
     /// 上次扫描的结果（用户手动扫描后才更新）
     #[serde(default)]
     pub library_cache: Vec<CachedTrack>,
+    /// 用户自设的预设（当前配置的展开）
+    #[serde(default)]
+    pub presets: Vec<UserPreset>,
     /// 用户配置列表
     #[serde(default)]
     pub profiles: Vec<Profile>,
@@ -186,6 +206,7 @@ impl Default for Settings {
             library_dirs: Vec::new(),
             library_files: Vec::new(),
             library_cache: Vec::new(),
+            presets: Vec::new(),
             profiles: Vec::new(),
             active_profile: 0,
         }
@@ -234,6 +255,7 @@ impl Settings {
         p.meta_artist = self.meta_artist.clone();
         p.meta_album = self.meta_album.clone();
         p.meta_cover = self.meta_cover.clone();
+        p.presets = self.presets.clone();
     }
 
     /// 把当前配置铺回展开的设置
@@ -251,6 +273,7 @@ impl Settings {
         self.meta_artist = p.meta_artist;
         self.meta_album = p.meta_album;
         self.meta_cover = p.meta_cover;
+        self.presets = p.presets;
     }
 
     pub fn switch_profile(&mut self, i: usize) {
