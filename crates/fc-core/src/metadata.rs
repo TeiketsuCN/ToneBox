@@ -108,6 +108,7 @@ mod tests {
             title: Some("歌名".into()),
             artist: Some("艺术家".into()),
             album: Some("专辑".into()),
+            genre: Some("风格".into()),
             track: Some("3".into()),
             date: Some("2026".into()),
         };

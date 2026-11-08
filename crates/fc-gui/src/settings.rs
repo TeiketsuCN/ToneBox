@@ -75,17 +75,16 @@ pub struct Settings {
     /// 封面图路径（空 = 沿用源文件内嵌封面）
     #[serde(default)]
     pub meta_cover: String,
-    /// 是否写标签（默认开：源文件有标签就带过去）
-    #[serde(default = "default_true")]
+    /// 是否写标签（默认关：先把文件转出来，标签需要时再开）
+    #[serde(default)]
     pub write_tags: bool,
     /// 界面缩放（1.0 = 100%）。用 egui 的 zoom factor 实现，文字和控件一起放大，
     /// 否则我们那些写死的 `.size(9.5)` 根本不会变。
     #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,
-}
-
-fn default_true() -> bool {
-    true
+    /// 音乐库文件夹（绝对路径）。用户自己挑，扫出来的文件不落盘、每次启动可重扫。
+    #[serde(default)]
+    pub library_dirs: Vec<String>,
 }
 
 impl Default for Settings {
@@ -101,8 +100,9 @@ impl Default for Settings {
             meta_artist: String::new(),
             meta_album: String::new(),
             meta_cover: String::new(),
-            write_tags: true,
+            write_tags: false,
             ui_scale: 1.0,
+            library_dirs: Vec::new(),
         }
     }
 }

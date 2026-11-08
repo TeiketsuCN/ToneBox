@@ -23,6 +23,7 @@ pub struct Tags {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub genre: Option<String>,
     pub track: Option<String>,
     pub date: Option<String>,
 }
@@ -109,6 +110,7 @@ pub fn read_tags(ffprobe: &Path, file: &Path) -> Tags {
         title: get(&["title"]),
         artist: get(&["artist", "album_artist", "albumartist", "performer"]),
         album: get(&["album"]),
+        genre: get(&["genre"]),
         track: get(&["track", "tracknumber"]),
         date: get(&["date", "year"]),
     }

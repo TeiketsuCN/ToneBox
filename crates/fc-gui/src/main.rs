@@ -34,6 +34,42 @@ enum Analysis {
     Failed(String),
 }
 
+/// 左侧两个大项：音乐库 / 输出（转换）
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Page {
+    Convert,
+    Library,
+}
+
+/// 音乐库里的分类
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LibTab {
+    Songs,
+    Albums,
+    Genres,
+    Artists,
+    Folders,
+}
+
+/// 扫描出来的一首歌（只放界面要用的字段）
+#[derive(Clone)]
+struct LibEntry {
+    path: PathBuf,
+    title: String,
+    artist: String,
+    album: String,
+    genre: String,
+    duration_s: f64,
+    codec: String,
+}
+
+enum LibMsg {
+    /// 先告诉界面一共多少个文件，进度条才有分母
+    Count(usize),
+    Entry(LibEntry),
+    Done,
+}
+
 // ── 配色 ────────────────────────────────────────────────
 const TEXT: Color32 = Color32::from_rgb(240, 244, 250);
 const MUTED: Color32 = Color32::from_rgb(158, 168, 186);
@@ -183,6 +219,10 @@ struct App {
     player_volume: f32,
     /// 正在看大图的队列下标（None = 没开）
     cover_view: Option<usize>,
+    /// 大图开/关的动画进度 0~1
+    cover_t: f32,
+    /// 正在关闭：等 cover_t 归零再真正清掉
+    cover_closing: bool,
     /// 点击后从文件重新抽的大图封面（96px 的缩略图放大看太糊）
     cover_big: Option<(usize, egui::TextureHandle)>,
     cover_big_tx: std::sync::mpsc::Sender<(usize, Option<(Vec<u8>, u32, u32)>)>,
@@ -222,6 +262,19 @@ struct App {
     wiki_open: bool,
     wiki_sel: &'static str,
     wiki_filter: String,
+    /// 当前页：转换 / 音乐库
+    page: Page,
+    lib_tab: LibTab,
+    lib_entries: Vec<LibEntry>,
+    lib_scanning: bool,
+    lib_total: usize,
+    lib_status: String,
+    lib_filter: String,
+    lib_selected: Option<PathBuf>,
+    /// 上一次点击（路径, 时刻），自己判双击
+    lib_last_click: (Option<PathBuf>, f64),
+    lib_tx: std::sync::mpsc::Sender<LibMsg>,
+    lib_rx: Receiver<LibMsg>,
 }
 
 impl App {
@@ -233,12 +286,28 @@ impl App {
         style.visuals.window_fill = Color32::TRANSPARENT;
         style.spacing.item_spacing = egui::vec2(8.0, 6.0);
         style.spacing.button_padding = egui::vec2(12.0, 7.0);
+        // 输入框：默认的深底 + 亮边框在玻璃背景上很脏，这里统一成"一块浅玻璃"。
+        // 内边距也在 TextEdit 自己的 margin 里设，别指望 spacing。
+        style.visuals.extreme_bg_color = tint(Color32::WHITE, 16);
+        style.visuals.selection.bg_fill = tint(ACCENT, 90);
+        style.visuals.selection.stroke = Stroke::new(1.0, TEXT);
+        for w in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+        ] {
+            w.rounding = Rounding::same(8.0);
+        }
+        style.visuals.widgets.inactive.bg_stroke = line(Color32::WHITE, 26);
+        style.visuals.widgets.hovered.bg_stroke = line(ACCENT, 90);
+        style.visuals.widgets.active.bg_stroke = line(ACCENT, 130);
         cc.egui_ctx.set_style(style);
 
         let target = fc_core::default_target();
         let (atx, arx) = channel();
         let (mtx, mrx) = channel();
         let (btx, brx) = channel();
+        let (ltx, lrx) = channel();
         let tools = fc_core::locate();
         let encoders = tools
             .as_ref()
@@ -264,6 +333,8 @@ impl App {
             play_error: None,
             player_volume: 0.75,
             cover_view: None,
+            cover_t: 0.0,
+            cover_closing: false,
             cover_big: None,
             cover_big_tx: btx,
             cover_big_rx: brx,
@@ -283,7 +354,7 @@ impl App {
             cfg,
             settings_open: false,
             settings_t: 0.0,
-            meta_open: false,
+            meta_open: true,
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
@@ -291,6 +362,17 @@ impl App {
             wiki_open: false,
             wiki_sel: "flac",
             wiki_filter: String::new(),
+            page: Page::Convert,
+            lib_tab: LibTab::Songs,
+            lib_entries: Vec::new(),
+            lib_scanning: false,
+            lib_total: 0,
+            lib_status: "还没有扫描".into(),
+            lib_filter: String::new(),
+            lib_selected: None,
+            lib_last_click: (None, -10.0),
+            lib_tx: ltx,
+            lib_rx: lrx,
         }
     }
 
@@ -647,6 +729,7 @@ impl eframe::App for App {
         self.poll_analysis();
         self.poll_media(ctx);
         self.poll_big_cover(ctx);
+        self.poll_library();
 
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
@@ -702,7 +785,7 @@ impl eframe::App for App {
         let mut do_start = false;
 
         if main_visible {
-            egui::SidePanel::left("formats")
+            egui::SidePanel::left("rail")
                 .exact_width(LEFT_W)
                 .resizable(false)
                 .frame(
@@ -715,51 +798,53 @@ impl eframe::App for App {
                             bottom: 12.0 + inset,
                         }),
                 )
-                .show(ctx, |ui| animating |= self.sidebar(ui));
+                .show(ctx, |ui| animating |= self.left_rail(ui));
 
-            egui::SidePanel::right("output")
-                .exact_width(OUT_W)
-                .resizable(false)
-                .frame(
-                    egui::Frame::none()
-                        .fill(tint(BG, 128))
-                        .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
-                )
-                .show(ctx, |ui| {
-                    // 开始转换钉在最下面——这一列的终点就是它
-                    egui::TopBottomPanel::bottom("out_start")
-                        .frame(
-                            egui::Frame::none()
-                                .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
-                        )
-                        .show_inside(ui, |ui| {
-                            if self.running {
-                                ui.add(
-                                    egui::ProgressBar::new(self.overall())
-                                        .desired_width(ui.available_width())
-                                        .fill(ACCENT),
-                                );
-                                ui.add_space(6.0);
-                            }
-                            let can = !self.running
-                                && self.tools.is_some()
-                                && self
-                                    .items
-                                    .iter()
-                                    .any(|i| i.info.is_some() && matches!(i.state, State::Pending));
-                            if start_button(ui, can, self.running) {
-                                do_start = true;
-                            }
-                        });
+            // 输出列只在"输出"页出现；"音乐库"页把整块宽度留给列表
+            if self.page == Page::Convert {
+                egui::SidePanel::right("output")
+                    .exact_width(OUT_W)
+                    .resizable(false)
+                    .frame(
+                        egui::Frame::none()
+                            .fill(tint(BG, 128))
+                            .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+                    )
+                    .show(ctx, |ui| {
+                        // 开始转换钉在最下面——这一列的终点就是它
+                        egui::TopBottomPanel::bottom("out_start")
+                            .frame(
+                                egui::Frame::none()
+                                    .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
+                            )
+                            .show_inside(ui, |ui| {
+                                if self.running {
+                                    ui.add(
+                                        egui::ProgressBar::new(self.overall())
+                                            .desired_width(ui.available_width())
+                                            .fill(ACCENT),
+                                    );
+                                    ui.add_space(6.0);
+                                }
+                                let can = !self.running
+                                    && self.tools.is_some()
+                                    && self.items.iter().any(|i| {
+                                        i.info.is_some() && matches!(i.state, State::Pending)
+                                    });
+                                if start_button(ui, can, self.running) {
+                                    do_start = true;
+                                }
+                            });
 
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            animating |= self.output_panel(ui);
-                        });
-                });
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                animating |= self.output_panel(ui);
+                            });
+                    });
+            }
 
-            // 播放栏：常驻，只跨"队列 + 详情"两栏（侧栏和输出列在它两侧）
+            // 播放栏：常驻。转换页跨"队列 + 详情"两栏；音乐库页占满右侧
             egui::TopBottomPanel::bottom("player")
                 .exact_height(64.0)
                 .frame(
@@ -774,20 +859,22 @@ impl eframe::App for App {
                 )
                 .show(ctx, |ui| self.player_bar(ui));
 
-            egui::SidePanel::right("detail")
-                .exact_width(RIGHT_W)
-                .resizable(false)
-                .frame(
-                    egui::Frame::none()
-                        .fill(tint(BG, 104))
-                        .inner_margin(egui::Margin {
-                            left: 16.0,
-                            right: 16.0 + inset,
-                            top: 12.0,
-                            bottom: 12.0 + inset,
-                        }),
-                )
-                .show(ctx, |ui| animating |= self.detail(ui));
+            if self.page == Page::Convert {
+                egui::SidePanel::right("detail")
+                    .exact_width(RIGHT_W)
+                    .resizable(false)
+                    .frame(
+                        egui::Frame::none()
+                            .fill(tint(BG, 104))
+                            .inner_margin(egui::Margin {
+                                left: 16.0,
+                                right: 16.0 + inset,
+                                top: 12.0,
+                                bottom: 12.0 + inset,
+                            }),
+                    )
+                    .show(ctx, |ui| animating |= self.detail(ui));
+            }
 
             egui::CentralPanel::default()
                 .frame(
@@ -800,13 +887,29 @@ impl eframe::App for App {
                             bottom: 12.0 + inset,
                         }),
                 )
-                .show(ctx, |ui| animating |= self.queue(ui, ctx));
+                .show(ctx, |ui| {
+                    if self.page == Page::Convert {
+                        animating |= self.queue(ui, ctx);
+                    } else {
+                        animating |= self.library_view(ui, ctx);
+                    }
+                });
         }
         if do_start {
             self.start_batch(ctx);
         }
 
-        // 大图封面：点播放栏的封面打开，盖在主界面之上、设置/百科之下
+        // 大图封面：开/关都带缩放动画（用户要的"放大变小"）
+        let cover_target = if self.cover_view.is_some() && !self.cover_closing {
+            1.0
+        } else {
+            0.0
+        };
+        animating |= approach(&mut self.cover_t, cover_target, self.dt, 16.0);
+        if self.cover_closing && self.cover_t <= 0.002 {
+            self.cover_view = None;
+            self.cover_closing = false;
+        }
         if self.cover_view.is_some() {
             self.cover_overlay(ctx);
         }
@@ -825,6 +928,9 @@ impl eframe::App for App {
             self.settings_panel(ctx);
         }
 
+        if self.lib_scanning {
+            ctx.request_repaint_after(std::time::Duration::from_millis(150));
+        }
         if animating {
             ctx.request_repaint();
         }
@@ -1015,7 +1121,47 @@ impl App {
         }
     }
 
-    fn sidebar(&mut self, ui: &mut egui::Ui) -> bool {
+    /// 左侧导航：两个大项（音乐库 / 输出），点开哪个就显示哪一块
+    fn left_rail(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.set_width(ui.available_width());
+        let mut animating = false;
+
+        if rail_big(ui, "音乐库", self.page == Page::Library) {
+            self.page = Page::Library;
+            // 第一次进库、已经有文件夹但还没扫过：自动扫一次
+            if !self.lib_scanning
+                && self.lib_entries.is_empty()
+                && !self.cfg.library_dirs.is_empty()
+            {
+                self.scan_library();
+            }
+        }
+        if rail_big(ui, "输出", self.page == Page::Convert) {
+            self.page = Page::Convert;
+        }
+        ui.add_space(10.0);
+
+        // 底部合规提示固定（两页都在）
+        egui::TopBottomPanel::bottom("rail_footer")
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
+            .show_inside(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(
+                    RichText::new("只处理未加密文件 · 不支持任何 DRM")
+                        .size(9.0)
+                        .color(DIM),
+                );
+            });
+
+        match self.page {
+            Page::Convert => animating |= self.format_list(ui),
+            Page::Library => self.library_nav(ui),
+        }
+        animating
+    }
+
+    /// 转换页的格式列表（就是原来的 sidebar，底部提示已经提到 left_rail）
+    fn format_list(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
         let dt = self.dt;
         let mut animating = false;
@@ -1054,19 +1200,6 @@ impl App {
             14.0,
         );
 
-        // 底部提示固定（用内嵌面板占位，避免被滚动内容盖住），其余区域可滚
-        egui::TopBottomPanel::bottom("fmt_footer")
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
-            .show_inside(ui, |ui| {
-                ui.set_width(ui.available_width());
-                // 设置按钮已经挪到标题栏（图钉旁边），这里只留那句合规提示
-                ui.label(
-                    RichText::new("只处理未加密文件 · 不支持任何 DRM")
-                        .size(9.0)
-                        .color(DIM),
-                );
-            });
-
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -1096,6 +1229,39 @@ impl App {
             });
 
         animating
+    }
+
+    /// 音乐库页左侧：歌曲 / 专辑 / 风格 / 艺术家 / 库
+    fn library_nav(&mut self, ui: &mut egui::Ui) {
+        let songs = self.lib_entries.len();
+        let albums = uniq(&self.lib_entries, |e| &e.album);
+        let genres = uniq(&self.lib_entries, |e| &e.genre);
+        let artists = uniq(&self.lib_entries, |e| &e.artist);
+        let rows: [(LibTab, &str, usize); 5] = [
+            (LibTab::Songs, "歌曲", songs),
+            (LibTab::Albums, "专辑", albums),
+            (LibTab::Genres, "风格", genres),
+            (LibTab::Artists, "艺术家", artists),
+            (LibTab::Folders, "库", self.cfg.library_dirs.len()),
+        ];
+        for (tab, label, n) in rows {
+            if rail_sub(ui, label, n, self.lib_tab == tab) {
+                self.lib_tab = tab;
+            }
+        }
+
+        ui.add_space(12.0);
+        if self.lib_scanning {
+            let total = self.lib_total.max(self.lib_entries.len());
+            para(
+                ui,
+                &format!("扫描中… {}/{}", self.lib_entries.len(), total),
+                9.0,
+                ACCENT,
+            );
+        } else if !self.lib_status.is_empty() {
+            para(ui, &self.lib_status, 9.0, DIM);
+        }
     }
 
     /// 画一行输出格式（含展开后的小字）
@@ -2032,6 +2198,342 @@ impl App {
     }
 
     /// 底部全局播放条
+    /// 音乐库主视图（右侧整块）
+    fn library_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+        ui.set_width(ui.available_width());
+        let mut animating = false;
+
+        let title = match self.lib_tab {
+            LibTab::Songs => "歌曲",
+            LibTab::Albums => "专辑",
+            LibTab::Genres => "风格",
+            LibTab::Artists => "艺术家",
+            LibTab::Folders => "库",
+        };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(title).size(14.0).color(TEXT).strong());
+            ui.add_space(8.0);
+            if self.lib_tab != LibTab::Folders {
+                let w = (ui.available_width() - 200.0).max(140.0);
+                if search_box(ui, &mut self.lib_filter, "搜歌名 / 艺术家 / 专辑 / 风格…", w) {
+                    animating = true;
+                }
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if self.lib_scanning {
+                    ui.label(
+                        RichText::new(format!(
+                            "扫描中 {} / {}",
+                            self.lib_entries.len(),
+                            self.lib_total.max(self.lib_entries.len())
+                        ))
+                        .size(9.0)
+                        .color(ACCENT),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new(format!("{} 首", self.lib_entries.len()))
+                            .size(9.0)
+                            .color(DIM),
+                    );
+                }
+            });
+        });
+        ui.add_space(10.0);
+
+        if self.cfg.library_dirs.is_empty() {
+            card(ui, WARN, |ui| {
+                para(ui, "还没有音乐库", 11.5, WARN);
+                ui.add_space(4.0);
+                para(
+                    ui,
+                    "到左侧「库」里添加一个文件夹，这里会按歌曲 / 专辑 / 风格 / 艺术家整理它。只读扫描，不搬文件、不改文件。",
+                    9.5,
+                    MUTED,
+                );
+            });
+            return animating;
+        }
+
+        if self.lib_tab == LibTab::Folders {
+            animating |= self.library_folders(ui);
+            return animating;
+        }
+
+        let needle = self.lib_filter.trim().to_lowercase();
+        let ids: Vec<usize> = (0..self.lib_entries.len())
+            .filter(|&i| {
+                if needle.is_empty() {
+                    return true;
+                }
+                let e = &self.lib_entries[i];
+                e.title.to_lowercase().contains(&needle)
+                    || e.artist.to_lowercase().contains(&needle)
+                    || e.album.to_lowercase().contains(&needle)
+                    || e.genre.to_lowercase().contains(&needle)
+            })
+            .collect();
+        let playing_path = self
+            .player_for
+            .and_then(|i| self.items.get(i))
+            .map(|it| it.path.clone());
+
+        let mut clicked: Option<usize> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("lib_list")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                if ids.is_empty() {
+                    para(ui, "没找到匹配的歌。", 10.0, DIM);
+                    return;
+                }
+                match self.lib_tab {
+                    LibTab::Songs => {
+                        let mut rows = ids.clone();
+                        rows.sort_by(|&a, &b| {
+                            self.lib_entries[a]
+                                .title
+                                .to_lowercase()
+                                .cmp(&self.lib_entries[b].title.to_lowercase())
+                        });
+                        for i in rows {
+                            let e = &self.lib_entries[i];
+                            let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
+                            let pl = playing_path.as_deref() == Some(e.path.as_path());
+                            if lib_row(ui, e, pl, sel).clicked() {
+                                clicked = Some(i);
+                            }
+                        }
+                    }
+                    LibTab::Albums | LibTab::Artists | LibTab::Genres => {
+                        let tab = self.lib_tab;
+                        let mut rows = ids.clone();
+                        rows.sort_by(|&a, &b| {
+                            let ka = lib_key(tab, &self.lib_entries[a]).to_lowercase();
+                            let kb = lib_key(tab, &self.lib_entries[b]).to_lowercase();
+                            ka.cmp(&kb).then_with(|| {
+                                self.lib_entries[a]
+                                    .title
+                                    .to_lowercase()
+                                    .cmp(&self.lib_entries[b].title.to_lowercase())
+                            })
+                        });
+                        let mut last = String::from("\u{0}");
+                        for i in rows {
+                            let key = lib_key(tab, &self.lib_entries[i]);
+                            if key != last {
+                                last = key.clone();
+                                let n = ids
+                                    .iter()
+                                    .filter(|&&j| lib_key(tab, &self.lib_entries[j]) == key)
+                                    .count();
+                                let shown = key.trim();
+                                lib_group(ui, if shown.is_empty() { "未知" } else { shown }, n);
+                            }
+                            let e = &self.lib_entries[i];
+                            let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
+                            let pl = playing_path.as_deref() == Some(e.path.as_path());
+                            if lib_row(ui, e, pl, sel).clicked() {
+                                clicked = Some(i);
+                            }
+                        }
+                    }
+                    LibTab::Folders => {}
+                }
+            });
+
+        if let Some(i) = clicked {
+            let path = self.lib_entries[i].path.clone();
+            let now = ui.input(|i| i.time);
+            let dbl = self.lib_last_click.0.as_deref() == Some(path.as_path())
+                && now - self.lib_last_click.1 < 0.45;
+            self.lib_selected = Some(path.clone());
+            self.lib_last_click = (Some(path.clone()), now);
+            if dbl {
+                self.play_path(path, ctx);
+            }
+        }
+        animating
+    }
+
+    /// 「库」页：管理文件夹 + 扫描状态
+    fn library_folders(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            let add = egui::Button::new(RichText::new("添加文件夹…").size(10.0).color(TEXT))
+                .fill(tint(ACCENT, 30))
+                .stroke(line(ACCENT, 70))
+                .rounding(Rounding::same(8.0));
+            if ui.add(add).clicked() {
+                if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                    let s = p.to_string_lossy().to_string();
+                    if !self.cfg.library_dirs.contains(&s) {
+                        self.cfg.library_dirs.push(s);
+                        self.cfg.save();
+                        changed = true;
+                        self.scan_library();
+                    }
+                }
+            }
+            let rescan = egui::Button::new(RichText::new("重新扫描").size(10.0).color(MUTED))
+                .fill(tint(Color32::WHITE, 10))
+                .stroke(line(Color32::WHITE, 18))
+                .rounding(Rounding::same(8.0));
+            if ui.add(rescan).clicked() {
+                self.scan_library();
+                changed = true;
+            }
+        });
+        ui.add_space(10.0);
+
+        if self.cfg.library_dirs.is_empty() {
+            para(
+                ui,
+                "还没有文件夹。添加之后程序会只读地扫一遍：读标签和时长，不改任何文件。",
+                10.0,
+                DIM,
+            );
+        }
+
+        let mut remove: Option<usize> = None;
+        for (i, d) in self.cfg.library_dirs.iter().enumerate() {
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 30.0),
+                egui::Sense::hover(),
+            );
+            let p = ui.painter();
+            p.rect_filled(rect.shrink2(egui::vec2(0.0, 2.0)), Rounding::same(8.0), tint(Color32::WHITE, 6));
+            let label_rect = egui::Rect::from_min_max(
+                rect.min + egui::vec2(10.0, 0.0),
+                egui::pos2(rect.right() - 40.0, rect.bottom()),
+            );
+            paint_clipped(ui, label_rect, 10.0, MUTED, d);
+            let xr = egui::Rect::from_center_size(
+                rect.right_center() - egui::vec2(14.0, 0.0),
+                egui::vec2(24.0, 24.0),
+            );
+            let x = ui.interact(xr, ui.id().with(("lib_dir_del", i)), egui::Sense::click());
+            let xc = if x.hovered() { DANGER } else { DIM };
+            p.text(xr.center(), egui::Align2::CENTER_CENTER, "×", egui::FontId::proportional(13.0), xc);
+            if x.clicked() {
+                remove = Some(i);
+            }
+            ui.add_space(2.0);
+        }
+        if let Some(i) = remove {
+            self.cfg.library_dirs.remove(i);
+            self.cfg.save();
+            changed = true;
+            self.scan_library();
+        }
+
+        ui.add_space(12.0);
+        if self.lib_scanning {
+            let total = self.lib_total.max(1);
+            let frac = (self.lib_entries.len() as f32 / total as f32).clamp(0.0, 1.0);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 6.0),
+                egui::Sense::hover(),
+            );
+            let p = ui.painter();
+            p.rect_filled(rect, Rounding::same(3.0), tint(Color32::WHITE, 14));
+            let mut f = rect;
+            f.set_width(rect.width() * frac);
+            p.rect_filled(f, Rounding::same(3.0), ACCENT);
+            ui.add_space(4.0);
+        }
+        if !self.lib_status.is_empty() {
+            para(ui, &self.lib_status, 9.0, DIM);
+        }
+        ui.add_space(4.0);
+        para(
+            ui,
+            "扫描只读：读标签和时长，结果只存在内存里，关掉就没了，下次打开重扫。",
+            8.5,
+            DIM,
+        );
+        changed
+    }
+
+    /// 扫一遍所有库目录（后台线程，边扫边回传）
+    fn scan_library(&mut self) {
+        if self.lib_scanning {
+            return;
+        }
+        let Some(tools) = self.tools.clone() else {
+            self.lib_status = "找不到 ffmpeg，扫不了".into();
+            return;
+        };
+        let dirs: Vec<PathBuf> = self
+            .cfg
+            .library_dirs
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .collect();
+        if dirs.is_empty() {
+            self.lib_status = "没有可用的文件夹".into();
+            return;
+        }
+        self.lib_scanning = true;
+        self.lib_total = 0;
+        self.lib_entries.clear();
+        self.lib_status = "正在扫描…".into();
+        let tx = self.lib_tx.clone();
+        std::thread::spawn(move || {
+            let mut files = Vec::new();
+            for d in &dirs {
+                collect_audio(d, &mut files, 0);
+            }
+            files.sort();
+            files.dedup();
+            let _ = tx.send(LibMsg::Count(files.len()));
+            for f in files {
+                let Ok(info) = fc_core::probe(&tools, &f) else {
+                    continue;
+                };
+                let tags = fc_core::read_tags(&tools.ffprobe, &f);
+                let title = tags.display_title(&file_stem(&f));
+                let entry = LibEntry {
+                    path: f.clone(),
+                    title,
+                    artist: tags.artist.unwrap_or_default(),
+                    album: tags.album.unwrap_or_default(),
+                    genre: tags.genre.unwrap_or_default(),
+                    duration_s: info.duration_s,
+                    codec: info.codec_label().to_string(),
+                };
+                let _ = tx.send(LibMsg::Entry(entry));
+            }
+            let _ = tx.send(LibMsg::Done);
+        });
+    }
+
+    fn poll_library(&mut self) {
+        while let Ok(m) = self.lib_rx.try_recv() {
+            match m {
+                LibMsg::Count(n) => self.lib_total = n,
+                LibMsg::Entry(e) => self.lib_entries.push(e),
+                LibMsg::Done => {
+                    self.lib_scanning = false;
+                    self.lib_status = format!("扫描完成：{} 首", self.lib_entries.len());
+                }
+            }
+        }
+    }
+
+    /// 音乐库里双击一首歌：不在队列里就先加进去（顺便读标签/封面），然后播
+    fn play_path(&mut self, path: PathBuf, _ctx: &egui::Context) {
+        if !self.items.iter().any(|i| i.path == path) {
+            self.add_files(vec![path.clone()]);
+        }
+        if let Some(idx) = self.items.iter().position(|i| i.path == path) {
+            self.selected = idx;
+            self.start_play(idx);
+        }
+    }
+
     /// 底部播放栏：常驻在"队列 + 详情"两栏下面。
     ///
     /// 没在播的时候不消失——显示当前选中项的封面和时长，按钮置灰。
@@ -2117,17 +2619,32 @@ impl App {
                         let time_w = 92.0;
                         let bar_w = (ui.available_width() - time_w).max(60.0);
                         let (rect, resp) = ui.allocate_exact_size(
-                            egui::vec2(bar_w, 10.0),
+                            egui::vec2(bar_w, 16.0),
                             egui::Sense::click_and_drag(),
                         );
                         let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
                         let p = ui.painter();
-                        p.rect_filled(rect, Rounding::same(5.0), tint(Color32::WHITE, 14));
+                        // 细轨道 + 圆点：比之前一整条 10px 的胶囊干净
+                        let track = egui::Rect::from_center_size(
+                            rect.center(),
+                            egui::vec2(rect.width(), 4.0),
+                        );
+                        p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 16));
                         if frac > 0.0 {
-                            let mut f = rect;
-                            f.set_width(rect.width() * frac);
-                            p.rect_filled(f, Rounding::same(5.0), ACCENT);
+                            let mut f = track;
+                            f.set_width(track.width() * frac);
+                            p.rect_filled(f, Rounding::same(2.0), ACCENT);
                         }
+                        let knob_r = if resp.hovered() || resp.dragged() {
+                            6.0
+                        } else {
+                            4.5
+                        };
+                        p.circle_filled(
+                            egui::pos2(track.left() + track.width() * frac, track.center().y),
+                            knob_r,
+                            if has_player { TEXT } else { DIM },
+                        );
                         if has_player && (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
                             if let Some(pp) = resp.interact_pointer_pos() {
                                 seek = Some(
@@ -2156,15 +2673,8 @@ impl App {
                     .as_ref()
                     .map(|p| p.volume())
                     .unwrap_or(self.player_volume);
-                ui.spacing_mut().slider_width = 58.0;
-                if ui
-                    .add(
-                        egui::Slider::new(&mut v, 0.0..=1.0)
-                            .show_value(false)
-                            .trailing_fill(true),
-                    )
-                    .changed()
-                {
+                // 和进度条同一套画法，不用 egui 默认 Slider（风格对不上）
+                if volume_bar(ui, &mut v) {
                     vol_change = Some(v);
                 }
             });
@@ -2173,6 +2683,8 @@ impl App {
         if open_cover {
             if let Some(i) = display {
                 self.cover_view = Some(i);
+                self.cover_closing = false;
+                self.cover_t = 0.0; // 从缩小状态开始放大
                 self.start_big_cover(i);
             }
         }
@@ -2247,10 +2759,12 @@ impl App {
     fn cover_overlay(&mut self, ctx: &egui::Context) {
         let Some(idx) = self.cover_view else { return };
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.cover_view = None;
+            // 不直接清掉：让 cover_t 缩回 0，动画走完再关
+            self.cover_closing = true;
             return;
         }
         let screen = ctx.screen_rect();
+        let t = self.cover_t.clamp(0.0, 1.0);
         let tex = self
             .cover_big
             .as_ref()
@@ -2270,29 +2784,31 @@ impl App {
             .show(ctx, |ui| {
                 let resp = ui.allocate_response(screen.size(), egui::Sense::click());
                 let p = ui.painter();
-                p.rect_filled(screen, 0.0, tint(BG, 232));
+                p.rect_filled(screen, 0.0, tint(BG, (236.0 * t) as u8));
+                // 0.86 → 1.0 的放大，配着暗底一起淡入
+                let pop = 0.86 + 0.14 * t;
                 match tex.as_ref() {
-                    Some(t) => {
+                    Some(tx) => {
                         let max = egui::vec2(screen.width() * 0.8, screen.height() * 0.72);
-                        let ts = t.size_vec2().max(egui::vec2(1.0, 1.0));
+                        let ts = tx.size_vec2().max(egui::vec2(1.0, 1.0));
                         let scale = (max.x / ts.x).min(max.y / ts.y).clamp(0.05, 4.0);
-                        let size = ts * scale;
+                        let size = ts * scale * pop;
                         let rect = egui::Rect::from_center_size(
                             screen.center() - egui::vec2(0.0, 10.0),
                             size,
                         );
                         p.image(
-                            t.id(),
+                            tx.id(),
                             rect,
                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            Color32::WHITE,
+                            Color32::WHITE.gamma_multiply(t),
                         );
                         p.text(
                             egui::pos2(screen.center().x, rect.bottom() + 24.0),
                             egui::Align2::CENTER_CENTER,
                             &title,
                             egui::FontId::proportional(11.5),
-                            MUTED,
+                            MUTED.gamma_multiply(t),
                         );
                     }
                     None => {
@@ -2301,7 +2817,7 @@ impl App {
                             egui::Align2::CENTER_CENTER,
                             "这个文件没有内嵌封面",
                             egui::FontId::proportional(13.0),
-                            MUTED,
+                            MUTED.gamma_multiply(t),
                         );
                     }
                 }
@@ -2310,14 +2826,14 @@ impl App {
                     egui::Align2::CENTER_CENTER,
                     "点击任意处或按 Esc 关闭",
                     egui::FontId::proportional(9.5),
-                    DIM,
+                    DIM.gamma_multiply(t),
                 );
                 if resp.clicked() {
                     close = true;
                 }
             });
         if close {
-            self.cover_view = None;
+            self.cover_closing = true;
         }
     }
 
@@ -2828,9 +3344,20 @@ impl App {
             }
         }
 
-        if self.meta_open && self.cfg.write_tags {
+        if self.meta_open {
             let sel = self.selected;
             let has_file = self.items.get(sel).is_some();
+            // 写入标签关着时字段照样显示（用户要求"元数据全展开"），
+            // 只是提醒一句：这些值不写进文件。
+            if !self.cfg.write_tags {
+                ui.add_space(2.0);
+                para(
+                    ui,
+                    "写入标签没开：下面的字段只会存在程序里，不会写进输出文件。",
+                    8.5,
+                    WARN,
+                );
+            }
 
             // ── 当前文件（只影响这一个）──
             if has_file {
@@ -3260,9 +3787,284 @@ fn icon_button(ui: &mut egui::Ui, icon: Icon, accent: bool, enabled: bool) -> bo
     resp.clicked()
 }
 
+/// 左侧两个大项之一。整行 34 高，选中时青色底
+fn rail_big(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 34.0),
+        egui::Sense::click(),
+    );
+    let p = ui.painter();
+    let fill = if on {
+        tint(ACCENT, 30)
+    } else if resp.hovered() {
+        tint(Color32::WHITE, 12)
+    } else {
+        Color32::TRANSPARENT
+    };
+    if fill != Color32::TRANSPARENT {
+        p.rect_filled(rect, Rounding::same(9.0), fill);
+    }
+    p.text(
+        rect.left_center() + egui::vec2(10.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(12.5),
+        if on { ACCENT } else { TEXT },
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
+/// 音乐库分类的一行（右边带数量）
+fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 26.0),
+        egui::Sense::click(),
+    );
+    let p = ui.painter();
+    let fill = if on {
+        tint(ACCENT, 26)
+    } else if resp.hovered() {
+        tint(Color32::WHITE, 10)
+    } else {
+        Color32::TRANSPARENT
+    };
+    if fill != Color32::TRANSPARENT {
+        p.rect_filled(rect, Rounding::same(8.0), fill);
+    }
+    p.text(
+        rect.left_center() + egui::vec2(10.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(11.0),
+        if on { ACCENT } else { MUTED },
+    );
+    if count > 0 {
+        p.text(
+            rect.right_center() - egui::vec2(8.0, 0.0),
+            egui::Align2::RIGHT_CENTER,
+            count.to_string(),
+            egui::FontId::proportional(9.0),
+            DIM,
+        );
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
+/// 音乐库的一首歌：标题 + 艺术家·专辑·风格 + 时长；整行可点
+fn lib_row(ui: &mut egui::Ui, e: &LibEntry, playing: bool, selected: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 42.0),
+        egui::Sense::click(),
+    );
+    let p = ui.painter();
+    let hovered = resp.hovered();
+    let fill = if selected {
+        tint(ACCENT, 26)
+    } else if hovered {
+        tint(Color32::WHITE, 8)
+    } else {
+        Color32::TRANSPARENT
+    };
+    if fill != Color32::TRANSPARENT {
+        p.rect_filled(rect.shrink2(egui::vec2(0.0, 1.0)), Rounding::same(8.0), fill);
+    }
+    let left = rect.left() + 10.0;
+    if playing {
+        p.rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(left - 4.0, rect.center().y - 8.0),
+                egui::vec2(3.0, 16.0),
+            ),
+            Rounding::same(1.5),
+            ACCENT,
+        );
+    }
+    let title_rect = egui::Rect::from_min_max(
+        egui::pos2(left + 6.0, rect.top() + 6.0),
+        egui::pos2(rect.right() - 78.0, rect.top() + 25.0),
+    );
+    let sub_rect = egui::Rect::from_min_max(
+        egui::pos2(left + 6.0, rect.top() + 24.0),
+        egui::pos2(rect.right() - 78.0, rect.bottom() - 4.0),
+    );
+    paint_clipped(
+        ui,
+        title_rect,
+        12.0,
+        if playing { ACCENT } else { TEXT },
+        &e.title,
+    );
+    let mut parts = Vec::new();
+    if !e.artist.is_empty() {
+        parts.push(e.artist.clone());
+    }
+    if !e.album.is_empty() {
+        parts.push(e.album.clone());
+    }
+    if !e.genre.is_empty() {
+        parts.push(e.genre.clone());
+    }
+    paint_clipped(ui, sub_rect, 9.5, MUTED, &parts.join(" · "));
+    p.text(
+        egui::pos2(rect.right() - 12.0, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        fmt_duration(e.duration_s),
+        egui::FontId::proportional(9.5),
+        DIM,
+    );
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
+}
+
+/// 分组标题（专辑 / 艺术家 / 风格）+ 一条分隔线
+fn lib_group(ui: &mut egui::Ui, title: &str, count: usize) {
+    ui.add_space(12.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).size(11.5).color(TEXT).strong());
+        ui.add_space(6.0);
+        ui.label(RichText::new(format!("{count} 首")).size(9.0).color(DIM));
+    });
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 1.0),
+        egui::Sense::hover(),
+    );
+    ui.painter().rect_filled(rect, 0.0, tint(Color32::WHITE, 10));
+    ui.add_space(3.0);
+}
+
+/// 分组用的键
+fn lib_key(tab: LibTab, e: &LibEntry) -> String {
+    match tab {
+        LibTab::Albums => e.album.clone(),
+        LibTab::Artists => e.artist.clone(),
+        LibTab::Genres => e.genre.clone(),
+        _ => String::new(),
+    }
+}
+
+/// 非空唯一值个数（专辑 / 艺术家 / 风格）
+fn uniq(entries: &[LibEntry], key: impl Fn(&LibEntry) -> &String) -> usize {
+    let mut set = std::collections::HashSet::new();
+    for e in entries {
+        let k = key(e).trim();
+        if !k.is_empty() {
+            set.insert(k);
+        }
+    }
+    set.len()
+}
+
+/// 单行裁剪绘制（不会换行把行高撑破）
+fn paint_clipped(ui: &egui::Ui, rect: egui::Rect, size: f32, color: Color32, text: &str) {
+    if text.trim().is_empty() {
+        return;
+    }
+    let galley = ui.painter().layout(
+        text.to_string(),
+        egui::FontId::proportional(size),
+        color,
+        rect.width().max(1.0),
+    );
+    ui.painter().with_clip_rect(rect).galley(rect.min, galley, color);
+}
+
+/// 统一风格的搜索框（输入框视觉在 App::new 里全局调过）
+fn search_box(ui: &mut egui::Ui, text: &mut String, hint: &str, width: f32) -> bool {
+    ui.add(
+        egui::TextEdit::singleline(text)
+            .hint_text(hint)
+            .desired_width(width)
+            .margin(egui::vec2(10.0, 5.0)),
+    )
+    .changed()
+}
+
+fn file_stem(p: &Path) -> String {
+    p.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| p.to_string_lossy().to_string())
+}
+
+fn is_audio(p: &Path) -> bool {
+    const EXT: &[&str] = &[
+        "mp3", "mp2", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "aif", "aiff",
+        "wma", "ac3", "eac3", "oma", "aa3", "at3", "at9", "ape", "wv", "tta", "caf", "w64",
+        "dsf", "dff", "mka", "wavpack",
+    ];
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            let e = e.to_ascii_lowercase();
+            EXT.contains(&e.as_str())
+        })
+        .unwrap_or(false)
+}
+
+/// 递归收集音频文件。深度和数量都设上限，避免误加 C:\ 这种目录卡死。
+fn collect_audio(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth > 8 || out.len() > 20000 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let Ok(ft) = ent.file_type() else { continue };
+        if ft.is_dir() {
+            if p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            collect_audio(&p, out, depth + 1);
+        } else if ft.is_file() && is_audio(&p) {
+            out.push(p);
+        }
+        if out.len() > 20000 {
+            return;
+        }
+    }
+}
+
+/// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。
+fn volume_bar(ui: &mut egui::Ui, value: &mut f32) -> bool {
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(64.0, 16.0), egui::Sense::click_and_drag());
+    let p = ui.painter();
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
+    p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 16));
+    let frac = value.clamp(0.0, 1.0);
+    if frac > 0.0 {
+        let mut f = track;
+        f.set_width(track.width() * frac);
+        p.rect_filled(f, Rounding::same(2.0), tint(MUTED, 200));
+    }
+    let hot = resp.hovered() || resp.dragged();
+    p.circle_filled(
+        egui::pos2(track.left() + track.width() * frac, track.center().y),
+        if hot { 6.0 } else { 4.5 },
+        if hot { TEXT } else { MUTED },
+    );
+    if resp.clicked() || resp.dragged() {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            *value = ((pp.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            return true;
+        }
+    }
+    false
+}
+
 /// 播放栏的封面按钮：48px 方块，有图显示图，没图给占位；返回 response 供点击。
-fn bar_cover(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) -> egui::Response {
-    // 没封面就别装成能点的样子（不然光标变成手型、点了没反应）
+fn bar_cover(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) -> egui::Response {    // 没封面就别装成能点的样子（不然光标变成手型、点了没反应）
     let sense = if tex.is_some() {
         egui::Sense::click()
     } else {
