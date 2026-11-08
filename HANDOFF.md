@@ -61,6 +61,9 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 **界面缩放**：基准是 1.2（`BASE_ZOOM`），所以设置里的 **100%** 就相当于旧版的 120%；
 90/110/120% 都是在它上面乘。窗口默认按 1302×700×1.2 开。
 
+**HDR 模式**（设置 → 外观）：更亮的强调色 + 发光（logo、选中的大项、主按钮、播放进度），
+只影响界面观感，不改任何音频参数。存在 `config.json` 的 `hdr`。
+
 - **侧栏**：无损 9 + 有损 8（MP3/Opus/Vorbis/MP2/AAC/AC-3/E-AC-3/WMA）+ 只读格式（暗色）
   + 设备专用（**ATRAC1 / ATRAC3 / ATRAC3+ 装了外部的 atracdenc 才能选**；ATRAC AL、ATRAC9 只读）。
   点开显示三行小字说明；缺编码器/缺外部工具的格式名画横线，悬停说明缺什么。

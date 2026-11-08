@@ -363,6 +363,7 @@ impl App {
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(BASE_ZOOM * cfg.ui_scale);
+        set_hdr(cfg.hdr);
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
         let cached_lib: Vec<LibEntry> = cfg
             .library_cache
@@ -1113,6 +1114,13 @@ fn unique_output_in(input: &Path, ext: &str, cfg: &settings::Settings) -> PathBu
 
 /// 开始转换按钮（放在第四列最下面——它是这一列的终点）
 fn start_button(ui: &mut egui::Ui, can: bool, running: bool) -> bool {
+    if can {
+        let r = egui::Rect::from_min_size(
+            ui.cursor().min,
+            egui::vec2(ui.available_width(), 36.0),
+        );
+        accent_glow(ui.painter(), r, Rounding::same(10.0), 70);
+    }
     let b = egui::Button::new(
         RichText::new(if running { "转换中…" } else { "开始转换" })
             .size(13.0)
@@ -1184,6 +1192,7 @@ impl App {
             egui::pos2(full.left() + 9.0, full.center().y - 12.0),
             egui::vec2(24.0, 24.0),
         );
+        accent_glow(ui.painter(), logo, Rounding::same(7.0), 80);
         ui.painter()
             .rect_filled(logo, Rounding::same(7.0), ACCENT);
         // 里面三条"电平条"：一眼能看出是音频工具
@@ -2441,18 +2450,31 @@ impl App {
                                     ui.label(RichText::new("暗化").size(10.5).color(MUTED));
                                     ui.add_space(12.0);
                                     let mut dim = self.cfg.dim as i32;
-                                    ui.spacing_mut().slider_width = 220.0;
-                                    if ui
-                                        .add(egui::Slider::new(&mut dim, 0..=210).show_value(false))
-                                        .changed()
-                                    {
+                                    if bar_slider(ui, &mut dim, 0, 210, false) {
                                         self.cfg.dim = dim as u8;
                                         changed = true;
                                     }
-                                    ui.label(
-                                        RichText::new(format!("{}", self.cfg.dim)).size(9.0).color(DIM),
-                                    );
                                 });
+
+                                ui.add_space(10.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("HDR 模式").size(10.5).color(MUTED));
+                                    ui.add_space(12.0);
+                                    for (val, label) in [(false, "关"), (true, "开")] {
+                                        let on = self.cfg.hdr == val;
+                                        if seg_button(ui, label, on) {
+                                            self.cfg.hdr = val;
+                                            set_hdr(val);
+                                            changed = true;
+                                        }
+                                    }
+                                });
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new("更亮的强调色 + 发光，只影响界面观感，不改音频参数")
+                                        .size(9.0)
+                                        .color(DIM),
+                                );
 
                                 // 界面缩放：字号是写死在各个控件里的，所以这里用 egui 的
                                 // 全局 zoom（文字 + 控件一起放大），而不是只改字体
@@ -3243,7 +3265,15 @@ impl App {
                         if frac > 0.0 {
                             let mut f = track;
                             f.set_width(track.width() * frac);
-                            p.rect_filled(f, Rounding::same(2.0), ACCENT);
+                            let c = if hdr() {
+                                Color32::from_rgb(150, 240, 228)
+                            } else {
+                                ACCENT
+                            };
+                            if hdr() {
+                                accent_glow(p, f, Rounding::same(2.0), 40);
+                            }
+                            p.rect_filled(f, Rounding::same(2.0), c);
                         }
                         let knob_r = if resp.hovered() || resp.dragged() {
                             6.0
@@ -4237,34 +4267,18 @@ impl App {
         let mut changed = false;
         match k {
             Knob::FlacLevel => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("压缩等级").size(9.5).color(MUTED));
-                    let mut v = self.cfg.opts.flac_level as i32;
-                    ui.spacing_mut().slider_width = 110.0;
-                    if ui
-                        .add(egui::Slider::new(&mut v, 0..=12).show_value(false))
-                        .changed()
-                    {
-                        self.cfg.opts.flac_level = v as u8;
-                        changed = true;
-                    }
-                    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
-                });
+                let mut v = self.cfg.opts.flac_level as i32;
+                if level_slider(ui, "压缩等级", &mut v, 0, 12) {
+                    self.cfg.opts.flac_level = v as u8;
+                    changed = true;
+                }
             }
             Knob::VorbisQuality => {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("质量").size(9.5).color(MUTED));
-                    let mut v = self.cfg.opts.vorbis_q as i32;
-                    ui.spacing_mut().slider_width = 140.0;
-                    if ui
-                        .add(egui::Slider::new(&mut v, 0..=10).show_value(false))
-                        .changed()
-                    {
-                        self.cfg.opts.vorbis_q = v as u8;
-                        changed = true;
-                    }
-                    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
-                });
+                let mut v = self.cfg.opts.vorbis_q as i32;
+                if level_slider(ui, "质量", &mut v, 0, 10) {
+                    self.cfg.opts.vorbis_q = v as u8;
+                    changed = true;
+                }
             }
             Knob::BitDepth => {
                 ui.horizontal_wrapped(|ui| {
@@ -4539,6 +4553,9 @@ fn rail_big(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     } else {
         Color32::TRANSPARENT
     };
+    if on {
+        accent_glow(p, rect, Rounding::same(9.0), 55);
+    }
     if fill != Color32::TRANSPARENT {
         p.rect_filled(rect, Rounding::same(9.0), fill);
     }
@@ -4843,6 +4860,13 @@ fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool {
     })
     .rounding(Rounding::same(8.0))
     .min_size(egui::vec2(0.0, 24.0));
+    if primary {
+        let r = egui::Rect::from_min_size(
+            ui.cursor().min,
+            egui::vec2(ui.spacing().interact_size.x.max(80.0), 24.0),
+        );
+        accent_glow(ui.painter(), r, Rounding::same(8.0), 50);
+    }
     ui.add(b).clicked()
 }
 
@@ -5236,14 +5260,6 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> boo
             let gold = Color32::from_rgb(247, 199, 108);
             let gold_hi = Color32::from_rgb(255, 238, 186);
             let deep = Color32::from_rgb(92, 62, 18);
-            for k in 1..=3 {
-                let grow = k as f32 * 1.1;
-                p.rect_filled(
-                    rect.expand(grow),
-                    Rounding::same(8.5 + grow),
-                    tint(gold, (5.0 + 4.0 * pulse) as u8 * (4 - k) as u8),
-                );
-            }
             p.rect_filled(rect, r, deep);
             let clip = p.with_clip_rect(rect);
             let steps = 5;
@@ -5259,18 +5275,24 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, t: f64) -> boo
                 clip.rect_filled(band, Rounding::ZERO, blend(deep, gold, 0.25 + f * 0.85));
             }
             let phase = ((t * 0.4) % 1.0) as f32;
-            let bx = rect.left() - 20.0 + phase * (rect.width() + 40.0);
+            // 只在中间平直段扫，而且用三层不同宽度叠出软边，
+            // 一层硬边会看着像多出来一个小方块
+            let span = (rect.width() - 34.0).max(8.0);
+            let bx = rect.left() + 17.0 + phase * span;
             let slant = 7.0;
-            clip.add(egui::Shape::convex_polygon(
-                vec![
-                    egui::pos2(bx, rect.top()),
-                    egui::pos2(bx + 9.0, rect.top()),
-                    egui::pos2(bx + 9.0 - slant, rect.bottom()),
-                    egui::pos2(bx - slant, rect.bottom()),
-                ],
-                tint(Color32::WHITE, (40.0 + 30.0 * pulse) as u8),
-                Stroke::NONE,
-            ));
+            for (i, w) in [16.0f32, 10.0, 5.0].iter().enumerate() {
+                let a = (16.0 + 10.0 * pulse) as u8 / (i as u8 + 1);
+                clip.add(egui::Shape::convex_polygon(
+                    vec![
+                        egui::pos2(bx, rect.top()),
+                        egui::pos2(bx + w, rect.top()),
+                        egui::pos2(bx + w - slant, rect.bottom()),
+                        egui::pos2(bx - slant, rect.bottom()),
+                    ],
+                    tint(Color32::WHITE, a.max(4)),
+                    Stroke::NONE,
+                ));
+            }
             p.rect_stroke(
                 rect,
                 r,
@@ -5379,6 +5401,83 @@ fn fmt_k(sr: u32) -> String {
     } else {
         format!("{:.1}k", sr as f64 / 1000.0)
     }
+}
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// HDR 模式（界面观感）：更亮的强调色 + 发光。只影响渲染，不改任何音频参数。
+static HDR_ON: AtomicBool = AtomicBool::new(false);
+
+pub fn hdr() -> bool {
+    HDR_ON.load(Ordering::Relaxed)
+}
+
+fn set_hdr(on: bool) {
+    HDR_ON.store(on, Ordering::Relaxed);
+}
+
+/// 在矩形外面套几层很淡的圆角光晕（HDR 模式下才画）
+fn accent_glow(p: &egui::Painter, rect: egui::Rect, rounding: Rounding, strength: u8) {
+    if !hdr() {
+        return;
+    }
+    for k in 1..=4u8 {
+        let grow = k as f32 * 1.7;
+        let a = (strength as u16 / (k as u16 + 1)).max(2) as u8;
+        p.rect_filled(rect.expand(grow), rounding, tint(ACCENT, a));
+    }
+}
+
+/// 和整体风格一致的小滑杆：细轨道 + 小圆点 +（可选）刻度 + 右侧数值。
+/// 压缩等级 / Vorbis 质量 / 背景暗化都用它，别用 egui 默认 Slider（那个跟界面完全不搭）。
+fn bar_slider(ui: &mut egui::Ui, v: &mut i32, min: i32, max: i32, ticks: bool) -> bool {
+    let mut changed = false;
+    let w = (ui.available_width() - 22.0).max(80.0);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::click_and_drag());
+    let p = ui.painter();
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 5.0));
+    p.rect_filled(track, Rounding::same(2.5), tint(Color32::WHITE, 14));
+    let span = (max - min).max(1) as f32;
+    let t = ((*v - min) as f32 / span).clamp(0.0, 1.0);
+    if t > 0.0 {
+        let mut f = track;
+        f.set_width(track.width() * t);
+        p.rect_filled(f, Rounding::same(2.5), tint(ACCENT, 220));
+    }
+    if ticks {
+        // 档位少的时候画点，让人知道一共几档
+        for i in min..=max {
+            let x = track.left() + track.width() * ((i - min) as f32 / span);
+            p.circle_filled(egui::pos2(x, track.center().y), 1.0, tint(Color32::WHITE, 34));
+        }
+    }
+    let hot = resp.hovered() || resp.dragged();
+    p.circle_filled(
+        egui::pos2(track.left() + track.width() * t, track.center().y),
+        if hot { 6.0 } else { 4.5 },
+        if hot { TEXT } else { MUTED },
+    );
+    if (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            let t2 = ((pp.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            let nv = (min as f32 + t2 * span).round() as i32;
+            if nv != *v {
+                *v = nv;
+                changed = true;
+            }
+        }
+    }
+    ui.label(RichText::new(format!("{v}")).size(9.0).color(DIM));
+    changed
+}
+
+/// 带标题的小滑杆（压缩等级 / 质量）
+fn level_slider(ui: &mut egui::Ui, label: &str, v: &mut i32, min: i32, max: i32) -> bool {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(label).size(9.5).color(MUTED));
+        bar_slider(ui, v, min, max, true)
+    })
+    .inner
 }
 
 /// 音量条：和进度条同一套画法（细轨道 + 圆点），拖动调音量。
