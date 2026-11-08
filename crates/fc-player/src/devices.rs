@@ -64,8 +64,10 @@ pub struct AudioDevice {
     pub is_bluetooth: bool,
     /// 名字/描述里看出是 Steam 串流设备
     pub is_steam: bool,
-    /// 名字/描述里看出是 Realtek（瑞昱/瑞鼎）板载声卡
+    /// 名字/描述里看出是 Realtek（瑞鼎）板载声卡
     pub is_realtek: bool,
+    /// 名字/描述里看出是 NVIDIA 显卡音频（HDMI/DP）
+    pub is_nvidia: bool,
     /// 名字/描述里看出是摄像头（带麦的 webcam 也会标）
     pub is_camera: bool,
     pub is_default: bool,
@@ -237,6 +239,7 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
             let keys = format!("{name} {description}").to_lowercase();
             let is_steam = keys.contains("steam");
             let is_realtek = keys.contains("realtek") || keys.contains("瑞昱") || keys.contains("瑞鼎");
+            let is_nvidia = keys.contains("nvidia");
             let is_camera = keys.contains("webcam")
                 || keys.contains("camera")
                 || keys.contains("摄像头")
@@ -272,6 +275,7 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
                 is_bluetooth,
                 is_steam,
                 is_realtek,
+                is_nvidia,
                 is_camera,
                 channels,
                 sample_rate,
@@ -313,6 +317,7 @@ fn fake_bluetooth() -> Vec<AudioDevice> {
         is_bluetooth: true,
         is_steam: false,
         is_realtek: false,
+        is_nvidia: false,
         is_camera: false,
         is_default: default,
         channels: 2,
@@ -442,6 +447,7 @@ mod tests {
             is_bluetooth: true,
             is_steam: false,
             is_realtek: false,
+            is_nvidia: false,
             is_camera: false,
             is_default: false,
             channels: 2,

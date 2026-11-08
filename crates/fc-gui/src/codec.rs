@@ -34,6 +34,7 @@ const C_HEAD: Color32 = Color32::from_rgb(150, 220, 190);
 const C_MIC: Color32 = Color32::from_rgb(255, 198, 122);
 const C_HDMI: Color32 = Color32::from_rgb(160, 180, 230);
 const C_DIGITAL: Color32 = Color32::from_rgb(140, 200, 210);
+const C_NVIDIA: Color32 = Color32::from_rgb(118, 185, 0); // NVIDIA 绿
 
 fn kind_color(k: fc_player::devices::Kind) -> Color32 {
     use fc_player::devices::Kind;
@@ -54,6 +55,8 @@ fn device_color(d: &fc_player::devices::AudioDevice) -> Color32 {
         C_STEAM
     } else if d.is_camera {
         C_CAMERA
+    } else if d.is_nvidia {
+        C_NVIDIA
     } else if d.is_realtek {
         C_REALTEK
     } else if d.kind == fc_player::devices::Kind::Usb {
@@ -408,13 +411,23 @@ impl App {
         // 第二行：类型 + 厂商/用途角标；格式靠右
         let y = rect.top() + 42.0;
         let mut x = text_x;
-        let kind = dev.kind.label();
+        // NVIDIA 显卡音频直接标 NVIDIA（用户要求不写中文）
+        let kind = if dev.is_nvidia {
+            "NVIDIA"
+        } else {
+            dev.kind.label()
+        };
+        let kind_col = if dev.is_nvidia {
+            C_NVIDIA
+        } else {
+            kind_color(dev.kind)
+        };
         p.text(
             egui::pos2(x, y),
             Align2::LEFT_CENTER,
             kind,
             FontId::proportional(9.5),
-            kind_color(dev.kind),
+            kind_col,
         );
         x += text_w(ui, kind, 9.5) + 10.0;
 
@@ -460,7 +473,7 @@ fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
         out.push(("Steam".to_string(), C_STEAM));
     }
     if d.is_realtek {
-        out.push(("Realtek".to_string(), C_REALTEK));
+        out.push(("瑞鼎".to_string(), C_REALTEK));
     }
     if d.is_camera {
         out.push(("摄像头".to_string(), C_CAMERA));
