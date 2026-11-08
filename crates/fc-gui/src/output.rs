@@ -459,6 +459,10 @@ impl App {
                     self.cfg.write_tags = true;
                     changed = true;
                 }
+                ui.add_space(10.0);
+                if self.clear_meta_button(ui) {
+                    changed = true;
+                }
             });
         }
 
@@ -621,6 +625,75 @@ impl App {
 
     /// 「删除源文件」不是普通单选：必须长按 3 秒才生效。
     /// 按住时右侧走倒计时、圆点转一圈把进度画出来，松手就取消。
+    /// 「清除所有」：长按 3 秒清掉批量元数据和当前文件的覆盖值
+    pub(crate) fn clear_meta_button(&mut self, ui: &mut egui::Ui) -> bool {
+        let dt = self.dt;
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(76.0, 22.0),
+            egui::Sense::click_and_drag(),
+        );
+        let holding = resp.is_pointer_button_down_on();
+        if holding {
+            self.meta_clear_hold = (self.meta_clear_hold + dt).min(3.0);
+        } else {
+            self.meta_clear_hold = 0.0;
+        }
+        let p = ui.painter();
+        let c = egui::pos2(rect.left() + 8.0, rect.center().y);
+        p.circle_stroke(
+            c,
+            6.0,
+            Stroke::new(
+                1.2,
+                if holding {
+                    WARN
+                } else {
+                    tint(Color32::WHITE, 70)
+                },
+            ),
+        );
+        if holding && self.meta_clear_hold > 0.0 {
+            let frac = (self.meta_clear_hold / 3.0).clamp(0.0, 1.0);
+            // 环形进度
+            let steps = 32;
+            for i in 0..((steps as f32 * frac) as usize) {
+                let a0 = -std::f32::consts::FRAC_PI_2
+                    + std::f32::consts::TAU * (i as f32 / steps as f32);
+                let a1 = -std::f32::consts::FRAC_PI_2
+                    + std::f32::consts::TAU * ((i + 1) as f32 / steps as f32);
+                p.line_segment(
+                    [
+                        c + egui::vec2(a0.cos(), a0.sin()) * 6.5,
+                        c + egui::vec2(a1.cos(), a1.sin()) * 6.5,
+                    ],
+                    Stroke::new(1.6, WARN),
+                );
+            }
+        }
+        p.text(
+            egui::pos2(c.x + 14.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            "清除所有",
+            egui::FontId::proportional(10.0),
+            if holding { WARN } else { MUTED },
+        );
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if holding && self.meta_clear_hold >= 3.0 {
+            self.meta_clear_hold = 0.0;
+            self.cfg.meta_artist.clear();
+            self.cfg.meta_album.clear();
+            self.cfg.meta_cover.clear();
+            if let Some(it) = self.items.get_mut(self.selected) {
+                it.title_ov = None;
+                it.track_ov = None;
+            }
+            return true;
+        }
+        false
+    }
+
     pub(crate) fn delete_source_row(&mut self, ui: &mut egui::Ui) -> bool {
         let dt = self.dt;
         let selected = self.delete_source;

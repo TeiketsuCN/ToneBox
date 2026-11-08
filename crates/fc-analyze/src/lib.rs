@@ -48,12 +48,41 @@ pub struct QualityReport {
     pub estimate: String,
     /// 0.0 ~ 1.0
     pub confidence: f64,
-    /// 置信度是怎么算出来的（基础分、乘的系数、封顶），界面直接列出来
-    pub confidence_notes: Vec<String>,
+    /// 置信度是怎么算出来的：每条带"加分/扣分"和理由，界面按顺序列出来
+    pub confidence_notes: Vec<ConfidenceNote>,
     /// 误判风险说明，永远不为空才好
     pub caveats: Vec<String>,
     /// Some = 这是 DSD：频谱不参与判档，界面上换一张"格式判定"卡
     pub dsd: Option<DsdReport>,
+}
+
+/// 置信度的一条依据：`delta` 是这一条对总分的加减（百分比 + 是否加分），
+/// `None` 表示"结论行"（比如最终值），不显示正负号。
+#[derive(Debug, Clone)]
+pub struct ConfidenceNote {
+    pub delta: Option<(f32, bool)>,
+    pub reason: String,
+}
+
+impl ConfidenceNote {
+    pub fn plus(pct: f32, reason: impl Into<String>) -> Self {
+        Self {
+            delta: Some((pct.abs(), true)),
+            reason: reason.into(),
+        }
+    }
+    pub fn minus(pct: f32, reason: impl Into<String>) -> Self {
+        Self {
+            delta: Some((pct.abs(), false)),
+            reason: reason.into(),
+        }
+    }
+    pub fn plain(reason: impl Into<String>) -> Self {
+        Self {
+            delta: None,
+            reason: reason.into(),
+        }
+    }
 }
 
 /// DSD 的结论：只有格式事实，没有"推测码率"
@@ -138,7 +167,9 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
             slope_db_per_khz: 0.0,
             estimate: "无损（DSD 编码）".to_string(),
             confidence: 1.0,
-            confidence_notes: vec!["格式本身就是 DSD，不需要靠频谱猜档位 → 100%".to_string()],
+            confidence_notes: vec![
+                ConfidenceNote::plus(100.0, "格式本身就是 DSD，不需要靠频谱猜档位"),
+            ],
             caveats: vec![
                 "DSD 是 1-bit 脉冲密度编码，没有按码率区分的档位；截止频率法在 DSD 上不适用，所以这里不做有损推测。"
                     .to_string(),
@@ -169,7 +200,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
     let lossless = is_lossless_codec(&info.codec);
     let he_aac = family == Family::Aac && is_he_aac(&tools.ffprobe, path);
     let mut caveats: Vec<String> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
+    let mut notes: Vec<ConfidenceNote> = Vec::new();
 
     let (estimate, mut base_conf) = if lossless {
         caveats.push(
@@ -178,25 +209,37 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
         );
         // 无损不是"猜"的，置信度由证据加分，界面把它一条条列出来
         let mut c = 0.80f64;
-        notes.push(format!("编码标记为无损（{}）→ 80%", info.codec));
+        notes.push(ConfidenceNote::plus(
+            80.0,
+            format!("编码标记为无损（{}）", info.codec),
+        ));
         let nyquist = info.sample_rate as f64 / 2.0;
         if cutoff >= nyquist * 0.96 {
             c += 0.10;
-            notes.push(format!(
-                "频谱一直延伸到 {:.1} kHz（Nyquist {:.1} kHz）→ +10%",
-                cutoff / 1000.0,
-                nyquist / 1000.0
+            notes.push(ConfidenceNote::plus(
+                10.0,
+                format!(
+                    "频谱一直延伸到 {:.1} kHz（Nyquist {:.1} kHz）",
+                    cutoff / 1000.0,
+                    nyquist / 1000.0
+                ),
             ));
         } else {
-            notes.push(format!(
-                "频谱只到 {:.1} kHz，离 Nyquist {:.1} kHz 还有距离 → +0%",
-                cutoff / 1000.0,
-                nyquist / 1000.0
+            notes.push(ConfidenceNote::minus(
+                10.0,
+                format!(
+                    "频谱只到 {:.1} kHz，离 Nyquist {:.1} kHz 还有距离",
+                    cutoff / 1000.0,
+                    nyquist / 1000.0
+                ),
             ));
         }
         if slope.abs() >= 30.0 {
             c += 0.05;
-            notes.push(format!("高频滚降 {:.0} dB/kHz 够陡 → +5%", slope.abs()));
+            notes.push(ConfidenceNote::plus(
+                5.0,
+                format!("高频滚降 {:.0} dB/kHz 够陡", slope.abs()),
+            ));
         }
         ("无损/CD".to_string(), c.min(0.97))
     } else if family == Family::Opus {
@@ -210,26 +253,38 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
             "HE-AAC / xHE-AAC 使用 SBR/PS 频带复制，低码率仍保留高频；截止法对它和 Opus 一样失效。"
                 .to_string(),
         );
-        notes.push("SBR/PS 频带复制让截止法失效 → 只能给 12%".to_string());
+        notes.push(ConfidenceNote::minus(
+            88.0,
+            "SBR/PS 频带复制让截止法失效，只能给很低的分",
+        ));
         ("不可判定".to_string(), 0.12)
     } else if edge.is_none() {
         let (est, conf, why) = no_edge_guess(family);
         caveats.push(why.to_string());
-        notes.push("没找到陡峭边沿 → 用格式先验给一个低置信度".to_string());
+        notes.push(ConfidenceNote::minus(50.0, "没找到陡峭边沿，用格式先验给一个低分"));
         (est.to_string(), conf)
     } else {
         let guess = classify(family, cutoff);
         let sigmoid = 1.0 / (1.0 + (-(slope.abs() - 45.0) / 8.0).exp());
         let mut conf = sigmoid * guess.confidence_scale;
-        notes.push(format!(
-            "边沿陡度 {:.0} dB/kHz → 基础 {:.0}%",
-            slope.abs(),
-            sigmoid * 100.0
+        notes.push(ConfidenceNote::plus(
+            (sigmoid * 100.0) as f32,
+            format!("边沿陡度 {:.0} dB/kHz，基础分", slope.abs()),
         ));
-        notes.push(format!(
-            "档位判断为 {}，系数 ×{:.2}",
-            guess.estimate, guess.confidence_scale
-        ));
+        if guess.confidence_scale < 0.999 {
+            notes.push(ConfidenceNote::minus(
+                ((1.0 - guess.confidence_scale) * 100.0) as f32,
+                format!(
+                    "档位 {} 属于区间/重叠档，打 {:.2} 折",
+                    guess.estimate, guess.confidence_scale
+                ),
+            ));
+        } else {
+            notes.push(ConfidenceNote::plain(format!(
+                "档位 {} 唯一，不打折",
+                guess.estimate
+            )));
+        }
         if let Some(note) = guess.caveat {
             caveats.push(note.to_string());
         }
@@ -246,7 +301,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                 "边沿上方仍有明显能量，疑似噪底填充（黑胶/模拟噪声），推测可能偏高。".to_string(),
             );
             conf *= 0.75;
-            notes.push("边沿上方有疑似噪底 → ×0.75".to_string());
+            notes.push(ConfidenceNote::minus(25.0, "边沿上方仍有明显能量，疑似噪底填充"));
         }
 
         // 边沿下方能量偏低 → 音源本身高频就少。
@@ -262,7 +317,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                     .to_string(),
             );
             conf *= 0.8;
-            notes.push("边沿下方能量偏低 → ×0.80".to_string());
+            notes.push(ConfidenceNote::minus(20.0, "边沿下方能量偏低，音源本身高频就少"));
         }
 
         (guess.estimate.to_string(), conf)
@@ -276,14 +331,14 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                 .to_string(),
         );
         base_conf = base_conf.min(0.60);
-        notes.push("ATRAC 阈值表样本太少 → 封顶 60%".to_string());
+        notes.push(ConfidenceNote::minus(40.0, "ATRAC 阈值表样本太少，封顶 60%"));
     }
 
     let confidence = (round2(base_conf.clamp(0.05, 0.97))).clamp(0.05, 0.97);
-    notes.push(format!(
+    notes.push(ConfidenceNote::plain(format!(
         "最终 {:.0}%（上限 97%，留一点给未知因素）",
         confidence * 100.0
-    ));
+    )));
     Ok(QualityReport {
         cutoff_hz: cutoff,
         slope_db_per_khz: slope,

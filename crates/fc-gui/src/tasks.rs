@@ -67,8 +67,6 @@ impl App {
 
         if self.tasks.is_empty() {
             para(ui, "还没有任务。", 9.5, DIM);
-            ui.add_space(2.0);
-            para(ui, "在左边选文件、右边配好参数，点「添加任务」。", 9.0, DIM);
             return false;
         }
 

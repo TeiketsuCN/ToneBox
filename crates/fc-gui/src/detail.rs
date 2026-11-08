@@ -240,7 +240,25 @@ impl App {
                         if !r.confidence_notes.is_empty() {
                             ui.add_space(6.0);
                             for n in &r.confidence_notes {
-                                para(ui, &format!("· {n}"), 9.0, tint(TEXT, 190));
+                                ui.horizontal(|ui| {
+                                    if let Some((pct, good)) = n.delta {
+                                        let (sym, col) = if good {
+                                            ("+", Color32::from_rgb(110, 220, 140))
+                                        } else {
+                                            ("−", Color32::from_rgb(230, 120, 110))
+                                        };
+                                        ui.label(
+                                            RichText::new(format!("{sym}{pct:.0}%"))
+                                                .size(9.5)
+                                                .color(col)
+                                                .strong(),
+                                        );
+                                        ui.add_space(6.0);
+                                    } else {
+                                        ui.add_space(30.0);
+                                    }
+                                    para(ui, &n.reason, 9.0, tint(TEXT, 195));
+                                });
                                 ui.add_space(1.0);
                             }
                         }

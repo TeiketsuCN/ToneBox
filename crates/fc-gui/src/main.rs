@@ -135,7 +135,7 @@ pub(crate) const TITLEBAR_H: f32 = 44.0;
 pub(crate) const LEFT_W: f32 = 216.0;
 pub(crate) const RIGHT_W: f32 = 300.0;
 pub(crate) const OUT_W: f32 = 300.0;
-pub(crate) const TASK_W: f32 = 240.0;
+pub(crate) const TASK_W: f32 = 300.0;
 
 
 // ── 队列条目 ────────────────────────────────────────────
@@ -315,6 +315,8 @@ pub(crate) struct App {
     page_t: f32,
     /// 转换后删除源文件。**不进配置**：破坏性操作每次启动都回到关
     delete_source: bool,
+    /// 「清除所有元数据」的长按进度
+    meta_clear_hold: f32,
     lib_tab: LibTab,
     lib_entries: Vec<LibEntry>,
     lib_scanning: bool,
@@ -376,6 +378,12 @@ impl App {
         style.visuals.widgets.inactive.bg_stroke = line(Color32::WHITE, 26);
         style.visuals.widgets.hovered.bg_stroke = line(ACCENT, 90);
         style.visuals.widgets.active.bg_stroke = line(ACCENT, 130);
+        style.spacing.scroll.bar_width = 4.0;
+        style.spacing.scroll.bar_inner_margin = 2.0;
+        style.spacing.scroll.bar_outer_margin = 2.0;
+        style.visuals.widgets.inactive.bg_fill = tint(Color32::WHITE, 26);
+        style.visuals.widgets.hovered.bg_fill = tint(Color32::WHITE, 55);
+        style.visuals.widgets.active.bg_fill = tint(Color32::WHITE, 80);
         cc.egui_ctx.set_style(style);
 
         let target = fc_core::default_target();
@@ -456,7 +464,7 @@ impl App {
             cfg,
             settings_open: false,
             settings_t: 0.0,
-            meta_open: false,
+            meta_open: true,
             notices: Vec::new(),
             notices_open: false,
             bell_rect: egui::Rect::NOTHING,
@@ -471,6 +479,7 @@ impl App {
             page: Page::Convert,
             page_t: 1.0,
             delete_source: false,
+            meta_clear_hold: 0.0,
             lib_tab: LibTab::Songs,
             lib_entries: cached_lib,
             lib_scanning: false,
