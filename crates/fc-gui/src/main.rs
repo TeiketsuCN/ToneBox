@@ -809,6 +809,15 @@ fn fmt_size(b: u64) -> String {
     }
 }
 
+/// 44100 → "44.1k"，48000 → "48k"，192000 → "192k"
+fn fmt_rate(hz: u32) -> String {
+    if hz % 1000 == 0 {
+        format!("{}k", hz / 1000)
+    } else {
+        format!("{:.1}k", hz as f64 / 1000.0)
+    }
+}
+
 impl App {
     /// 自绘标题栏。系统标题栏已经去掉，拖动/按钮都在这里。
     fn titlebar(&mut self, ui: &mut egui::Ui) {
@@ -2080,27 +2089,15 @@ impl App {
                 }
             }
 
+            // 源 → 目标 的质量提示：降码率、无损转有损、升采样都在 core 里判断，
+            // 界面只负责画卡片，不自己写格式判断。
             let spec = it.spec(self.target);
-            if m.is_lossy()
-                && matches!(
-                    spec.kind,
-                    fc_core::Kind::Lossless | fc_core::Kind::Uncompressed
-                )
-            {
+            for w in fc_core::quality_warnings(m, spec, &self.cfg.opts) {
                 ui.add_space(14.0);
                 card(ui, WARN, |ui| {
-                    para(ui, "不会增加任何信息量", 11.5, WARN);
+                    para(ui, w.title, 11.5, WARN);
                     ui.add_space(5.0);
-                    para(
-                        ui,
-                        &format!(
-                            "源文件是 {} 有损压缩。转成 {} 只是换了个更大的容器，文件会变大，声音不会变好。",
-                            m.codec_label(),
-                            spec.name
-                        ),
-                        10.0,
-                        MUTED,
-                    );
+                    para(ui, &w.body, 10.0, MUTED);
                 });
             }
         }
@@ -2160,20 +2157,32 @@ impl App {
     }
 
 
-    /// 当前参数的一句话摘要，折叠时显示
+    /// 当前参数的一句话摘要（"8 · 跟源" 这种），显示在输出列标题下
     fn knob_summary(&self) -> String {
         use fc_core::Knob;
-        match fc_core::knobs_for(self.target).first() {
-            Some(Knob::FlacLevel) => format!("{}", self.cfg.opts.flac_level),
-            Some(Knob::BitDepth) => self.cfg.opts.bit_depth.label().to_string(),
-            Some(Knob::Mp3Bitrate) => format!("{}k", self.cfg.opts.mp3_bitrate),
-            Some(Knob::OpusBitrate) => format!("{}k", self.cfg.opts.opus_bitrate),
-            Some(Knob::VorbisQuality) => format!("q{}", self.cfg.opts.vorbis_q),
-            Some(Knob::AacBitrate) => format!("{}k", self.cfg.opts.aac_bitrate),
-            Some(Knob::Ac3Bitrate) => format!("{}k", self.cfg.opts.ac3_bitrate),
-            Some(Knob::Eac3Bitrate) => format!("{}k", self.cfg.opts.eac3_bitrate),
-            Some(Knob::WmaBitrate) => format!("{}k", self.cfg.opts.wma_bitrate),
-            None => "默认".into(),
+        let o = &self.cfg.opts;
+        let mut parts: Vec<String> = Vec::new();
+        for k in fc_core::knobs_for(self.target) {
+            match k {
+                Knob::FlacLevel => parts.push(format!("{}", o.flac_level)),
+                Knob::BitDepth => parts.push(o.bit_depth.label().to_string()),
+                Knob::Mp3Bitrate => parts.push(format!("{}k", o.mp3_bitrate)),
+                Knob::OpusBitrate => parts.push(format!("{}k", o.opus_bitrate)),
+                Knob::VorbisQuality => parts.push(format!("q{}", o.vorbis_q)),
+                Knob::AacBitrate => parts.push(format!("{}k", o.aac_bitrate)),
+                Knob::Ac3Bitrate => parts.push(format!("{}k", o.ac3_bitrate)),
+                Knob::Eac3Bitrate => parts.push(format!("{}k", o.eac3_bitrate)),
+                Knob::WmaBitrate => parts.push(format!("{}k", o.wma_bitrate)),
+                Knob::SampleRate => match fc_core::output_rate(self.target, o) {
+                    Some(r) => parts.push(fmt_rate(r)),
+                    None => parts.push("跟源".into()),
+                },
+            }
+        }
+        if parts.is_empty() {
+            "默认".into()
+        } else {
+            parts.join(" · ")
         }
     }
 
@@ -2591,7 +2600,36 @@ impl App {
                 changed |= bitrate_row(ui, "eac3", &mut self.cfg.opts.eac3_bitrate)
             }
             Knob::WmaBitrate => changed |= bitrate_row(ui, "wma", &mut self.cfg.opts.wma_bitrate),
+            Knob::SampleRate => changed |= self.sample_rate_row(ui),
         }
+        changed
+    }
+
+    /// 采样率旋钮。档位表来自 core（`rate_choices`），界面不判断哪个编码器支持什么。
+    fn sample_rate_row(&mut self, ui: &mut egui::Ui) -> bool {
+        let choices = fc_core::rate_choices(self.target.id);
+        let mut changed = false;
+        let auto_on = self.cfg.opts.sample_rate.is_none();
+        let effective = fc_core::output_rate(self.target, &self.cfg.opts);
+        // Dolby 的「自动」其实就是 48k：直接高亮 48k，
+        // 别让「自动」和实际输出对不上（摘要里写的是 48k）。
+        let show_auto = !(auto_on && effective.is_some());
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("采样率").size(9.5).color(MUTED));
+            if show_auto && seg_button(ui, "自动", auto_on) {
+                self.cfg.opts.sample_rate = None;
+                changed = true;
+            }
+            for &v in choices {
+                // 高亮"实际会输出的值"：配置里可能是 96k，但当前格式只支持到 48k
+                let on = effective == Some(v);
+                if seg_button(ui, &fmt_rate(v), on) {
+                    self.cfg.opts.sample_rate = Some(v);
+                    changed = true;
+                }
+            }
+        });
+        para(ui, fc_core::rate_note(self.target), 8.5, DIM);
         changed
     }
 }

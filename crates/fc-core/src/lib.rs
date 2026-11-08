@@ -19,6 +19,7 @@ pub use wiki::long_blurb;
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
 pub use format::{
     all, args_for, bitrate_choices, bitrate_of, browsable, by_id, default_target, estimate_size,
-    knob_note, knobs_for, split_group, targets_for, BitDepth, Choice, ConvertOptions, FormatSpec,
-    Group, Kind, Knob, Patent, Preset, PRESETS, encoder_for,
+    knob_note, knobs_for, output_rate, quality_warnings, rate_choices, rate_note, split_group,
+    targets_for, BitDepth, Choice, ConvertOptions, FormatSpec, Group, Kind, Knob, Patent, Preset,
+    QualityWarning, PRESETS, encoder_for,
 };
