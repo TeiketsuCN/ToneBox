@@ -90,6 +90,14 @@ struct Stream {
     /// FLAC / ALAC / PCM 的真实位深（ffprobe 给的是字符串）
     bits_per_raw_sample: Option<String>,
     bits_per_sample: Option<u32>,
+    /// 内嵌封面在 ffprobe 里也是一条 video 流，别把它当成"这是视频文件"
+    disposition: Option<Disposition>,
+}
+
+#[derive(Deserialize, Default)]
+struct Disposition {
+    #[serde(default)]
+    attached_pic: u32,
 }
 
 #[derive(Deserialize)]
@@ -245,12 +253,31 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
             _ => None,
         });
 
+    // 视频容器的 format.bit_rate 是"画面 + 声音"的总码率。有音轨码率就优先用它；
+    // 像 MKV 这种容器不记音轨码率的，宁可不填（0），也别把总码率当成音频码率
+    // ——"353kbps 的 AAC"这种假数据比空着更糟。内嵌封面不算视频轨。
+    let has_video = parsed.streams.iter().any(|s| {
+        s.codec_type.as_deref() == Some("video")
+            && s.disposition
+                .as_ref()
+                .map(|d| d.attached_pic == 0)
+                .unwrap_or(true)
+    });
+    let st_kbps = parse_u64(&st.bit_rate) / 1000;
+    let bitrate_kbps = if st_kbps > 0 {
+        st_kbps
+    } else if has_video {
+        0
+    } else {
+        parse_u64(&fmt.bit_rate) / 1000
+    };
+
     Ok(MediaInfo {
         codec: st.codec_name.clone().unwrap_or_default(),
         container: fmt.format_name.clone().unwrap_or_default(),
         sample_rate: parse_u64(&st.sample_rate) as u32,
         channels: st.channels.unwrap_or(0),
-        bitrate_kbps: parse_u64(&fmt.bit_rate) / 1000,
+        bitrate_kbps,
         duration_s,
         size_bytes: parse_u64(&fmt.size),
         bits,

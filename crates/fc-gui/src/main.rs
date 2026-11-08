@@ -92,6 +92,18 @@ const WARN: Color32 = Color32::from_rgb(255, 198, 122);
 const DANGER: Color32 = Color32::from_rgb(255, 138, 138);
 const BG: Color32 = Color32::from_rgb(14, 16, 22);
 
+/// 队列能接受的输入扩展名：音频 + 视频容器。
+///
+/// 视频不转视频——ffmpeg 那边固定 `-map 0:a:0`，只取第一条音轨，
+/// 导出的还是上面选的那个音频格式。
+const INPUT_EXTS: &[&str] = &[
+    "mp3", "mp2", "flac", "wav", "m4a", "aac", "ogg", "oga", "opus", "wma", "ape", "wv", "tta",
+    "oma", "aa3", "at3", "at9", "aiff", "aif", "caf", "w64", "ac3", "eac3",
+    // 视频容器：只提取音轨
+    "mkv", "mp4", "m4v", "mov", "avi", "webm", "ts", "m2ts", "wmv", "flv", "mpg", "mpeg",
+    "3gp", "ogv", "vob",
+];
+
 // ── 品牌 ────────────────────────────────────────────────
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
@@ -426,7 +438,7 @@ impl App {
             cfg,
             settings_open: false,
             settings_t: 0.0,
-            meta_open: true,
+            meta_open: false,
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
@@ -2029,13 +2041,7 @@ impl App {
                 .clicked()
             {
                 if let Some(paths) = rfd::FileDialog::new()
-                    .add_filter(
-                        "音频",
-                        &[
-                            "mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma", "ape",
-                            "oma", "at3", "aa3", "aiff", "aif",
-                        ],
-                    )
+                    .add_filter("音频 / 视频", INPUT_EXTS)
                     .pick_files()
                 {
                     self.add_files(paths);
@@ -2078,7 +2084,7 @@ impl App {
                 let pad = ((avail - 190.0) * 0.5).max(10.0);
                 ui.add_space(pad);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("把音频文件拖到这里").size(15.0).color(TEXT));
+                    ui.label(RichText::new("把音频 / 视频文件拖到这里").size(15.0).color(TEXT));
                     ui.add_space(5.0);
                     ui.label(
                         RichText::new(
@@ -2086,6 +2092,12 @@ impl App {
                         )
                         .size(10.5)
                         .color(MUTED),
+                    );
+                    ui.add_space(3.0);
+                    ui.label(
+                        RichText::new("MKV / MP4 / MOV / AVI / WEBM… 也行：只提取第一条音轨")
+                            .size(9.5)
+                            .color(DIM),
                     );
                     ui.add_space(16.0);
                     let btn =
@@ -2100,13 +2112,7 @@ impl App {
             });
         if do_pick {
             if let Some(paths) = rfd::FileDialog::new()
-                .add_filter(
-                    "音频",
-                    &[
-                        "mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma", "ape", "oma",
-                        "at3", "aa3", "aiff", "aif",
-                    ],
-                )
+                .add_filter("音频 / 视频", INPUT_EXTS)
                 .pick_files()
             {
                 self.add_files(paths);
@@ -4363,6 +4369,17 @@ impl App {
             para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
         }
 
+        // 输出列的常驻说明：视频不是转视频，只是把音轨抽出来
+        ui.add_space(14.0);
+        ui.label(RichText::new("视频来源").size(9.0).color(DIM));
+        ui.add_space(3.0);
+        para(
+            ui,
+            "MKV / MP4 / MOV / AVI / WEBM / TS / M2TS / WMV / FLV / 3GP 也能直接拖进来：只取第一条音轨，按上面选的音频格式导出，不会碰画面。",
+            8.5,
+            MUTED,
+        );
+
         // 这一列改了任何设置就落盘（以前只把 changed 当"要不要重绘"用，
         // 结果预设、码率这些改动重启就没了）
         if changed {
@@ -5361,7 +5378,10 @@ fn quality_from(lossy: bool, sr: u32, bits: Option<u32>, kbps: u64) -> Option<Qu
             Quality::Cd
         });
     }
-    Some(if kbps >= 192 {
+    Some(if kbps == 0 {
+        // 有损但拿不到音轨码率（比如 MKV 里的 AAC）：别硬猜档位，"有损"就够了
+        Quality::Std
+    } else if kbps >= 192 {
         Quality::Hq
     } else if kbps >= 96 {
         Quality::Std
