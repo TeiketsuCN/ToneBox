@@ -528,38 +528,29 @@ impl App {
                                 section(ui, "支持开发");
                                 para(
                                     ui,
-                                    "这个工具免费、开源、不卖授权。如果它帮你把旧 MD 里的东西救出来了，欢迎请我喝杯咖啡。",
+                                    "免费、开源、不卖授权。觉得有用就扫下面任意一个。",
                                     9.5,
                                     MUTED,
                                 );
                                 ui.add_space(10.0);
-                                let has_qr = self.donate_wechat.is_some() || self.donate_alipay.is_some();
-                                if has_qr {
-                                    ui.horizontal(|ui| {
-                                        if let Some(t) = &self.donate_wechat {
-                                            ui.vertical(|ui| {
-                                                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
-                                                ui.add_space(3.0);
-                                                ui.label(RichText::new("微信").size(9.0).color(DIM));
-                                            });
-                                        }
-                                        ui.add_space(16.0);
-                                        if let Some(t) = &self.donate_alipay {
-                                            ui.vertical(|ui| {
-                                                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(118.0, 118.0)));
-                                                ui.add_space(3.0);
-                                                ui.label(RichText::new("支付宝").size(9.0).color(DIM));
-                                            });
-                                        }
-                                    });
-                                } else {
-                                    para(
-                                        ui,
-                                        "（把收款码放到程序目录，命名 donate-wechat.png / donate-alipay.png 即可显示）",
-                                        8.5,
-                                        DIM,
-                                    );
-                                }
+                                ui.horizontal(|ui| {
+                                    for (tex, label) in [
+                                        (&self.donate_wechat, "微信"),
+                                        (&self.donate_alipay, "支付宝"),
+                                    ] {
+                                        ui.vertical(|ui| {
+                                            if let Some(t) = tex {
+                                                ui.add(
+                                                    egui::Image::new(t)
+                                                        .fit_to_exact_size(egui::vec2(126.0, 126.0)),
+                                                );
+                                            }
+                                            ui.add_space(3.0);
+                                            ui.label(RichText::new(label).size(9.0).color(DIM));
+                                        });
+                                        ui.add_space(14.0);
+                                    }
+                                });
                                         },
                                     );
                                 });
