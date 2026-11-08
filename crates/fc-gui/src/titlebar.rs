@@ -62,7 +62,6 @@ impl App {
             egui::pos2(full.left() + 9.0, full.center().y - 12.0),
             egui::vec2(24.0, 24.0),
         );
-        accent_glow(ui.painter(), logo, Rounding::same(7.0), 80);
         ui.painter()
             .rect_filled(logo, Rounding::same(7.0), ACCENT);
         // 里面三条"电平条"：一眼能看出是音频工具
@@ -107,16 +106,16 @@ impl App {
                 .circle_filled(bell.center(), 12.0, tint(Color32::WHITE, 16));
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        bell_icon(
+        // 进度圆环：批处理时是进度条，完成后打勾，出错是感叹号；圆内保持透明
+        let (prog, ring_state) = self.batch_ring_state();
+        progress_ring(
             ui.painter(),
-            bell.shrink(5.0),
+            bell,
+            prog,
+            ring_state,
             if self.notices_open { TEXT } else { MUTED },
         );
-        if self.unread_notices() > 0 {
-            let dot = egui::pos2(bell.right() - 4.0, bell.top() + 4.0);
-            ui.painter().circle_filled(dot, 4.5, tint(DANGER, 55));
-            ui.painter().circle_filled(dot, 3.0, DANGER);
-        }
+
         if bell_resp.clicked() {
             self.notices_open = !self.notices_open;
             if self.notices_open {
@@ -266,42 +265,60 @@ pub(crate) fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, 
     resp.clicked()
 }
 
-/// 标题栏的铃铛。全部用 painter 画，不赌字体里有没有 🔔。
-pub(crate) fn bell_icon(p: &egui::Painter, rect: egui::Rect, color: Color32) {
+/// 标题栏上的圆环：批处理进度 / 完成打勾 / 出错感叹号。圆里始终是透明的。
+pub(crate) fn progress_ring(
+    p: &egui::Painter,
+    rect: egui::Rect,
+    progress: f32,
+    state: BatchRing,
+    idle_color: Color32,
+) {
     let c = rect.center();
-    let s = rect.width().min(rect.height());
-    // 钟身：上面两个大圆角，下面收窄
-    p.rect_filled(
-        egui::Rect::from_center_size(
-            c + egui::vec2(0.0, 0.02 * s),
-            egui::vec2(0.58 * s, 0.46 * s),
-        ),
-        Rounding {
-            nw: 0.29 * s,
-            ne: 0.29 * s,
-            sw: 0.10 * s,
-            se: 0.10 * s,
-        },
-        color,
-    );
-    // 顶部提手
-    p.rect_filled(
-        egui::Rect::from_center_size(
-            c + egui::vec2(0.0, -0.28 * s),
-            egui::vec2(0.16 * s, 0.10 * s),
-        ),
-        Rounding::same(1.0),
-        color,
-    );
-    // 底沿
-    p.rect_filled(
-        egui::Rect::from_center_size(
-            c + egui::vec2(0.0, 0.20 * s),
-            egui::vec2(0.68 * s, 0.09 * s),
-        ),
-        Rounding::same(0.045 * s),
-        color,
-    );
-    // 铃舌
-    p.circle_filled(c + egui::vec2(0.0, 0.31 * s), 0.075 * s, color);
+    let r = 8.6;
+    let w = 3.0;
+    // 底环
+    p.circle_stroke(c, r, Stroke::new(w, tint(Color32::WHITE, 30)));
+    match state {
+        BatchRing::Running => {
+            let frac = progress.clamp(0.0, 1.0);
+            if frac > 0.002 {
+                let n = (48.0 * frac) as usize + 2;
+                let pts: Vec<egui::Pos2> = (0..=n)
+                    .map(|i| {
+                        let a = -std::f32::consts::FRAC_PI_2
+                            + std::f32::consts::TAU * frac * (i as f32 / n as f32);
+                        c + egui::vec2(a.cos(), a.sin()) * r
+                    })
+                    .collect();
+                p.add(egui::Shape::line(pts, Stroke::new(w, ACCENT)));
+            }
+        }
+        BatchRing::Done => {
+            p.circle_stroke(c, r, Stroke::new(w, ACCENT));
+            let a = c + egui::vec2(-4.2, 0.2);
+            let b = c + egui::vec2(-1.2, 3.2);
+            let d = c + egui::vec2(4.4, -3.4);
+            p.add(egui::Shape::line(vec![a, b, d], Stroke::new(2.2, ACCENT)));
+        }
+        BatchRing::Error => {
+            p.circle_stroke(c, r, Stroke::new(w, DANGER));
+            p.line_segment(
+                [c + egui::vec2(0.0, -4.4), c + egui::vec2(0.0, 1.2)],
+                Stroke::new(2.2, DANGER),
+            );
+            p.circle_filled(c + egui::vec2(0.0, 4.2), 1.2, DANGER);
+        }
+        BatchRing::Idle => {
+            p.circle_stroke(c, r, Stroke::new(w, idle_color));
+        }
+    }
+}
+
+/// 圆环的四种状态
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BatchRing {
+    Idle,
+    Running,
+    Done,
+    Error,
 }

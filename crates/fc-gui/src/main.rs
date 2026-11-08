@@ -369,7 +369,6 @@ impl App {
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(BASE_ZOOM * cfg.ui_scale);
-        set_hdr(cfg.hdr);
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
         let cached_lib: Vec<LibEntry> = cfg
             .library_cache
@@ -851,6 +850,20 @@ impl App {
     }
 
 
+    /// 标题栏圆环要显示什么：进度 / 打勾 / 感叹号 / 空闲
+    pub(crate) fn batch_ring_state(&self) -> (f32, BatchRing) {
+        if self.running {
+            return (self.overall(), BatchRing::Running);
+        }
+        if self.items.iter().any(|i| matches!(i.state, State::Failed(_))) {
+            return (0.0, BatchRing::Error);
+        }
+        if !self.items.is_empty() && self.items.iter().all(|i| matches!(i.state, State::Done(..))) {
+            return (1.0, BatchRing::Done);
+        }
+        (0.0, BatchRing::Idle)
+    }
+
     fn overall(&self) -> f32 {
         if self.batch_total == 0 {
             return 0.0;
@@ -941,7 +954,8 @@ impl eframe::App for App {
 
         // 设置页打开时把主界面藏起来：设置页是半透明玻璃，
         // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。
-        let main_visible = !self.settings_open;
+        // 设置页滑出（settings_t 还没到 0）时主界面要画在下面，才能"露"出来
+        let main_visible = !self.settings_open || self.settings_t < 0.999;
         let mut do_start = false;
 
         if main_visible {

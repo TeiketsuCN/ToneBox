@@ -543,9 +543,6 @@ pub(crate) fn rail_big(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
     } else {
         Color32::TRANSPARENT
     };
-    if on {
-        accent_glow(p, rect, Rounding::same(9.0), 55);
-    }
     if fill != Color32::TRANSPARENT {
         p.rect_filled(rect, Rounding::same(9.0), fill);
     }

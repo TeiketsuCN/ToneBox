@@ -266,8 +266,9 @@ impl App {
             egui::pos2(screen.left(), top),
             screen.max,
         );
-        // 整页不透明，只做"从下往上滑"的位移，不做淡入——否则底下的界面会透出来
-        let offset = 0.0;
+        // 整页做"从下往上滑入 / 往下滑出"：滑出时主界面从上面露出来，
+        // 不会像以前那样滑 22px 就突然消失
+        let offset = (1.0 - t) * area.height();
 
         let mut changed = false;
 
@@ -282,7 +283,13 @@ impl App {
                 egui::Frame::none()
                     // 和主界面同一套"玻璃"：半透明底 + 壁纸透过来。
                     // 之前是 tint(BG, 255) 的纯黑，用户明确说不要。
-                    .fill(tint(BG, 148))
+                    // 滑动过程中偏实（避免主界面从底下透上来发脏），停稳后回到玻璃感
+                    .fill({
+                        // 滑动过程中几乎不透明（主界面不能从底下透上来），停稳后再回到玻璃感
+                        let k = ((t - 0.9) / 0.1).clamp(0.0, 1.0);
+                        let s = k * k * (3.0 - 2.0 * k);
+                        tint(BG, (255.0 - 107.0 * s) as u8)
+                    })
                     .inner_margin(egui::Margin::symmetric(28.0, 18.0))
                     .show(ui, |ui| {
                         // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2），否则 Area 会比区域大，
@@ -291,7 +298,7 @@ impl App {
                         ui.set_max_width(area.width() - 56.0);
                         // 顶部 44px 是原生标题栏命中区（HTCAPTION），
                         // 放在那里的按钮点不到，所以内容整体下移避开。
-                        ui.add_space(TITLEBAR_H + (1.0 - t) * 22.0);
+                                        ui.add_space(TITLEBAR_H);
 
                         // 顶栏
                         // 返回：用显式矩形做命中区，避免按钮布局和视觉位置对不上
@@ -333,6 +340,14 @@ impl App {
                             .id_salt("settings_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
+                                let col_w = ((ui.available_width() - 28.0) / 2.0).max(240.0);
+                                let col_h = ui.available_height().max(620.0);
+                                ui.horizontal_top(|ui| {
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(col_w, col_h),
+                                        Layout::top_down(Align::LEFT),
+                                        |ui| {
+                                            ui.set_max_width(col_w);
                                 // ── 外观 ──
                                 section(ui, "外观");
                                 ui.horizontal(|ui| {
@@ -375,26 +390,6 @@ impl App {
                                         changed = true;
                                     }
                                 });
-
-                                ui.add_space(10.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new("HDR 模式").size(10.5).color(MUTED));
-                                    ui.add_space(12.0);
-                                    for (val, label) in [(false, "关"), (true, "开")] {
-                                        let on = self.cfg.hdr == val;
-                                        if seg_button(ui, label, on) {
-                                            self.cfg.hdr = val;
-                                            set_hdr(val);
-                                            changed = true;
-                                        }
-                                    }
-                                });
-                                ui.add_space(4.0);
-                                ui.label(
-                                    RichText::new("更亮的强调色 + 发光，只影响界面观感，不改音频参数")
-                                        .size(9.0)
-                                        .color(DIM),
-                                );
 
                                 // 界面缩放：字号是写死在各个控件里的，所以这里用 egui 的
                                 // 全局 zoom（文字 + 控件一起放大），而不是只改字体
@@ -440,6 +435,14 @@ impl App {
 
                                 ui.add_space(18.0);
 
+                                        },
+                                    );
+                                    ui.add_space(28.0);
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(col_w, col_h),
+                                        Layout::top_down(Align::LEFT),
+                                        |ui| {
+                                            ui.set_max_width(col_w);
                                 // ── 关于 ──
                                 section(ui, "关于");
                                 egui::Grid::new("about")
@@ -532,6 +535,9 @@ impl App {
                                         DIM,
                                     );
                                 }
+                                        },
+                                    );
+                                });
                             });
                     });
             });

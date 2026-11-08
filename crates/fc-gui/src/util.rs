@@ -3,7 +3,6 @@
 #![allow(unused_imports)]
 
 use eframe::egui;
-use std::sync::atomic::{AtomicBool, Ordering};
 use egui::{Align, Align2, Color32, FontId, Layout, RichText, Rounding, Stroke, Vec2};
 use std::path::{Path, PathBuf};
 use crate::*;
@@ -17,9 +16,6 @@ use crate::detail::*;
 use crate::output::*;
 use crate::library::*;
 use crate::overlays::*;
-
-/// HDR 模式（界面观感）：更亮的强调色 + 发光。只影响渲染，不改任何音频参数。
-pub(crate) static HDR_ON: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn tint(c: Color32, a: u8) -> Color32 {
     let k = a as u16;
@@ -159,26 +155,7 @@ pub(crate) fn lib_button(ui: &mut egui::Ui, label: &str, primary: bool) -> bool 
     })
     .rounding(Rounding::same(8.0))
     .min_size(egui::vec2(0.0, 24.0));
-    if primary {
-        let r = egui::Rect::from_min_size(
-            ui.cursor().min,
-            egui::vec2(ui.spacing().interact_size.x.max(80.0), 24.0),
-        );
-        accent_glow(ui.painter(), r, Rounding::same(8.0), 50);
-    }
     ui.add(b).clicked()
-}
-
-/// 在矩形外面套几层很淡的圆角光晕（HDR 模式下才画）
-pub(crate) fn accent_glow(p: &egui::Painter, rect: egui::Rect, rounding: Rounding, strength: u8) {
-    if !hdr() {
-        return;
-    }
-    for k in 1..=4u8 {
-        let grow = k as f32 * 1.7;
-        let a = (strength as u16 / (k as u16 + 1)).max(2) as u8;
-        p.rect_filled(rect.expand(grow), rounding, tint(ACCENT, a));
-    }
 }
 
 /// 和整体风格一致的小滑杆：细轨道 + 小圆点 +（可选）刻度 + 右侧数值。
@@ -317,9 +294,6 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
         return false;
     }
 
-    if can {
-        accent_glow(p, rect, rounding, 70);
-    }
     p.rect_filled(
         rect,
         rounding,
@@ -492,10 +466,3 @@ pub(crate) fn load_qr(ctx: &egui::Context, name: &str) -> Option<egui::TextureHa
     Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
 }
 
-pub fn hdr() -> bool {
-    HDR_ON.load(Ordering::Relaxed)
-}
-
-pub(crate) fn set_hdr(on: bool) {
-    HDR_ON.store(on, Ordering::Relaxed);
-}

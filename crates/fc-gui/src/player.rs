@@ -127,15 +127,7 @@ impl App {
                         if frac > 0.0 {
                             let mut f = track;
                             f.set_width(track.width() * frac);
-                            let c = if hdr() {
-                                Color32::from_rgb(150, 240, 228)
-                            } else {
-                                ACCENT
-                            };
-                            if hdr() {
-                                accent_glow(p, f, Rounding::same(2.0), 40);
-                            }
-                            p.rect_filled(f, Rounding::same(2.0), c);
+                            p.rect_filled(f, Rounding::same(2.0), ACCENT);
                         }
                         let knob_r = if resp.hovered() || resp.dragged() {
                             6.0

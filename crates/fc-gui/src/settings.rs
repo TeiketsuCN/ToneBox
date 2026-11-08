@@ -164,9 +164,6 @@ pub struct Settings {
     /// 是否写标签（默认关：先把文件转出来，标签需要时再开）
     #[serde(default)]
     pub write_tags: bool,
-    /// HDR 模式：更亮的强调色 + 发光（只影响界面观感）
-    #[serde(default)]
-    pub hdr: bool,
     /// 界面缩放（1.0 = 100%）。用 egui 的 zoom factor 实现，文字和控件一起放大，
     /// 否则我们那些写死的 `.size(9.5)` 根本不会变。
     #[serde(default = "default_ui_scale")]
@@ -205,7 +202,6 @@ impl Default for Settings {
             meta_album: String::new(),
             meta_cover: String::new(),
             write_tags: false,
-            hdr: false,
             ui_scale: 1.0,
             library_dirs: Vec::new(),
             library_files: Vec::new(),
