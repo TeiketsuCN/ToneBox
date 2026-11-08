@@ -617,7 +617,13 @@ impl App {
     /// 播放栏 + 底边距实际占掉的高度：队列/音乐库的滚动区要留这么多，
     /// 内容才不会钻到悬浮播放栏下面（栏高可拖，所以不能再用常量）。
     pub(crate) fn bar_reserve(&self) -> f32 {
-        self.bar_h + BAR_MARGIN + 10.0
+        // 只有播放栏还在默认贴底位置时才留空；拖到别处/收起后不留，
+        // 否则列表底下会出现一条莫名其妙的空白带。
+        if self.bar_collapsed || self.bar_pos.is_some() {
+            8.0
+        } else {
+            self.bar_h + BAR_MARGIN + 10.0
+        }
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
