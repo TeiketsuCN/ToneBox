@@ -338,6 +338,8 @@ pub struct ConvertOptions {
     pub eac3_bitrate: u32,
     /// WMA（wmav2）码率 kbps
     pub wma_bitrate: u32,
+    /// ATRAC3 码率 kbps（66 = LP4，132 = LP2；走外部的 atracdenc）
+    pub atrac3_bitrate: u32,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -355,6 +357,7 @@ impl Default for ConvertOptions {
             ac3_bitrate: 448,
             eac3_bitrate: 640,
             wma_bitrate: 192,
+            atrac3_bitrate: 132,
             sample_rate: None,
         }
     }
@@ -377,6 +380,9 @@ pub fn bitrate_choices(id: &str) -> &'static [u32] {
         "eac3" => &[192, 384, 640, 1024],
         // 老播放器通常只认到 192；给到 320 是留给新播放器。
         "wma" => &[128, 192, 256, 320],
+        // ATRAC3 在 atracdenc 里是两个编码器名字，不是一个码率参数：
+        // LP4 = 66k、LP2 = 132k（105k 只有 RealMedia 容器支持，本项目不做）
+        "atrac3" => &[66, 132],
         _ => &[],
     }
 }
@@ -409,6 +415,10 @@ pub fn bitrate_of(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
             "ac3" => o.ac3_bitrate,
             "eac3" => o.eac3_bitrate,
             "wma" => o.wma_bitrate,
+            "atrac3" => o.atrac3_bitrate,
+            // ATRAC1 只有 292k、ATRAC3+ 的 atracdenc 只支持 352k，都没有旋钮
+            "atrac1" => 292,
+            "atrac3p" => 352,
             // MP2 目前没做旋钮，码率写死在表里
             "mp2" => 256,
             _ => return None,
@@ -422,6 +432,7 @@ pub fn knob_note(spec: &FormatSpec) -> Option<&'static str> {
         "ac3" => "448k 是 DVD 立体声的默认值；多声道要按声道数另算。",
         "eac3" => "E-AC-3 同码率比 AC-3 省，但老功放、老电视只认 AC-3。",
         "wma" => "老播放器通常只认 128~192k，调高不一定放得动。",
+        "atrac3" => "132k = LP2，66k = LP4。这档由外部的 atracdenc 决定，不是 ffmpeg。",
         _ => return None,
     })
 }
@@ -493,6 +504,8 @@ pub enum Knob {
     Ac3Bitrate,
     Eac3Bitrate,
     WmaBitrate,
+    /// ATRAC3 的 LP2 / LP4 档（66 / 132 kbps），走外部 atracdenc
+    Atrac3Bitrate,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
 }
@@ -514,7 +527,19 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "eac3" => &[Knob::Eac3Bitrate, Knob::SampleRate],
         "wma" => &[Knob::WmaBitrate, Knob::SampleRate],
         "mp2" => &[Knob::SampleRate],
+        // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
+        "atrac3" => &[Knob::Atrac3Bitrate],
         _ => &[],
+    }
+}
+
+/// 这个格式要靠哪个**外部**编码器（不随包分发）。`None` = 走内置 ffmpeg。
+///
+/// 边界：ATRAC9 不在里面——atracdenc 不支持它，而且专利还在保护期。
+pub fn external_encoder(id: &str) -> Option<&'static str> {
+    match id {
+        "atrac1" | "atrac3" | "atrac3p" => Some(crate::external::NAME),
+        _ => None,
     }
 }
 
@@ -875,6 +900,7 @@ mod tests {
         assert_eq!(o.ac3_bitrate, 448);
         assert_eq!(o.eac3_bitrate, 640);
         assert_eq!(o.wma_bitrate, 192);
+        assert_eq!(o.atrac3_bitrate, 132);
         // 老配置里没有采样率 = 自动，不能变成 Some(0)
         assert_eq!(o.sample_rate, None);
     }
@@ -903,6 +929,40 @@ mod tests {
 
         // Vorbis 没有固定码率，走原来的 size_ratio 估算，不该是 0
         assert!(estimate_size(&info, spec("vorbis"), &o) > 0);
+    }
+
+    #[test]
+    fn atrac_formats_are_external_and_optional() {
+        for id in ["atrac1", "atrac3", "atrac3p"] {
+            let s = spec(id);
+            assert!(s.can_encode, "{id} 应该能作为输出目标");
+            assert_eq!(external_encoder(id), Some("atracdenc"), "{id} 应该走外部编码器");
+            assert!(encoder_for(id).is_none(), "{id} 不该被当成 ffmpeg 编码器");
+            // atracdenc 只吃 44.1k，界面上不该出现采样率旋钮
+            assert!(rate_choices(id).is_empty());
+        }
+        // ATRAC9 不开放：专利在保护期，atracdenc 也不支持
+        assert!(external_encoder("atrac9").is_none());
+        assert!(!spec("atrac9").can_encode);
+
+        // ATRAC3 只有 LP2 / LP4 两档
+        assert_eq!(bitrate_choices("atrac3"), &[66, 132]);
+        let mut o = ConvertOptions::default();
+        assert_eq!(bitrate_of(spec("atrac3"), &o), Some(132));
+        o.atrac3_bitrate = 66;
+        assert_eq!(bitrate_of(spec("atrac3"), &o), Some(66));
+        assert_eq!(bitrate_of(spec("atrac1"), &o), Some(292));
+        assert_eq!(bitrate_of(spec("atrac3p"), &o), Some(352));
+    }
+
+    #[test]
+    fn atrac_codec_names_match_atracdenc() {
+        // 名字写错的话转换时才炸，而且报错来自外部工具，很难查
+        assert_eq!(crate::external::codec_for("atrac1", 132), Some("atrac1"));
+        assert_eq!(crate::external::codec_for("atrac3", 132), Some("atrac3"));
+        assert_eq!(crate::external::codec_for("atrac3", 66), Some("atrac3_lp4"));
+        assert_eq!(crate::external::codec_for("atrac3p", 352), Some("atrac3plus"));
+        assert_eq!(crate::external::codec_for("flac", 132), None);
     }
 
     #[test]

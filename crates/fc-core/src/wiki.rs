@@ -203,20 +203,21 @@ static TABLE: &[(&str, &str)] = &[
         "1992 年索尼 MiniDisc 的初代编码，MD SP 固定 292kbps、44.1kHz，把 CD 压到约五分之一。\
          MD 在 1990 年代到 2000 年代初是便携录音/随身听的主流。\
          坑是 .aea 是 MD 导出容器，.oma 可能是加密 OpenMG；它只有 292k 一档。\
-         ffmpeg 只解不编，本工具只解码。和 ATRAC3 比它码率高、容量小；和 MP3 比它是索尼封闭生态。",
+         ffmpeg 只解不编；装了外部的 atracdenc（LGPL，自己装）才能编出 .aea，没装就只解码。\
+         和 ATRAC3 比它码率高、容量小；和 MP3 比它是索尼封闭生态。",
     ),
     (
         "atrac3",
         "1999 年索尼为 MDLP 推出的编码，66/105/132kbps 三档，让一张 MD 装更多歌，是 MD 后期的主力。\
          坑是 .oma 里可能是 ATRAC3 或 ATRAC3+，还可能是加密 OpenMG；同族不同码率截止频率差异很大。\
-         ffmpeg 只解不编，本工具只解码。\
+         ffmpeg 只解不编；装了 atracdenc 才能编 LP2 132k / LP4 66k 两档（105k 只有 RealMedia 容器支持）。\
          和 ATRAC1 比它容量大但音质妥协，和 ATRAC3+ 比它效率低。",
     ),
     (
         "atrac3p",
         "2003 年索尼的 ATRAC3+，Hi-MD、Walkman、PSP 都用过，码率 48~352kbps，同码率比 ATRAC3 明显好，\
          是 MD 末期和闪存 Walkman 的主力。坑是扩展名仍是 .oma/.at3/.aa3，和 ATRAC3 混在一起；\
-         .oma 有加密和不加密两种。ffmpeg 只解不编，本工具只解码。\
+         .oma 有加密和不加密两种。ffmpeg 只解不编；atracdenc 目前只能编 352k 一档，装了才可选。\
          和 ATRAC3 比它低码率更强，和 ATRAC9 比它更老。",
     ),
     (

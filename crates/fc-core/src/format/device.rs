@@ -1,4 +1,8 @@
-//! 设备专用组 —— 全部只能解码，不进侧栏。
+//! 设备专用组。
+//!
+//! ATRAC1 / ATRAC3 / ATRAC3+ 可以**有条件**作为输出：靠用户自己装的
+//! `atracdenc`（外部编码器，LGPL-2.1+，我们不随包分发）。没装的时候
+//! 界面上是灰的，并说明缺什么。ATRAC9 专利在保护期，只读。
 //!
 //! 这个文件双方都不要动。ATRAC 家族的历史信息写在这里，供百科使用。
 
@@ -12,9 +16,9 @@ pub static DEVICE: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Device,
         patent: Patent::Free,
-        can_encode: false,
+        can_encode: true,
         primary: false,
-        blurb: "初代 MD 的编码（1992）。\n码率 292kbps，只能解码。",
+        blurb: "初代 MD 的编码（1992），292kbps 固定。\n要外部的 atracdenc 才能编码，没装只能解码。",
         args: &[],
         size_ratio: 0.09,
     },
@@ -25,9 +29,9 @@ pub static DEVICE: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Device,
         patent: Patent::Free,
-        can_encode: false,
+        can_encode: true,
         primary: false,
-        blurb: "索尼 1999 年的 MDLP 编码。\n只能解码（专利已过期），无法编码。",
+        blurb: "索尼 1999 年的 MDLP 编码（LP2 132k / LP4 66k）。\n需要外部的 atracdenc，没装就只能解码。",
         args: &[],
         size_ratio: 0.06,
     },
@@ -38,9 +42,9 @@ pub static DEVICE: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Device,
         patent: Patent::Expiring,
-        can_encode: false,
+        can_encode: true,
         primary: false,
-        blurb: "索尼 2003 年的编码，Hi-MD / Walkman 用。\n只能解码。同一个 .oma 扩展名有加密和不加密两种。",
+        blurb: "索尼 2003 年的编码，Hi-MD / Walkman 用。\natracdenc 目前只到 352k 一档；.oma 有加密和不加密两种。",
         args: &[],
         size_ratio: 0.06,
     },

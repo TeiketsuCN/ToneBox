@@ -144,6 +144,26 @@ enum Msg {
     Finished,
 }
 
+/// 一个转换任务。ATRAC 走外部工具，参数和 ffmpeg 完全不一样，所以分成两种。
+enum Job {
+    /// ffmpeg 一把梭（绝大多数格式）
+    Ffmpeg {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        args: Vec<String>,
+        dur: f64,
+    },
+    /// 外部 atracdenc：先 ffmpeg 解码成 WAV，再交给它编码
+    Atrac {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        codec: &'static str,
+        dur: f64,
+    },
+}
+
 struct App {
     tools: Option<Tools>,
     items: Vec<Item>,
@@ -188,6 +208,8 @@ struct App {
     donate_alipay: Option<egui::TextureHandle>,
     /// 当前 ffmpeg 实际带哪些编码器（开机问一次）
     encoders: std::collections::HashSet<String>,
+    /// 外部 ATRAC 编码器（atracdenc）。用户自己装，我们不随包分发。
+    atracdenc: Option<PathBuf>,
     /// 格式百科
     wiki_open: bool,
     wiki_sel: &'static str,
@@ -248,6 +270,7 @@ impl App {
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat.png"),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay.png"),
             encoders,
+            atracdenc: fc_core::find_atracdenc(),
             wiki_open: false,
             wiki_sel: "flac",
             wiki_filter: String::new(),
@@ -297,7 +320,9 @@ impl App {
 
     fn start_batch(&mut self, ctx: &egui::Context) {
         let Some(tools) = self.tools.clone() else { return };
-        let mut jobs: Vec<(usize, PathBuf, PathBuf, Vec<String>, f64)> = Vec::new();
+        let atracdenc = self.atracdenc.clone();
+        let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
+        let mut jobs: Vec<Job> = Vec::new();
         for (i, it) in self.items.iter_mut().enumerate() {
             if it.info.is_none() || !matches!(it.state, State::Pending) {
                 continue;
@@ -305,6 +330,20 @@ impl App {
             let spec = it.spec(self.target);
             let out = unique_output_in(&it.path, spec.ext, &self.cfg);
             let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
+
+            // ATRAC 走外部编码器：ffmpeg 只负责解码，标签/封面写不进去，直接分派
+            if let Some(codec) = fc_core::external::codec_for(spec.id, atrac3_kbps) {
+                jobs.push(Job::Atrac {
+                    idx: i,
+                    input: it.path.clone(),
+                    out,
+                    codec,
+                    dur,
+                });
+                it.state = State::Running(0.0);
+                continue;
+            }
+
             // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
             let mut args = fc_core::args_for(spec, &self.cfg.opts);
 
@@ -340,7 +379,13 @@ impl App {
                 args.extend(fc_core::metadata_args(&mw));
             }
 
-            jobs.push((i, it.path.clone(), out, args, dur));
+            jobs.push(Job::Ffmpeg {
+                idx: i,
+                input: it.path.clone(),
+                out,
+                args,
+                dur,
+            });
             it.state = State::Running(0.0);
         }
         if jobs.is_empty() {
@@ -355,25 +400,65 @@ impl App {
         let ctx2 = ctx.clone();
 
         std::thread::spawn(move || {
-            for (idx, input, out, args, dur) in jobs {
-                let tx_p = tx.clone();
-                let ctx_p = ctx2.clone();
-                let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
-                let res = fc_core::ffmpeg::convert_with_inputs(
-                    &tools,
-                    &input,
-                    &out,
-                    &arg_refs,
-                    &[],
-                    dur,
-                    Box::new(move |p| {
-                        let _ = tx_p.send(Msg::Progress(idx, p));
-                        ctx_p.request_repaint();
-                    }),
-                );
+            for job in jobs {
+                let (idx, out) = match &job {
+                    Job::Ffmpeg { idx, out, .. } => (*idx, out.clone()),
+                    Job::Atrac { idx, out, .. } => (*idx, out.clone()),
+                };
+                let res = match job {
+                    Job::Ffmpeg {
+                        idx,
+                        input,
+                        out,
+                        args,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
+                        fc_core::ffmpeg::convert_with_inputs(
+                            &tools,
+                            &input,
+                            &out,
+                            &arg_refs,
+                            &[],
+                            dur,
+                            Box::new(move |p| {
+                                let _ = tx_p.send(Msg::Progress(idx, p));
+                                ctx_p.request_repaint();
+                            }),
+                        )
+                    }
+                    Job::Atrac {
+                        idx,
+                        input,
+                        out,
+                        codec,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match atracdenc.as_ref() {
+                            Some(exe) => fc_core::external::convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                codec,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!(
+                                "找不到 atracdenc。ATRAC 输出需要你自己装它（设置页有说明）。"
+                            )),
+                        }
+                    }
+                };
                 match res {
                     Ok(size) => {
-                        // convert_with_inputs 直接返回输出字节数
                         let _ = tx.send(Msg::Done(idx, out, size));
                     }
                     Err(e) => {
@@ -995,9 +1080,13 @@ impl App {
         dt: f32,
     ) -> bool {
         let mut animating = false;
-        // 这个二进制里到底有没有对应的编码器
+        // 编码器分两类：ffmpeg 自带的，和用户自己装的外部编码器（atracdenc）
+        let external = fc_core::external_encoder(spec.id);
         let enc = fc_core::encoder_for(spec.id);
-        let enc_ok = enc.map(|e| self.encoders.contains(e)).unwrap_or(true);
+        let enc_ok = match external {
+            Some(_) => self.atracdenc.is_some(),
+            None => enc.map(|e| self.encoders.contains(e)).unwrap_or(true),
+        };
         let selectable = spec.can_encode;
         // 编码器缺失时不能选为输出，否则转换时才炸
         let usable = selectable && enc_ok;
@@ -1039,10 +1128,16 @@ impl App {
 
         let mut resp = ui.add(row);
         if !enc_ok {
-            resp = resp.on_hover_text(format!(
-                "你的机器上似乎没有这个编码器（{}）\n换个 ffmpeg 构建可能就有，或者别选这个格式。",
-                enc.unwrap_or("?")
-            ));
+            let msg = match external {
+                Some(name) => format!(
+                    "你的系统里还没装 {name}（ATRAC 外部编码器）\n装好后放到程序目录或 PATH，再到设置里点「重新检测」。\n它不随本程序分发，装不装由你决定。"
+                ),
+                None => format!(
+                    "你的机器上似乎没有这个编码器（{}）\n换个 ffmpeg 构建可能就有，或者别选这个格式。",
+                    enc.unwrap_or("?")
+                ),
+            };
+            resp = resp.on_hover_text(msg);
         } else if !selectable {
             resp = resp.on_hover_text("只读格式：能解码，不能作为输出目标");
         }
@@ -1083,6 +1178,21 @@ impl App {
         }
 
         animating
+    }
+
+    /// 这个目标格式现在能不能真的转出来（含外部工具的判断）。
+    ///
+    /// 侧栏、百科页、"设为输出格式"按钮都用它，免得三处各写一套条件。
+    fn target_available(&self, spec: &FormatSpec) -> bool {
+        if !spec.can_encode {
+            return false;
+        }
+        match fc_core::external_encoder(spec.id) {
+            Some(_) => self.atracdenc.is_some(),
+            None => fc_core::encoder_for(spec.id)
+                .map(|e| self.encoders.contains(e))
+                .unwrap_or(true),
+        }
     }
 
     fn queue(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
@@ -1545,23 +1655,20 @@ impl App {
                                                     .color(MUTED),
                                             );
                                             ui.label(RichText::new("·").size(9.5).color(DIM));
-                                            let w = if spec.can_encode {
-                                                "可以转成这个"
+                                            let (w, wc) = if !spec.can_encode {
+                                                ("只能读，不能转出", WARN)
+                                            } else if self.target_available(spec) {
+                                                ("可以转成这个", ACCENT)
                                             } else {
-                                                "只能读，不能转出"
+                                                ("要装外部编码器才能转出", WARN)
                                             };
-                                            ui.label(RichText::new(w).size(9.5).color(
-                                                if spec.can_encode { ACCENT } else { WARN },
-                                            ));
+                                            ui.label(RichText::new(w).size(9.5).color(wc));
                                         });
                                         ui.add_space(14.0);
 
                                         // 百科是"挑格式"的最后一站：看完解释直接换输出目标，
                                         // 不用再回侧栏找一遍。
-                                        let enc_ok = fc_core::encoder_for(spec.id)
-                                            .map(|e| self.encoders.contains(e))
-                                            .unwrap_or(true);
-                                        if spec.can_encode && enc_ok {
+                                        if spec.can_encode && self.target_available(spec) {
                                             let is_target = spec.id == self.target.id;
                                             let btn = egui::Button::new(
                                                 RichText::new(if is_target {
@@ -1598,13 +1705,13 @@ impl App {
                                             );
                                         } else if spec.can_encode {
                                             ui.add_space(2.0);
+                                            let why = if fc_core::external_encoder(spec.id).is_some() {
+                                                "你的系统里还没装 atracdenc（外部编码器），暂时不能转成它。装好后到设置里点「重新检测」。"
+                                            } else {
+                                                "你的 ffmpeg 里没有这个编码器，暂时不能转成它。"
+                                            };
                                             card(ui, DANGER, |ui| {
-                                                para(
-                                                    ui,
-                                                    "你的 ffmpeg 里没有这个编码器，暂时不能转成它。",
-                                                    10.0,
-                                                    MUTED,
-                                                );
+                                                para(ui, why, 10.0, MUTED);
                                             });
                                         }
 
@@ -1774,9 +1881,51 @@ impl App {
                                 row(ui, "版本", "0.1.0");
                                 row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
                                 row(ui, "音频解码", "ffmpeg 子进程");
+                                row(ui, "ATRAC 编码", "atracdenc（LGPL-2.1+，需自行安装）");
                                 row(ui, "频谱分析", "fc-analyze（自研）");
                                 row(ui, "许可", "开源，详见仓库");
                             });
+
+                        ui.add_space(8.0);
+                        match &self.atracdenc {
+                            Some(p) => para(
+                                ui,
+                                &format!("atracdenc：已找到  {}", p.display()),
+                                9.0,
+                                ACCENT,
+                            ),
+                            None => para(
+                                ui,
+                                "atracdenc：未安装 —— ATRAC1 / ATRAC3 / ATRAC3+ 暂时只能解码，不能转出。",
+                                9.0,
+                                WARN,
+                            ),
+                        }
+                        ui.horizontal(|ui| {
+                            let b = egui::Button::new(
+                                RichText::new("重新检测外部工具").size(9.0).color(MUTED),
+                            )
+                            .fill(tint(Color32::WHITE, 10))
+                            .stroke(line(Color32::WHITE, 18))
+                            .rounding(Rounding::same(7.0));
+                            if ui.add(b).clicked() {
+                                self.atracdenc = fc_core::find_atracdenc();
+                                changed = true;
+                            }
+                            if self.atracdenc.is_some() {
+                                ui.label(
+                                    RichText::new("ATRAC 输出已可用")
+                                        .size(9.0)
+                                        .color(ACCENT),
+                                );
+                            }
+                        });
+                        para(
+                            ui,
+                            "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。",
+                            8.5,
+                            DIM,
+                        );
 
                         ui.add_space(18.0);
                         section(ui, "支持开发");
@@ -2158,8 +2307,7 @@ impl App {
 
 
     /// 当前参数的一句话摘要（"8 · 跟源" 这种），显示在输出列标题下
-    fn knob_summary(&self) -> String {
-        use fc_core::Knob;
+    fn knob_summary(&self) -> String {        use fc_core::Knob;
         let o = &self.cfg.opts;
         let mut parts: Vec<String> = Vec::new();
         for k in fc_core::knobs_for(self.target) {
@@ -2173,6 +2321,7 @@ impl App {
                 Knob::Ac3Bitrate => parts.push(format!("{}k", o.ac3_bitrate)),
                 Knob::Eac3Bitrate => parts.push(format!("{}k", o.eac3_bitrate)),
                 Knob::WmaBitrate => parts.push(format!("{}k", o.wma_bitrate)),
+                Knob::Atrac3Bitrate => parts.push(format!("{}k", o.atrac3_bitrate)),
                 Knob::SampleRate => match fc_core::output_rate(self.target, o) {
                     Some(r) => parts.push(fmt_rate(r)),
                     None => parts.push("跟源".into()),
@@ -2180,7 +2329,12 @@ impl App {
             }
         }
         if parts.is_empty() {
-            "默认".into()
+            // 没有旋钮的格式（ATRAC1 / ATRAC3+）也把固定码率写出来，
+            // 否则标题只有"默认"，用户不知道会转成多少
+            match fc_core::bitrate_of(self.target, o) {
+                Some(k) => format!("{k}k"),
+                None => "默认".into(),
+            }
         } else {
             parts.join(" · ")
         }
@@ -2251,6 +2405,16 @@ impl App {
         }
         for k in knobs {
             changed |= self.knob_row(ui, *k);
+        }
+        // 外部编码器：让用户知道这一步不是 ffmpeg 干的
+        if let Some(name) = fc_core::external_encoder(self.target.id) {
+            ui.add_space(4.0);
+            para(
+                ui,
+                &format!("由外部编码器 {name} 完成（不随包，需你自己安装）。"),
+                8.5,
+                DIM,
+            );
         }
 
         ui.add_space(14.0);
@@ -2600,6 +2764,9 @@ impl App {
                 changed |= bitrate_row(ui, "eac3", &mut self.cfg.opts.eac3_bitrate)
             }
             Knob::WmaBitrate => changed |= bitrate_row(ui, "wma", &mut self.cfg.opts.wma_bitrate),
+            Knob::Atrac3Bitrate => {
+                changed |= bitrate_row(ui, "atrac3", &mut self.cfg.opts.atrac3_bitrate)
+            }
             Knob::SampleRate => changed |= self.sample_rate_row(ui),
         }
         changed
@@ -3049,6 +3216,10 @@ fn main() -> eframe::Result<()> {
                 println!("ffprobe: {}", t.ffprobe.display());
             }
             None => println!("没找到 ffmpeg（需要 ffmpeg.exe + ffprobe.exe）"),
+        }
+        match fc_core::find_atracdenc() {
+            Some(p) => println!("atracdenc: {}", p.display()),
+            None => println!("atracdenc: 未安装（ATRAC 输出需要它，见设置页说明）"),
         }
         return Ok(());
     }
