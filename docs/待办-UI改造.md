@@ -540,3 +540,26 @@ if bar_slider(ui, &mut dim, 0, 210, false) { ... }
 
 顺手检查：`暗化` 右侧的数字现在没有固定宽度，0~99 和 100~210 之间会让整行宽度跳变，拉的时候会抖。
 
+### 5. 全屏退出后整个屏幕变暗（要关一次 HDR 再开才恢复）
+
+用户反馈：按 F11 进全屏用了软件，退出后**整个 Windows 桌面**都变暗了，得去设置里把 HDR 关掉再打开才恢复正常亮度。
+
+这不是我们画的界面变暗，是**系统色彩管线被改过没还回来**，指向 `ViewportCommand::Fullscreen(true)`。
+
+可能的原因（按可能性排序）：
+
+1. **winit 的全屏切换改了显示模式 / 色彩空间**。我们的窗口是 `with_transparent(true)` + glow 渲染，进全屏时 swapchain 的 color space 可能被切成 sRGB/linear，退出时 DWM 的 SDR 白点亮度（SDR white level）没有恢复 —— Win11 开了 HDR/Auto Color Management 时就会表现为"整个屏幕暗一截"。
+2. **独占全屏 vs 无边框全屏**：winit 0.30 的 `Fullscreen::Exclusive` 会真的切显示模式，`Borderless(monitor)` 不会。如果 eframe 走的是 Exclusive，就会动到 HDR 管线。
+3. 我们自己的窗口已经是无边框 + 自绘标题栏了，**其实根本不需要"真全屏"**。
+
+建议改法（推荐第 1 个）：
+
+1. **把"全屏"实现成"铺满工作区的普通窗口"**，不发 `ViewportCommand::Fullscreen`：
+   - 记录当前窗口尺寸 → `InnerSize(monitor.size)` + `Position(0,0)`（用 `ViewportCommand::OuterPosition` 或 `SetWindowPos`）；
+   - 退出时把尺寸恢复成配置档位（现在已经是这个逻辑）；
+   - 因为窗口本来就无边框、无最大化按钮，视觉上和全屏没区别，而且**完全不碰显示模式和色彩空间**，HDR 也不会出问题。
+2. 如果一定要用 eframe 的全屏：改成 `Fullscreen::Borderless(Some(monitor))`，并在退出后主动 `send_viewport_cmd(InnerSize(...))` + 让窗口重绘一帧（现在已经有 InnerSize 那步）。
+3. 兜底：退出全屏时调一次 `DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ...)` 或 `InvalidateRect`，逼 DWM 重新合成。（治标）
+
+复现步骤：Win11 + 开启 HDR → F11 进全屏 → 退出 → 桌面整体变暗 → 关闭再开启 HDR 恢复。
+
