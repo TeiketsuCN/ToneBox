@@ -3596,7 +3596,7 @@ impl App {
                     }
                     if m.sample_rate > 0 {
                         let text = if is_dsd(&m.codec) {
-                            let tier = dsd_tier(&m.codec, m.sample_rate, m.bitrate_kbps);
+                            let tier = dsd_tier_label(&m.codec, m.sample_rate, m.bitrate_kbps);
                             if tier.is_empty() {
                                 fmt_dsd_mhz(m.sample_rate)
                             } else {
@@ -3643,49 +3643,78 @@ impl App {
                     });
                 }
                 Analysis::Done(r) => {
-                    para(ui, "质量评估", 9.5, DIM);
-                    ui.add_space(6.0);
-                    egui::Grid::new("quality_grid")
-                        .num_columns(2)
-                        .spacing([12.0, 6.0])
-                        .show(ui, |ui| {
-                            row(
-                                ui,
-                                "截止频率",
-                                &format!("{:.1} kHz", r.cutoff_hz / 1000.0),
-                            );
-                            let est = if !r.estimate.is_empty()
-                                && r.estimate
-                                    .chars()
-                                    .all(|c| c.is_ascii_digit() || c == '~')
-                            {
-                                format!("{} kbps", r.estimate)
-                            } else {
-                                r.estimate.clone()
-                            };
-                            row(ui, "推测源质量", &est);
+                    if let Some(d) = &r.dsd {
+                        // DSD 不走"截止频率推码率"那套：只报格式事实，别给一个假的置信度
+                        para(ui, "质量评估", 9.5, DIM);
+                        ui.add_space(6.0);
+                        let tier = if d.tier > 0 {
+                            format!("DSD{}", d.tier)
+                        } else {
+                            "DSD".to_string()
+                        };
+                        egui::Grid::new("dsd_quality_grid")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                row(
+                                    ui,
+                                    "编码",
+                                    &format!("{tier} · {}", fmt_mhz(d.bit_rate_hz)),
+                                );
+                                row(ui, "位深", "1 bit");
+                                row(ui, "判定", "无损源码");
+                            });
+                    } else {
+                        para(ui, "质量评估", 9.5, DIM);
+                        ui.add_space(6.0);
+                        egui::Grid::new("quality_grid")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                row(
+                                    ui,
+                                    "截止频率",
+                                    &format!("{:.1} kHz", r.cutoff_hz / 1000.0),
+                                );
+                                let est = if !r.estimate.is_empty()
+                                    && r.estimate
+                                        .chars()
+                                        .all(|c| c.is_ascii_digit() || c == '~')
+                                {
+                                    format!("{} kbps", r.estimate)
+                                } else {
+                                    r.estimate.clone()
+                                };
+                                row(ui, "推测源质量", &est);
 
-                            ui.label(RichText::new("置信度").size(9.5).color(DIM));
-                            let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(118.0, 10.0),
-                                egui::Sense::hover(),
-                            );
-                            let p = ui.painter();
-                            p.rect_filled(rect, Rounding::same(5.0), tint(Color32::WHITE, 14));
-                            let mut f = rect;
-                            f.set_width(rect.width() * (r.confidence as f32).clamp(0.0, 1.0));
-                            p.rect_filled(
-                                f,
-                                Rounding::same(5.0),
-                                if r.confidence > 0.6 { ACCENT } else { WARN },
-                            );
-                            ui.label(
-                                RichText::new(format!("{:.0}%", r.confidence * 100.0))
-                                    .size(9.0)
-                                    .color(DIM),
-                            );
-                            ui.end_row();
-                        });
+                                ui.label(RichText::new("置信度").size(9.5).color(DIM));
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(118.0, 10.0),
+                                    egui::Sense::hover(),
+                                );
+                                let p = ui.painter();
+                                p.rect_filled(
+                                    rect,
+                                    Rounding::same(5.0),
+                                    tint(Color32::WHITE, 14),
+                                );
+                                let mut f = rect;
+                                f.set_width(
+                                    rect.width() * (r.confidence as f32).clamp(0.0, 1.0),
+                                );
+                                p.rect_filled(
+                                    f,
+                                    Rounding::same(5.0),
+                                    if r.confidence > 0.6 { ACCENT } else { WARN },
+                                );
+                                ui.label(
+                                    RichText::new(format!("{:.0}%", r.confidence * 100.0))
+                                        .size(9.0)
+                                        .color(DIM),
+                                );
+                                ui.end_row();
+                            });
+                    }
 
                     if !r.caveats.is_empty() {
                         ui.add_space(8.0);
@@ -4698,7 +4727,11 @@ fn lib_row(
 
     // 右边的音质标识（上方）+ 时长（下方）
     let q = if e.codec == "DSD" {
-        Some(Quality::Dsd(dsd_rate(e.sample_rate, e.bitrate_kbps)))
+        Some(Quality::Dsd(fc_core::dsd_tier(
+            &e.codec,
+            e.sample_rate,
+            e.bitrate_kbps,
+        )))
     } else {
         quality_from(e.lossy, e.sample_rate, e.bits, e.bitrate_kbps)
     };
@@ -5043,7 +5076,7 @@ impl App {
                 let mut s = m.codec_label().to_string();
                 if m.sample_rate > 0 {
                     if is_dsd(&m.codec) {
-                        let tier = dsd_tier(&m.codec, m.sample_rate, m.bitrate_kbps);
+                        let tier = dsd_tier_label(&m.codec, m.sample_rate, m.bitrate_kbps);
                         if !tier.is_empty() {
                             s.push_str(&format!(" · {tier}"));
                         }
@@ -5237,34 +5270,6 @@ enum Quality {
     Lq,
 }
 
-/// DSD 档位（DSD64 / 128 / 256 / 512…）。
-///
-/// ffprobe 对 DSF 报的采样率是"字节率"（DSD64 = 352.8k），不能直接除以 44.1k；
-/// 优先用码率反推（立体声 DSD 码率 = 档位 × 88.2 kbps），这个不受容器写法影响。
-fn dsd_rate(sr: u32, kbps: u64) -> u32 {
-    const LEVELS: [u32; 5] = [64, 128, 256, 512, 1024];
-    if kbps > 0 {
-        let est = kbps as f64 * 1000.0 / 88200.0;
-        for l in LEVELS {
-            if (est - l as f64).abs() <= l as f64 * 0.06 {
-                return l;
-            }
-        }
-    }
-    for base in [44100u32, 48000] {
-        let bit = sr.saturating_mul(8);
-        if bit >= base && bit % base == 0 && LEVELS.contains(&(bit / base)) {
-            return bit / base;
-        }
-    }
-    for base in [44100u32, 48000] {
-        if sr >= base && sr % base == 0 && LEVELS.contains(&(sr / base)) {
-            return sr / base;
-        }
-    }
-    0
-}
-
 /// 从"有没有损 + 采样率 + 位深 + 码率"判档（音乐库的缓存里只有这些字段）
 fn quality_from(lossy: bool, sr: u32, bits: Option<u32>, kbps: u64) -> Option<Quality> {
     if sr == 0 {
@@ -5292,7 +5297,11 @@ fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
         return None;
     }
     if m.codec.starts_with("dsd") {
-        return Some(Quality::Dsd(dsd_rate(m.sample_rate, m.bitrate_kbps)));
+        return Some(Quality::Dsd(fc_core::dsd_tier(
+            &m.codec,
+            m.sample_rate,
+            m.bitrate_kbps,
+        )));
     }
     quality_from(m.is_lossy(), m.sample_rate, m.bits, m.bitrate_kbps)
 }
@@ -5565,24 +5574,27 @@ fn is_dsd(codec: &str) -> bool {
 
 /// DSD 的采样率写法：ffprobe 报的是"字节率"（DSD64 = 352.8k），×8 才是真正的 1-bit 频率。
 /// 用 MHz 写（2.8224 MHz），别跟 PCM 的 kHz 混在一起。
-fn fmt_dsd_mhz(sr: u32) -> String {
-    let mhz = sr as f64 * 8.0 / 1_000_000.0;
-    let s = format!("{mhz:.4}");
+fn fmt_mhz(hz: f64) -> String {
+    let s = format!("{:.4}", hz / 1_000_000.0);
     let s = s.trim_end_matches('0').trim_end_matches('.');
     format!("{s} MHz")
 }
 
+fn fmt_dsd_mhz(sr: u32) -> String {
+    fmt_mhz(fc_core::dsd_bit_rate_hz(sr))
+}
+
 /// 队列里更短的 DSD 采样率写法：2.8M
 fn fmt_dsd_m(sr: u32) -> String {
-    format!("{:.1}M", sr as f64 * 8.0 / 1_000_000.0)
+    format!("{:.1}M", fc_core::dsd_bit_rate_hz(sr) / 1_000_000.0)
 }
 
 /// DSD 的档位标签（DSD64 / DSD128…），认不出来就空
-fn dsd_tier(codec: &str, sr: u32, kbps: u64) -> String {
+fn dsd_tier_label(codec: &str, sr: u32, kbps: u64) -> String {
     if !is_dsd(codec) {
         return String::new();
     }
-    let rate = dsd_rate(sr, kbps);
+    let rate = fc_core::dsd_tier(codec, sr, kbps);
     if rate > 0 {
         format!("DSD{rate}")
     } else {

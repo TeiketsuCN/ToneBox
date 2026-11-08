@@ -50,6 +50,17 @@ pub struct QualityReport {
     pub confidence: f64,
     /// 误判风险说明，永远不为空才好
     pub caveats: Vec<String>,
+    /// Some = 这是 DSD：频谱不参与判档，界面上换一张"格式判定"卡
+    pub dsd: Option<DsdReport>,
+}
+
+/// DSD 的结论：只有格式事实，没有"推测码率"
+#[derive(Debug, Clone)]
+pub struct DsdReport {
+    /// 64 / 128 / 256 / 512 / 1024，0 = 认不出来
+    pub tier: u32,
+    /// 真正的 1-bit 采样率（Hz）
+    pub bit_rate_hz: f64,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -116,6 +127,26 @@ impl Guess {
 pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
     if info.sample_rate == 0 {
         bail!("采样率未知，无法做频谱分析");
+    }
+    // DSD 是 1-bit 脉冲密度编码，没有 MP3/AAC 那种"码率档位"，截止频率法在这里不适用。
+    // 直接按格式下结论，也别为了这张卡去解 90 秒的 PCM 再套 PCM 的阈值表。
+    if info.codec.starts_with("dsd") {
+        return Ok(QualityReport {
+            cutoff_hz: 0.0,
+            slope_db_per_khz: 0.0,
+            estimate: "无损（DSD 编码）".to_string(),
+            confidence: 1.0,
+            caveats: vec![
+                "DSD 是 1-bit 脉冲密度编码，没有按码率区分的档位；截止频率法在 DSD 上不适用，所以这里不做有损推测。"
+                    .to_string(),
+                "能确认的只有文件确实是 DSD。它是原生 DSD 录音，还是从 PCM 转制来的，本工具判断不了（要看发行信息或母带来源）。"
+                    .to_string(),
+            ],
+            dsd: Some(DsdReport {
+                tier: fc_core::dsd_tier(&info.codec, info.sample_rate, info.bitrate_kbps),
+                bit_rate_hz: fc_core::dsd_bit_rate_hz(info.sample_rate),
+            }),
+        });
     }
     let tools = locate().ok_or_else(|| {
         anyhow!("找不到 ffmpeg / ffprobe。请安装 FFmpeg，或把 ffmpeg.exe、ffprobe.exe 放到 PATH / C:\\ffmpeg\\bin。")
@@ -215,6 +246,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
         estimate,
         confidence,
         caveats,
+        dsd: None,
     })
 }
 

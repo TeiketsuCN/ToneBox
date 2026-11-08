@@ -30,7 +30,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 元数据与内嵌封面 | ✅ |
 | 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
 | 加密文件识别 + 解释（不解密） | ✅ |
-| 频谱质量评估（标定集 60/60，ATRAC 结论偏保守） | ✅ |
+| 频谱质量评估（标定集 60/60，ATRAC 结论偏保守；DSD 不做有损判定） | ✅ |
 | 命令行 `--convert` | ✅ |
 
 ---
