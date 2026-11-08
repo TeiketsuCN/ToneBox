@@ -479,7 +479,6 @@ impl App {
                                         // 署名用昵称，不写真名：隐私和以后转手都方便
                                         row(ui, "开发", "克洛伊Chloe");
                                         // 不写真名：昵称和收款码上的署名一致，隐私和转手都方便
-                                        row(ui, "开发", "Chloe");
                                         row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
                                         row(ui, "音频解码", "ffmpeg 子进程");
                                         row(ui, "ATRAC 编码", "atracdenc（LGPL-2.1+，需自行安装）");

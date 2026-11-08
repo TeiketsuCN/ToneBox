@@ -33,6 +33,8 @@ impl App {
     /// 点封面看大图（队列里那张只有 96px，点开时后台重新抽一次原图）。
     pub(crate) fn player_bar(&mut self, ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
+        // 行间距自己控制，别让默认 spacing 把总高度顶出 BAR_H
+        ui.spacing_mut().item_spacing.y = 0.0;
 
         let display = self
             .player_for

@@ -74,6 +74,15 @@ pub fn set_bell_left(x: f32) {
     BELL_LEFT.store(x.to_bits(), Ordering::Relaxed);
 }
 
+/// 左上角「logo + 名字」可点区域（点它回首页）。不设就一直是原生拖动区。
+static HOME_LEFT: AtomicU32 = AtomicU32::new(0);
+static HOME_RIGHT: AtomicU32 = AtomicU32::new(0);
+
+pub fn set_home_zone(left: f32, right: f32) {
+    HOME_LEFT.store(left.to_bits(), Ordering::Relaxed);
+    HOME_RIGHT.store(right.to_bits(), Ordering::Relaxed);
+}
+
 static OLD_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 unsafe extern "system" fn subclass_proc(
@@ -167,6 +176,16 @@ unsafe extern "system" fn subclass_proc(
                 let y0 = (((TITLEBAR_H - BELL_SIZE) * 0.5) * scale) as i32;
                 let y1 = (((TITLEBAR_H + BELL_SIZE) * 0.5) * scale) as i32;
                 if pt.x >= x0 && pt.x < x1 && pt.y >= y0 && pt.y < y1 {
+                    return HTCLIENT;
+                }
+            }
+            // 左上角 logo + 名字：留给 egui 处理点击（回首页）
+            let hl = f32::from_bits(HOME_LEFT.load(Ordering::Relaxed));
+            let hr = f32::from_bits(HOME_RIGHT.load(Ordering::Relaxed));
+            if hr > hl {
+                let x0 = (hl * scale) as i32;
+                let x1 = (hr * scale) as i32;
+                if pt.x >= x0 && pt.x < x1 {
                     return HTCLIENT;
                 }
             }

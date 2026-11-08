@@ -123,7 +123,7 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 // ── 品牌 ────────────────────────────────────────────────
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
-pub const APP_NAME: &str = "ToneBox";
+pub const APP_NAME: &str = "声箱ToneBox";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
@@ -1339,7 +1339,7 @@ impl eframe::App for App {
             };
             let bar_pos = egui::pos2(
                 LEFT_W + inset + bar_pad,
-                screen.bottom() - bar_h - 10.0 - inset,
+                screen.bottom() - bar_h - BAR_MARGIN - inset,
             );
             egui::Area::new(egui::Id::new("player_float"))
                 .order(egui::Order::Middle)
@@ -1350,6 +1350,13 @@ impl eframe::App for App {
                         // 半透明玻璃（列表已经在上面收住，不会有文字透过来）
                         .fill(tint(BG, 150))
                         .rounding(Rounding::same(14.0))
+                        // 悬浮：底部一圈柔和阴影，和下面的面板分开
+                        .shadow(egui::epaint::Shadow {
+                            offset: egui::vec2(0.0, 8.0),
+                            blur: 24.0,
+                            spread: 0.0,
+                            color: Color32::from_black_alpha(90),
+                        })
                         .inner_margin(egui::Margin::symmetric(12.0, 8.0))
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());

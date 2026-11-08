@@ -78,6 +78,11 @@ impl App {
             );
         }
         let name_font = egui::FontId::proportional(13.5);
+        let name_w = ui
+            .painter()
+            .layout_no_wrap(APP_NAME.to_string(), name_font.clone(), TEXT)
+            .size()
+            .x;
         ui.painter().text(
             egui::pos2(logo.right() + 10.0, full.center().y),
             egui::Align2::LEFT_CENTER,
@@ -85,44 +90,23 @@ impl App {
             name_font.clone(),
             TEXT,
         );
-
-        // 铃铛：紧跟在名字右边。它落在原生命中区里，frame.rs 那边要把它标成 HTCLIENT，
-        // 否则点它会被当成拖标题栏。
-        let name_w = ui
-            .painter()
-            .layout_no_wrap(APP_NAME.to_string(), name_font, TEXT)
-            .size()
-            .x;
-        let bell = egui::Rect::from_min_size(
-            egui::pos2(logo.right() + 10.0 + name_w + 10.0, full.center().y - 13.0),
-            egui::vec2(26.0, 26.0),
+        // 点左上角的 logo + 名字 = 回首页（输出页），顺手关掉设置
+        let home_rect = egui::Rect::from_min_max(
+            egui::pos2(logo.left() - 4.0, full.top()),
+            egui::pos2(logo.right() + 10.0 + name_w + 6.0, full.bottom()),
         );
-        self.bell_rect = bell;
         #[cfg(windows)]
-        frame::set_bell_left(bell.left());
-        let bell_resp = ui.interact(bell, ui.id().with("bell"), egui::Sense::click());
-        if bell_resp.hovered() {
-            ui.painter()
-                .circle_filled(bell.center(), 12.0, tint(Color32::WHITE, 16));
+        frame::set_home_zone(home_rect.left(), home_rect.right());
+        let home = ui.interact(home_rect, ui.id().with("home"), egui::Sense::click());
+        if home.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        // 进度圆环：批处理时是进度条，完成后打勾，出错是感叹号；圆内保持透明
-        let (prog, ring_state) = self.batch_ring_state();
-        progress_ring(
-            ui.painter(),
-            bell,
-            prog,
-            ring_state,
-            if self.notices_open { TEXT } else { MUTED },
-        );
-
-        if bell_resp.clicked() {
-            self.notices_open = !self.notices_open;
-            if self.notices_open {
-                for n in &mut self.notices {
-                    n.read = true;
-                }
+        if home.clicked() {
+            if self.page != Page::Convert {
+                self.page_t = 0.0;
             }
+            self.page = Page::Convert;
+            self.settings_open = false;
         }
 
         // 右边：图钉 / 最小化 / 最大化 / 关闭
@@ -161,6 +145,34 @@ impl App {
         rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
         if title_button(ui, rect, TitleBtn::Settings, self.settings_open) {
             self.settings_open = !self.settings_open;
+        }
+
+        // 转换进度小圆环：在设置左边，尺寸小一点
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        self.bell_rect = rect;
+        #[cfg(windows)]
+        frame::set_bell_left(rect.left());
+        let ring_resp = ui.interact(rect, ui.id().with("bell"), egui::Sense::click());
+        if ring_resp.hovered() {
+            ui.painter()
+                .circle_filled(rect.center(), 11.0, tint(Color32::WHITE, 16));
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let (prog, ring_state) = self.batch_ring_state();
+        progress_ring(
+            ui.painter(),
+            rect.shrink(3.0),
+            prog,
+            ring_state,
+            if self.notices_open { TEXT } else { MUTED },
+        );
+        if ring_resp.clicked() {
+            self.notices_open = !self.notices_open;
+            if self.notices_open {
+                for n in &mut self.notices {
+                    n.read = true;
+                }
+            }
         }
     }
 
@@ -276,8 +288,8 @@ pub(crate) fn progress_ring(
     idle_color: Color32,
 ) {
     let c = rect.center();
-    let r = 8.6;
-    let w = 3.0;
+    let r = 7.0;
+    let w = 2.6;
     // 底环
     p.circle_stroke(c, r, Stroke::new(w, tint(Color32::WHITE, 30)));
     match state {

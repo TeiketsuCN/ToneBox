@@ -391,9 +391,12 @@ pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
 /// 播放栏高度（封面 + 波形 + 进度条）。
 pub(crate) const BAR_H: f32 = 158.0;
 
+/// 播放栏离窗口底边的距离（悬浮感）
+pub(crate) const BAR_MARGIN: f32 = 24.0;
+
 /// 底部悬浮播放栏占掉的高度（条 + 10 底边距 + 余量）。
 /// 队列/详情/库的滚动区都留出这么多，内容不会钻到播放栏下面。
-pub(crate) const BAR_RESERVE: f32 = BAR_H + 18.0;
+pub(crate) const BAR_RESERVE: f32 = BAR_H + BAR_MARGIN + 10.0;
 
 /// 紧凑版圆点单选：宽度跟着文字走，可以一行放几个
 pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool {

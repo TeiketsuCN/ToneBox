@@ -32,7 +32,7 @@ pub fn activate_existing() {
         FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE,
     };
 
-    let title: Vec<u16> = "ToneBox\0".encode_utf16().collect();
+    let title: Vec<u16> = format!("{}\0", crate::APP_NAME).encode_utf16().collect();
     unsafe {
         let hwnd = FindWindowW(null(), title.as_ptr());
         if !hwnd.is_null() {
