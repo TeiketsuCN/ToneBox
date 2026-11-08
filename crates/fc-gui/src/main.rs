@@ -1532,19 +1532,11 @@ impl eframe::App for App {
                 .fixed_pos(egui::pos2(bx, by))
                 .show(ctx, |ui| {
                     ui.set_width(bar_w);
-                    let mut frame = egui::Frame::none()
+                    let frame = egui::Frame::none()
                         .fill(bar_fill)
                         .rounding(Rounding::same(14.0))
                         .inner_margin(egui::Margin::symmetric(12.0, 8.0));
-                    // 透明时不要阴影：否则底下会多一条"不知名"的暗带
-                    if bar_fill != Color32::TRANSPARENT {
-                        frame = frame.shadow(egui::epaint::Shadow {
-                            offset: egui::vec2(0.0, 8.0),
-                            blur: 24.0,
-                            spread: 0.0,
-                            color: Color32::from_black_alpha(90),
-                        });
-                    }
+                    // 不投阴影：底下那条暗带会被误认成"有东西挡着"
                     frame.show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         self.player_bar(ui);
