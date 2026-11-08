@@ -66,11 +66,11 @@ foreach ($lnk in $targets) {
   Write-Host "  $lnk"
 }
 # 老名字的桌面/开始菜单快捷方式删掉，避免重名两个
+# 注意：NTFS 不区分大小写，"tonebox.lnk" 会匹配到刚到建的 "ToneBox.lnk"，
+# 所以这里只能删真正的旧名字（中文），不能按大小写变体删。
 foreach ($lnk in @(
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Desktop'))  "tonebox.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "tonebox.lnk")
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk")
 )) {
   if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force; Write-Host "  已删除旧快捷方式 $lnk" }
 }

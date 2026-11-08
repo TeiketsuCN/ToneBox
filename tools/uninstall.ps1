@@ -3,8 +3,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 $AppDir  = 'D:\Apps\FormatConverter'
 $Display = 'ToneBox'
+# 只有真正的旧中文名要额外删；'tonebox' 在 NTFS 上和 'ToneBox' 是同一个文件
 $OldDisplay = '格式转换器'
-$OlderDisplay = 'tonebox'
 
 Get-Process -Name 'format-converter','格式转换器' | Stop-Process -Force
 Start-Sleep -Milliseconds 500
@@ -14,9 +14,7 @@ foreach ($lnk in @(
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$Display.lnk"),
   (Join-Path ([Environment]::GetFolderPath('Programs')) "$Display.lnk"),
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OlderDisplay.lnk"),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OlderDisplay.lnk")
+  (Join-Path ([Environment]::GetFolderPath('Programs')) "$OldDisplay.lnk")
 )) {
   if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force }
 }
