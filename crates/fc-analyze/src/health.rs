@@ -104,8 +104,8 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
     let channels = info.channels.clamp(1, 2);
     let ch = channels as usize;
 
-    let mut child = Command::new(&tools.ffmpeg)
-        .args(["-v", "error", "-nostdin", "-i"])
+    let mut cmd = Command::new(&tools.ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"])
         .arg(path)
         .args(["-map", "0:a:0", "-ac"])
         .arg(channels.to_string())
@@ -113,9 +113,14 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         .arg(RATE.to_string())
         .args(["-f", "f32le", "-"])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("启动 ffmpeg 失败（内容体检）")?;
+        .stderr(Stdio::piped());
+    // 不隐藏窗口的话，每选中一首歌都会弹一个黑框出来
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(crate::CREATE_NO_WINDOW);
+    }
+    let mut child = cmd.spawn().context("启动 ffmpeg 失败（内容体检）")?;
 
     let mut out = child.stdout.take().context("拿不到 ffmpeg 输出")?;
     let mut planner = FftPlanner::<f32>::new();
