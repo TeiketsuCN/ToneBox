@@ -235,6 +235,15 @@ impl App {
                                     row(ui, "响度", &format!("{:.1} LUFS", l.lufs));
                                 }
                             });
+
+                        // 置信度是怎么算出来的：一条条列出来，别只给个数字
+                        if !r.confidence_notes.is_empty() {
+                            ui.add_space(6.0);
+                            for n in &r.confidence_notes {
+                                para(ui, &format!("· {n}"), 9.0, tint(TEXT, 190));
+                                ui.add_space(1.0);
+                            }
+                        }
                     }
 
                     if !r.caveats.is_empty() {
