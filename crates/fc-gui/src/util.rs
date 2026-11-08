@@ -392,6 +392,45 @@ pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
 /// 队列/详情/库的滚动区都留出这么多，内容不会钻到播放栏下面。
 pub(crate) const BAR_RESERVE: f32 = 96.0;
 
+/// 紧凑版圆点单选：宽度跟着文字走，可以一行放几个
+pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), egui::FontId::proportional(10.0), TEXT);
+    let w = 20.0 + galley.size().x + 4.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::click());
+    let p = ui.painter();
+    let c = egui::pos2(rect.left() + 8.0, rect.center().y);
+    p.circle_stroke(
+        c,
+        6.0,
+        Stroke::new(
+            1.2,
+            if on {
+                ACCENT
+            } else if resp.hovered() {
+                tint(Color32::WHITE, 110)
+            } else {
+                tint(Color32::WHITE, 70)
+            },
+        ),
+    );
+    if on {
+        p.circle_filled(c, 3.3, ACCENT);
+    }
+    p.text(
+        egui::pos2(c.x + 14.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(10.0),
+        if on { TEXT } else { MUTED },
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
+
 /// 和「删除源文件」同一套圆点：空心环 + 选中时实心点。
 /// egui 自带的 radio 是另一套观感（小方块感的圆），不要混着用。
 pub(crate) fn radio_dot(ui: &mut egui::Ui, label: &str, on: bool) -> bool {

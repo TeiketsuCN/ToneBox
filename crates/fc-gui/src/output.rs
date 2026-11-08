@@ -230,7 +230,7 @@ impl App {
 
         // 参数
         // 整列的行距和按钮内边距统一，别让每行看起来高度不一样
-        ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 10.0);
         ui.spacing_mut().button_padding = egui::vec2(9.0, 3.0);
         let knobs = fc_core::knobs_for(self.target);
         if knobs.is_empty() {
@@ -297,7 +297,6 @@ impl App {
         }
 
         // 响度归一化：和旋钮分开一行，因为它是"处理"不是"编码参数"
-        ui.add_space(10.0);
         field_row(ui, "响度", |ui| {
             let opts: [(&str, Option<f32>); 4] = [
                 ("关", None),
@@ -405,7 +404,7 @@ impl App {
             egui::Align2::LEFT_CENTER,
             "元数据",
             egui::FontId::proportional(9.5),
-            DIM,
+            MUTED,
         );
         // 收起时显示已填了几项，不用展开也知道有没有设过
         let filled = [
@@ -450,15 +449,17 @@ impl App {
         ui.add_space(2.0);
 
         if self.meta_open {
-            if ui
-                .checkbox(
-                    &mut self.cfg.write_tags,
-                    RichText::new("写入标签").size(10.0).color(MUTED),
-                )
-                .changed()
-            {
-                changed = true;
-            }
+            ui.horizontal(|ui| {
+                if radio_dot_inline(ui, "自动", !self.cfg.write_tags) {
+                    self.cfg.write_tags = false;
+                    changed = true;
+                }
+                ui.add_space(10.0);
+                if radio_dot_inline(ui, "写入标签", self.cfg.write_tags) {
+                    self.cfg.write_tags = true;
+                    changed = true;
+                }
+            });
         }
 
         if self.meta_open {
@@ -467,13 +468,14 @@ impl App {
             // 写入标签关着时字段照样显示（用户要求"元数据全展开"），
             // 只是提醒一句：这些值不写进文件。
             if !self.cfg.write_tags {
-                ui.add_space(2.0);
+                ui.add_space(4.0);
                 para(
                     ui,
-                    "写入标签没开：下面的字段只会存在程序里，不会写进输出文件。",
+                    "自动：沿用源文件的标签和封面，不改写。要统一改名/换封面就选「写入标签」。",
                     8.5,
-                    WARN,
+                    DIM,
                 );
+                return changed;
             }
 
             // ── 当前文件（只影响这一个）──

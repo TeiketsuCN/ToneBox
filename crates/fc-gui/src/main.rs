@@ -24,6 +24,7 @@ mod detail;
 mod output;
 mod library;
 mod overlays;
+mod tasks;
 mod bg;
 #[cfg(windows)]
 mod frame;
@@ -48,6 +49,7 @@ use detail::*;
 use output::*;
 use library::*;
 use overlays::*;
+use tasks::*;
 
 /// 频谱分析的状态
 pub(crate) enum Analysis {
@@ -132,7 +134,8 @@ pub const BASE_ZOOM: f32 = 1.2;
 pub(crate) const TITLEBAR_H: f32 = 44.0;
 pub(crate) const LEFT_W: f32 = 216.0;
 pub(crate) const RIGHT_W: f32 = 300.0;
-pub(crate) const OUT_W: f32 = 272.0;
+pub(crate) const OUT_W: f32 = 300.0;
+pub(crate) const TASK_W: f32 = 240.0;
 
 
 // ── 队列条目 ────────────────────────────────────────────
@@ -223,9 +226,21 @@ pub(crate) struct Notice {
     read: bool,
 }
 
+/// 一个"已加入任务列表"的转换任务：文件 + 加进来那一刻的格式/参数快照。
+/// 队列负责选文件，任务列表负责真正要转的东西。
+pub(crate) struct Task {
+    pub path: PathBuf,
+    pub name: String,
+    pub spec_id: &'static str,
+    pub opts: fc_core::ConvertOptions,
+    pub dur: f64,
+    pub state: State,
+}
+
 pub(crate) struct App {
     tools: Option<Tools>,
     items: Vec<Item>,
+    tasks: Vec<Task>,
     selected: usize,
     target: &'static FormatSpec,
     expanded: Option<&'static str>,
@@ -403,6 +418,7 @@ impl App {
         App {
             tools,
             items: Vec::new(),
+            tasks: Vec::new(),
             selected: 0,
             target,
             expanded: Some(target.id),
@@ -527,42 +543,87 @@ impl App {
         }
     }
 
+    /// 把当前选中的文件按当前格式/参数加进任务列表
+    pub(crate) fn add_task(&mut self) {
+        let Some(it) = self.items.get(self.selected) else {
+            return;
+        };
+        if it.info.is_none() {
+            return;
+        }
+        let spec = it.spec(self.target);
+        let name = it.tags.display_title(&it.name());
+        let path = it.path.clone();
+        let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
+        if self.tasks.iter().any(|t| t.path == path && t.spec_id == spec.id) {
+            return;
+        }
+        self.tasks.push(Task {
+            path,
+            name,
+            spec_id: spec.id,
+            opts: self.cfg.opts.clone(),
+            dur,
+            state: State::Pending,
+        });
+    }
+
     fn start_batch(&mut self, ctx: &egui::Context) {
         let Some(tools) = self.tools.clone() else { return };
         let atracdenc = self.atracdenc.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
-        for (i, it) in self.items.iter_mut().enumerate() {
-            if it.info.is_none() || !matches!(it.state, State::Pending) {
+        let mut used_out: Vec<PathBuf> = Vec::new();
+        for i in 0..self.tasks.len() {
+            if !matches!(self.tasks[i].state, State::Pending) {
                 continue;
             }
-            let spec = it.spec(self.target);
-            let out = unique_output_in(&it.path, spec.ext, &self.cfg);
-            let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
+            let spec = match fc_core::by_id(self.tasks[i].spec_id) {
+                Some(s) => s,
+                None => continue,
+            };
+            // 同一个文件加了两条不同格式的任务时，输出名要错开
+            let mut out = unique_output_in(&self.tasks[i].path, spec.ext, &self.cfg);
+            let mut n = 1;
+            while used_out.contains(&out) {
+                n += 1;
+                let stem = out.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let base_stem = stem.trim_end_matches(|c: char| c == ')' || c.is_ascii_digit() || c == ' ').to_string();
+                out.set_file_name(format!("{base_stem} ({n}).{}", spec.ext));
+            }
+            used_out.push(out.clone());
+            let dur = self.tasks[i].dur;
 
             // ATRAC 走外部编码器：ffmpeg 只负责解码，标签/封面写不进去，直接分派
             if let Some(codec) = fc_core::external::codec_for(spec.id, atrac3_kbps) {
                 jobs.push(Job::Atrac {
                     idx: i,
-                    input: it.path.clone(),
+                    input: self.tasks[i].path.clone(),
                     out,
                     codec,
                     dur,
                 });
-                it.state = State::Running(0.0);
+                self.tasks[i].state = State::Running(0.0);
                 continue;
             }
 
             // 参数由 core 统一生成，GUI 不拼 ffmpeg 命令行
-            let mut args = fc_core::args_for(spec, &self.cfg.opts);
+            let mut args = fc_core::args_for(spec, &self.tasks[i].opts);
 
             // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢
+            let src_item = self.items.iter().find(|x| x.path == self.tasks[i].path);
             if self.cfg.write_tags {
-                let mut tags = it.tags.clone();
-                if let Some(v) = it.title_ov.as_ref().filter(|v| !v.trim().is_empty()) {
+                let mut tags = src_item.map(|x| x.tags.clone()).unwrap_or_default();
+                if let Some(v) = src_item
+                    .and_then(|x| x.title_ov.as_ref())
+                    .filter(|v| !v.trim().is_empty())
+                {
                     tags.title = Some(v.trim().to_string());
                 }
-                if let Some(v) = it.track_ov.as_ref().filter(|v| !v.trim().is_empty()) {
+                if let Some(v) = src_item
+                    .and_then(|x| x.track_ov.as_ref())
+                    .filter(|v| !v.trim().is_empty())
+                {
                     tags.track = Some(v.trim().to_string());
                 }
                 if !self.cfg.meta_artist.trim().is_empty() {
@@ -590,13 +651,13 @@ impl App {
 
             jobs.push(Job::Ffmpeg {
                 idx: i,
-                input: it.path.clone(),
+                input: self.tasks[i].path.clone(),
                 out,
                 args,
                 dur,
                 norm: self.cfg.loudness,
             });
-            it.state = State::Running(0.0);
+            self.tasks[i].state = State::Running(0.0);
         }
         if jobs.is_empty() {
             return;
@@ -799,25 +860,31 @@ impl App {
         for m in msgs {
             match m {
                 Msg::Progress(i, p) => {
-                    if let Some(it) = self.items.get_mut(i) {
-                        it.state = State::Running(p);
+                    if let Some(t) = self.tasks.get_mut(i) {
+                        t.state = State::Running(p);
                     }
                 }
                 Msg::Done(i, path, size) => {
                     // 转换成功且用户选了「删除源文件」——在标记成功之后删，
                     // 删失败也不影响结果（比如源文件正被别的程序占用）
-                    let src = self.items.get(i).map(|it| it.path.clone());
+                    let src = self.tasks.get(i).map(|t| t.path.clone());
                     let name = self
-                        .items
+                        .tasks
                         .get(i)
-                        .map(|it| it.tags.display_title(&it.name()))
+                        .map(|t| t.name.clone())
                         .unwrap_or_default();
                     let out_name = path
                         .file_name()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    if let Some(it) = self.items.get_mut(i) {
-                        it.state = State::Done(path, size);
+                    if let Some(t) = self.tasks.get_mut(i) {
+                        t.state = State::Done(path.clone(), size);
+                        let p = t.path.clone();
+                        if let Some(it) = self.items.iter_mut().find(|x| x.path == p) {
+                            if matches!(it.state, State::Pending) {
+                                it.state = State::Done(path, size);
+                            }
+                        }
                     }
                     if self.delete_source {
                         if let Some(src) = src {
@@ -834,12 +901,18 @@ impl App {
                 }
                 Msg::Failed(i, e) => {
                     let name = self
-                        .items
+                        .tasks
                         .get(i)
-                        .map(|it| it.tags.display_title(&it.name()))
+                        .map(|t| t.name.clone())
                         .unwrap_or_default();
-                    if let Some(it) = self.items.get_mut(i) {
-                        it.state = State::Failed(e.clone());
+                    if let Some(t) = self.tasks.get_mut(i) {
+                        t.state = State::Failed(e.clone());
+                        let p = t.path.clone();
+                        if let Some(it) = self.items.iter_mut().find(|x| x.path == p) {
+                            if matches!(it.state, State::Pending) {
+                                it.state = State::Failed(e.clone());
+                            }
+                        }
                     }
                     self.batch_done += 1;
                     self.push_notice(false, "转换失败", format!("{name}\n{e}"));
@@ -850,9 +923,9 @@ impl App {
                     // 一批多个文件时再补一条汇总，单文件就别重复了
                     if self.batch_total > 1 {
                         let fail = self
-                            .items
+                            .tasks
                             .iter()
-                            .filter(|i| matches!(i.state, State::Failed(_)))
+                            .filter(|t| matches!(t.state, State::Failed(_)))
                             .count();
                         let ok = self.batch_total.saturating_sub(fail);
                         self.push_notice(
@@ -889,23 +962,23 @@ impl App {
         if self.running {
             return (self.overall(), BatchRing::Running);
         }
-        if self.items.iter().any(|i| matches!(i.state, State::Failed(_))) {
+        if self.tasks.iter().any(|t| matches!(t.state, State::Failed(_))) {
             return (0.0, BatchRing::Error);
         }
-        if !self.items.is_empty() && self.items.iter().all(|i| matches!(i.state, State::Done(..))) {
+        if !self.tasks.is_empty() && self.tasks.iter().all(|t| matches!(t.state, State::Done(..))) {
             return (1.0, BatchRing::Done);
         }
         (0.0, BatchRing::Idle)
     }
 
-    fn overall(&self) -> f32 {
+    pub(crate) fn overall(&self) -> f32 {
         if self.batch_total == 0 {
             return 0.0;
         }
         let cur = self
-            .items
+            .tasks
             .iter()
-            .filter_map(|i| match &i.state {
+            .filter_map(|t| match &t.state {
                 State::Running(p) => Some(*p as f64),
                 _ => None,
             })
@@ -999,6 +1072,7 @@ impl eframe::App for App {
         // 设置页是整页切换，不做滑动动画——之前那套"滑入滑出"就是闪的来源
         let main_visible = !self.settings_open;
         let mut do_start = false;
+        let mut do_add_task = false;
 
         if main_visible {
             egui::SidePanel::left("rail").show_separator_line(false)
@@ -1016,6 +1090,35 @@ impl eframe::App for App {
                 )
                 .show(ctx, |ui| animating |= self.left_rail(ui));
 
+            // 任务列：最右边，放"加进来的转换任务"和开始按钮
+            if self.page == Page::Convert {
+                egui::SidePanel::right("tasks").show_separator_line(false)
+                    .exact_width(TASK_W)
+                    .resizable(false)
+                    .frame(
+                        egui::Frame::none()
+                            .fill(tint(BG, 120))
+                            .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+                    )
+                    .show(ctx, |ui| {
+                        egui::TopBottomPanel::bottom("task_start")
+                            .resizable(false)
+                            .show_separator_line(false)
+                            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 8.0)))
+                            .show_inside(ui, |ui| {
+                                let can = !self.running
+                                    && self.tools.is_some()
+                                    && self.tasks.iter().any(|t| matches!(t.state, State::Pending));
+                                if start_button(ui, can, self.running, self.overall()) {
+                                    do_start = true;
+                                }
+                            });
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| animating |= self.task_list(ui));
+                    });
+            }
+
             // 输出列只在"输出"页出现；"音乐库"页把整块宽度留给列表
             if self.page == Page::Convert {
                 egui::SidePanel::right("output").show_separator_line(false)
@@ -1027,23 +1130,22 @@ impl eframe::App for App {
                             .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
                     )
                     .show(ctx, |ui| {
-                        // 开始转换钉在最下面——这一列的终点就是它
-                        egui::TopBottomPanel::bottom("out_start").resizable(false).show_separator_line(false)
+                                                // 这一列只负责"配参数"，底部按钮把选中文件按当前参数加进任务
+                        egui::TopBottomPanel::bottom("out_add").resizable(false).show_separator_line(false)
                             .frame(
                                 egui::Frame::none()
                                     .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
                             )
                             .show_inside(ui, |ui| {
-                                let can = !self.running
-                                    && self.tools.is_some()
-                                    && self.items.iter().any(|i| {
-                                        i.info.is_some() && matches!(i.state, State::Pending)
-                                    });
-                                if start_button(ui, can, self.running, self.overall()) {
-                                    do_start = true;
+                                let can = self
+                                    .items
+                                    .get(self.selected)
+                                    .map(|i| i.info.is_some())
+                                    .unwrap_or(false);
+                                if add_task_button(ui, can) {
+                                    do_add_task = true;
                                 }
                             });
-
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
@@ -1138,7 +1240,10 @@ impl eframe::App for App {
             // 左右各缩进一点，不贴满两栏（用户要"短一点"）
             let bar_pad = 26.0;
             let bar_w = if self.page == Page::Convert {
-                (screen.width() - LEFT_W - OUT_W - inset * 2.0 - bar_pad * 2.0).max(240.0)
+                // 只盖住歌曲列表这一栏，不伸进详情/输出
+                (screen.width() - LEFT_W - RIGHT_W - OUT_W - TASK_W - inset * 2.0
+                    - bar_pad * 2.0)
+                    .max(200.0)
             } else {
                 (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0).max(240.0)
             };
@@ -1161,6 +1266,9 @@ impl eframe::App for App {
                             self.player_bar(ui);
                         });
                 });
+        }
+        if do_add_task {
+            self.add_task();
         }
         if do_start {
             self.start_batch(ctx);
@@ -1499,8 +1607,8 @@ fn main() -> eframe::Result<()> {
     };
 
     let mut viewport = egui::ViewportBuilder::default()
-            .with_inner_size([1302.0 * BASE_ZOOM, 700.0 * BASE_ZOOM])
-            .with_min_inner_size([1212.0 * BASE_ZOOM, 600.0 * BASE_ZOOM])
+            .with_inner_size([1562.0 * BASE_ZOOM, 700.0 * BASE_ZOOM])
+            .with_min_inner_size([1330.0 * BASE_ZOOM, 600.0 * BASE_ZOOM])
             .with_decorations(false)
             .with_transparent(true)
             .with_title(APP_NAME);
