@@ -437,23 +437,45 @@ pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool
     resp.clicked()
 }
 
-/// 在封面右下角画一个小锁：表示这文件是加密的（只识别，不解密）
+/// 在封面右下角画一个小锁：表示这文件是加密的（只识别，不解密）。
+///
+/// 尺寸跟封面走：36px 缩略图上是 8px 的小徽章，96px 大图上是 18px。
 pub(crate) fn paint_lock(p: &egui::Painter, rect: egui::Rect) {
-    let c = rect.right_bottom() - egui::vec2(8.0, 8.0);
-    p.circle_filled(c, 7.5, Color32::from_rgba_premultiplied(10, 12, 16, 210));
-    // 锁体
-    let body = egui::Rect::from_center_size(c + egui::vec2(0.0, 1.6), egui::vec2(7.0, 5.4));
-    p.rect_filled(body, Rounding::same(1.5), ACCENT);
-    // 锁梁：半圆
-    let r = 2.4;
-    let steps = 10;
-    let mut prev = c + egui::vec2(-r, 0.6);
-    for i in 1..=steps {
-        let a = std::f32::consts::PI + std::f32::consts::PI * (i as f32 / steps as f32);
-        let pt = c + egui::vec2(a.cos() * r, a.sin() * r + 0.6);
-        p.line_segment([prev, pt], Stroke::new(1.4, ACCENT));
-        prev = pt;
+    let k = (rect.width() / 36.0).clamp(0.9, 2.2);
+    let r_badge = 7.6 * k;
+    let c = rect.right_bottom() - egui::vec2(r_badge + 1.2, r_badge + 1.2);
+
+    // 徽章底：深色圆 + 一圈很淡的描边，压在封面上也看得清
+    p.circle_filled(c, r_badge, Color32::from_rgba_premultiplied(8, 10, 14, 230));
+    p.circle_stroke(c, r_badge, Stroke::new(0.9 * k, tint(Color32::WHITE, 28)));
+
+    let col = ACCENT;
+    // 锁梁：上半圆
+    let r = 2.2 * k;
+    let top = c.y - 0.7 * k;
+    let mut pts: Vec<egui::Pos2> = Vec::with_capacity(12);
+    for i in 0..=10 {
+        let a = std::f32::consts::PI + std::f32::consts::PI * (i as f32 / 10.0);
+        pts.push(c + egui::vec2(a.cos() * r, a.sin() * r - 0.7 * k));
     }
+    p.add(egui::Shape::line(pts, Stroke::new(1.3 * k, col)));
+
+    // 锁体：圆角小方块，紧接在锁梁下面
+    let body = egui::Rect::from_min_max(
+        egui::pos2(c.x - 3.4 * k, top),
+        egui::pos2(c.x + 3.4 * k, c.y + 3.6 * k),
+    );
+    p.rect_filled(body, Rounding::same(1.4 * k), col);
+
+    // 锁孔：深色小点 + 一道短缝，缩略图尺寸下也能看出是锁
+    p.circle_filled(egui::pos2(c.x, c.y + 0.4 * k), 0.9 * k, Color32::from_rgb(8, 12, 16));
+    p.line_segment(
+        [
+            egui::pos2(c.x, c.y + 0.8 * k),
+            egui::pos2(c.x, c.y + 2.0 * k),
+        ],
+        Stroke::new(0.9 * k, Color32::from_rgb(8, 12, 16)),
+    );
 }
 
 /// 和「删除源文件」同一套圆点：空心环 + 选中时实心点。
