@@ -18,6 +18,8 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 转 FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM | ✅ |
 | 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
 | 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
+| 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
+| 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |
 | 格式百科（29 条长文案，可从百科直接设为输出格式） | ✅ |
 | 元数据与内嵌封面 | ✅ |
 | 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
