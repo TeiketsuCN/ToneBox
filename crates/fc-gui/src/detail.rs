@@ -34,7 +34,8 @@ impl App {
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .max_height(ui.available_height() - BAR_RESERVE)
+            // 播放栏只盖住歌曲列表那一栏，详情页不用给它留位置
+            .max_height(ui.available_height())
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 animating |= self.detail_body(ui, t);
