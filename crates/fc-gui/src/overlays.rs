@@ -371,10 +371,20 @@ impl App {
                                     ui.add_space(8.0);
                                     ui.horizontal_wrapped(|ui| {
                                         ui.add_space(64.0);
-                                        for (i, (name, _, _)) in
+                                        for (i, (name, _, _, _)) in
                                             crate::bg::GRADIENTS.iter().enumerate()
                                         {
                                             let on = self.cfg.bg_gradient as usize == i;
+                                            // 左边给个 12×12 的渐变小样，不然只有名字看不出颜色
+                                            let (pre, _) = ui.allocate_exact_size(
+                                                egui::vec2(12.0, 12.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            crate::bg::paint_gradient_preview(
+                                                ui.painter(),
+                                                pre,
+                                                crate::bg::gradient_colors(i as u8),
+                                            );
                                             if ui
                                                 .add(
                                                     egui::Button::new(RichText::new(*name).size(

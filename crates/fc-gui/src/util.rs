@@ -437,6 +437,33 @@ pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool
     resp.clicked()
 }
 
+/// 长按 3 秒的环形进度。「删除源文件」「清除所有」共用这一份，
+/// 两处的动画才能完全一样：一圈平滑的弧 + 中心跟着长大的实心点。
+pub(crate) fn hold_ring(
+    p: &egui::Painter,
+    c: egui::Pos2,
+    r: f32,
+    frac: f32,
+    color: egui::Color32,
+    idle: egui::Color32,
+) {
+    let frac = frac.clamp(0.0, 1.0);
+    p.circle_stroke(c, r, Stroke::new(1.2, if frac > 0.0 { color } else { idle }));
+    if frac <= 0.01 {
+        return;
+    }
+    let n = ((48.0 * frac) as usize).max(2);
+    let pts: Vec<egui::Pos2> = (0..=n)
+        .map(|i| {
+            let a = -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::TAU * frac * (i as f32 / n as f32);
+            c + egui::vec2(a.cos(), a.sin()) * (r - 0.2)
+        })
+        .collect();
+    p.add(egui::Shape::line(pts, Stroke::new(2.0, color)));
+    p.circle_filled(c, r * 0.55 * frac, tint(color, 230));
+}
+
 /// 在封面右下角画一个小锁：表示这文件是加密的（只识别，不解密）。
 ///
 /// 尺寸跟封面走：36px 缩略图上是 8px 的小徽章，96px 大图上是 18px。

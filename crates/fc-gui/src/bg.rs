@@ -68,8 +68,7 @@ impl WallpaperBg {
             return;
         }
         if mode == BgMode::Gradient {
-            let (a, b) = gradient_colors(gradient);
-            paint_gradient(&painter, screen, a, b);
+            paint_gradient(&painter, screen, gradient_colors(gradient));
             return;
         }
 
@@ -258,30 +257,126 @@ fn reg_wallpaper() -> Option<PathBuf> {
 }
 
 /// 渐变壁纸的几套配色。都压得比较暗，保证字看得清。
-pub const GRADIENTS: [(&str, Color32, Color32); 8] = [
-    ("极光", Color32::from_rgb(10, 18, 32), Color32::from_rgb(26, 92, 88)),
-    ("暮色", Color32::from_rgb(22, 12, 32), Color32::from_rgb(86, 38, 52)),
-    ("青瓷", Color32::from_rgb(10, 24, 22), Color32::from_rgb(20, 58, 64)),
-    ("石墨", Color32::from_rgb(16, 16, 20), Color32::from_rgb(44, 44, 54)),
-    ("深海", Color32::from_rgb(8, 14, 30), Color32::from_rgb(16, 46, 74)),
-    ("紫罗兰", Color32::from_rgb(22, 14, 36), Color32::from_rgb(64, 40, 84)),
-    ("落日", Color32::from_rgb(30, 14, 18), Color32::from_rgb(92, 52, 40)),
-    ("森林", Color32::from_rgb(10, 22, 16), Color32::from_rgb(28, 58, 36)),
+pub const GRADIENTS: [(&str, Color32, Color32, Color32); 10] = [
+    // 起点压暗一点保证文字可读，中间和终点给足颜色
+    (
+        "极光",
+        Color32::from_rgb(6, 20, 34),
+        Color32::from_rgb(18, 102, 107),
+        Color32::from_rgb(55, 194, 160),
+    ),
+    (
+        "晚霞",
+        Color32::from_rgb(40, 18, 50),
+        Color32::from_rgb(138, 58, 99),
+        Color32::from_rgb(224, 138, 74),
+    ),
+    (
+        "青瓷",
+        Color32::from_rgb(7, 33, 30),
+        Color32::from_rgb(28, 107, 95),
+        Color32::from_rgb(134, 199, 166),
+    ),
+    (
+        "深海",
+        Color32::from_rgb(3, 15, 28),
+        Color32::from_rgb(13, 60, 99),
+        Color32::from_rgb(46, 134, 176),
+    ),
+    (
+        "紫罗兰",
+        Color32::from_rgb(25, 15, 44),
+        Color32::from_rgb(74, 42, 126),
+        Color32::from_rgb(165, 102, 208),
+    ),
+    (
+        "森林",
+        Color32::from_rgb(6, 21, 12),
+        Color32::from_rgb(27, 78, 44),
+        Color32::from_rgb(87, 160, 90),
+    ),
+    (
+        "琥珀",
+        Color32::from_rgb(28, 18, 6),
+        Color32::from_rgb(110, 68, 16),
+        Color32::from_rgb(208, 149, 51),
+    ),
+    (
+        "落樱",
+        Color32::from_rgb(36, 16, 33),
+        Color32::from_rgb(113, 48, 79),
+        Color32::from_rgb(210, 126, 151),
+    ),
+    (
+        "钢蓝",
+        Color32::from_rgb(13, 20, 27),
+        Color32::from_rgb(42, 66, 86),
+        Color32::from_rgb(108, 143, 163),
+    ),
+    (
+        "石墨",
+        Color32::from_rgb(11, 11, 15),
+        Color32::from_rgb(38, 38, 46),
+        Color32::from_rgb(85, 85, 95),
+    ),
 ];
 
-pub fn gradient_colors(i: u8) -> (Color32, Color32) {
-    let (_, a, b) = GRADIENTS[(i as usize).min(GRADIENTS.len() - 1)];
-    (a, b)
+pub fn gradient_colors(i: u8) -> [Color32; 3] {
+    let (_, a, b, c) = GRADIENTS[(i as usize).min(GRADIENTS.len() - 1)];
+    [a, b, c]
 }
 
-/// 左上 → 右下的双色渐变（网格顶点色，光滑无带状）
-fn paint_gradient(painter: &egui::Painter, rect: Rect, a: Color32, b: Color32) {
+/// 左上 → 右下的三段渐变。用网格顶点色插值，不画条带、也不用 shader。
+fn paint_gradient(painter: &egui::Painter, rect: Rect, stops: [Color32; 3]) {
+    const N: usize = 6;
     let mut mesh = egui::Mesh::default();
-    mesh.colored_vertex(rect.left_top(), a);
-    mesh.colored_vertex(rect.right_top(), b);
-    mesh.colored_vertex(rect.left_bottom(), a);
-    mesh.colored_vertex(rect.right_bottom(), b);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 3, 2);
+    for iy in 0..=N {
+        for ix in 0..=N {
+            let u = ix as f32 / N as f32;
+            let v = iy as f32 / N as f32;
+            // 斜着走：横向占多、纵向占少，看起来比纯水平渐变有层次
+            let t = (u * 0.74 + v * 0.26).clamp(0.0, 1.0);
+            let pos = egui::pos2(
+                rect.left() + rect.width() * u,
+                rect.top() + rect.height() * v,
+            );
+            mesh.colored_vertex(pos, ramp(stops, t));
+        }
+    }
+    for iy in 0..N {
+        for ix in 0..N {
+            let i = (iy * (N + 1) + ix) as u32;
+            let right = i + 1;
+            let down = i + (N + 1) as u32;
+            let dr = down + 1;
+            mesh.add_triangle(i, right, down);
+            mesh.add_triangle(right, dr, down);
+        }
+    }
     painter.add(egui::Shape::mesh(mesh));
+}
+
+/// 设置页里的小色块预览
+pub fn paint_gradient_preview(painter: &egui::Painter, rect: Rect, stops: [Color32; 3]) {
+    let r = rect.shrink(0.5);
+    paint_gradient(painter, r, stops);
+    painter.rect_stroke(
+        r,
+        egui::Rounding::same(3.0),
+        egui::Stroke::new(0.8, Color32::from_white_alpha(40)),
+    );
+}
+
+fn ramp(stops: [Color32; 3], t: f32) -> Color32 {
+    if t < 0.5 {
+        lerp_color(stops[0], stops[1], t * 2.0)
+    } else {
+        lerp_color(stops[1], stops[2], (t - 0.5) * 2.0)
+    }
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
 }

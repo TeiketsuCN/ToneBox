@@ -64,7 +64,7 @@ impl App {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             // 底部给悬浮播放栏留位，列表不要钻到它下面
-            .max_height(ui.available_height() - BAR_RESERVE)
+            .max_height((ui.available_height() - BAR_RESERVE).max(60.0))
             .show(ui, |ui| {
                 for i in 0..count {
                     let is_sel = i == self.selected;
@@ -337,8 +337,9 @@ impl App {
         egui::Frame::none()
             .inner_margin(egui::Margin::symmetric(20.0, 16.0))
             .show(ui, |ui| {
-                ui.set_min_height(avail - 40.0);
-                let pad = ((avail - 190.0) * 0.5).max(10.0);
+                // 窗口很矮时 avail 可能不足 40，set_min_height 传负数会 panic
+                ui.set_min_height((avail - 40.0).max(0.0));
+                let pad = ((avail - 190.0) * 0.5).max(0.0);
                 ui.add_space(pad);
                 ui.vertical_centered(|ui| {
                     ui.label(RichText::new("把你认为有音乐的文件拖进来").size(15.0).color(TEXT));

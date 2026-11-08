@@ -640,36 +640,15 @@ impl App {
         }
         let p = ui.painter();
         let c = egui::pos2(rect.left() + 8.0, rect.center().y);
-        p.circle_stroke(
+        // 和「删除源文件」同一套动画
+        hold_ring(
+            p,
             c,
             6.0,
-            Stroke::new(
-                1.2,
-                if holding {
-                    WARN
-                } else {
-                    tint(Color32::WHITE, 70)
-                },
-            ),
+            self.meta_clear_hold / 3.0,
+            WARN,
+            tint(Color32::WHITE, 70),
         );
-        if holding && self.meta_clear_hold > 0.0 {
-            let frac = (self.meta_clear_hold / 3.0).clamp(0.0, 1.0);
-            // 环形进度
-            let steps = 32;
-            for i in 0..((steps as f32 * frac) as usize) {
-                let a0 = -std::f32::consts::FRAC_PI_2
-                    + std::f32::consts::TAU * (i as f32 / steps as f32);
-                let a1 = -std::f32::consts::FRAC_PI_2
-                    + std::f32::consts::TAU * ((i + 1) as f32 / steps as f32);
-                p.line_segment(
-                    [
-                        c + egui::vec2(a0.cos(), a0.sin()) * 6.5,
-                        c + egui::vec2(a1.cos(), a1.sin()) * 6.5,
-                    ],
-                    Stroke::new(1.6, WARN),
-                );
-            }
-        }
         p.text(
             egui::pos2(c.x + 14.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
@@ -718,36 +697,9 @@ impl App {
         let p = ui.painter();
         let c = egui::pos2(rect.left() + 8.0, rect.center().y);
         let r = 6.0;
-        p.circle_stroke(
-            c,
-            r,
-            Stroke::new(
-                1.2,
-                if selected {
-                    tint(DANGER, 210)
-                } else if holding {
-                    WARN
-                } else {
-                    tint(Color32::WHITE, 70)
-                },
-            ),
-        );
-        if holding {
-            let frac = (self.delete_hold / 3.0).clamp(0.0, 1.0);
-            if frac > 0.01 {
-                let n = ((48.0 * frac) as usize).max(2);
-                let pts: Vec<egui::Pos2> = (0..=n)
-                    .map(|i| {
-                        let a = -std::f32::consts::FRAC_PI_2
-                            + std::f32::consts::TAU * frac * (i as f32 / n as f32);
-                        c + egui::vec2(a.cos(), a.sin()) * (r - 0.2)
-                    })
-                    .collect();
-                p.add(egui::Shape::line(pts, Stroke::new(2.0, WARN)));
-            }
-            // 圆点跟着按住时长长大
-            p.circle_filled(c, r * 0.55 * frac, tint(WARN, 230));
-        } else if selected {
+        let ring_col = if selected { tint(DANGER, 210) } else { WARN };
+        hold_ring(p, c, r, self.delete_hold / 3.0, ring_col, tint(Color32::WHITE, 70));
+        if !holding && selected {
             p.circle_filled(c, r * 0.55, DANGER);
         }
         p.text(
