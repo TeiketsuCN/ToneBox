@@ -59,11 +59,13 @@ pub(crate) enum Analysis {
     Failed(String),
 }
 
-/// 左侧两个大项：音乐库 / 输出（转换）
+/// 左侧三个大项：音乐库 / 输出（转换）/ 引擎和设备
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Page {
     Convert,
     Library,
+    /// 「引擎和设备」：内容还没设计，先留一张空页面
+    Engine,
 }
 
 /// 音乐库里的分类
@@ -582,6 +584,15 @@ impl App {
     /// 内容才不会钻到悬浮播放栏下面（栏高可拖，所以不能再用常量）。
     pub(crate) fn bar_reserve(&self) -> f32 {
         self.bar_h + BAR_MARGIN + 10.0
+    }
+
+    /// 「引擎和设备」：用户要自己构思的页面，先留空——只放一行说明，
+    /// 别摆任何控件，免得把后面的设计框死。
+    pub(crate) fn engine_view(&self, ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        para(ui, "引擎和设备", 11.0, DIM);
+        ui.add_space(6.0);
+        para(ui, "这块先留空，等设计。", 9.5, DIM);
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
@@ -1371,10 +1382,10 @@ impl eframe::App for App {
                         }),
                 )
                 .show(ctx, |ui| {
-                    if self.page == Page::Convert {
-                        animating |= self.queue(ui, ctx);
-                    } else {
-                        animating |= self.library_view(ui, ctx);
+                    match self.page {
+                        Page::Convert => animating |= self.queue(ui, ctx),
+                        Page::Library => animating |= self.library_view(ui, ctx),
+                        Page::Engine => self.engine_view(ui),
                     }
                 });
 
@@ -1421,6 +1432,9 @@ impl eframe::App for App {
 
             // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
+            // 「引擎和设备」是空页面：没在播的时候不摆播放栏（保持空旷），
+            // 真在播/暂停时仍然显示，否则用户切过来就没法暂停了。
+            if self.page != Page::Engine || self.player.is_some() {
             let screen = ctx.screen_rect();
             let bar_h = self.bar_h;
             // 左右各缩进一点，不贴满两栏（用户要"短一点"）
@@ -1459,6 +1473,7 @@ impl eframe::App for App {
                             self.player_bar(ui);
                         });
                 });
+            }
         }
         if do_add_task {
             self.add_task();

@@ -56,11 +56,42 @@ impl App {
             }
             self.page = Page::Convert;
         }
+        // 第三个大项：先占位，页面内容等用户构思
+        if rail_big(ui, "引擎和设备", self.page == Page::Engine) {
+            if self.page != Page::Engine {
+                self.page_t = 0.0;
+            }
+            self.page = Page::Engine;
+        }
         ui.add_space(10.0);
+
+        // 百科固定在最下面（用户要求从「输出格式」标题右边挪下来）：
+        // 用 bottom panel 钉住，格式列表再长也不会把它挤出屏幕。
+        egui::TopBottomPanel::bottom("rail_wiki")
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 6.0)))
+            .show_inside(ui, |ui| {
+                let b = egui::Button::new(RichText::new("百科").size(9.5).color(MUTED))
+                    .fill(tint(Color32::WHITE, 8))
+                    .stroke(line(Color32::WHITE, 16))
+                    .rounding(Rounding::same(7.0));
+                if ui
+                    .add_sized([ui.available_width(), 24.0], b)
+                    .on_hover_text("看看每个格式到底是什么")
+                    .clicked()
+                {
+                    // 打开时对准当前输出格式：用户多半是"想知道我正在转的这个是什么"
+                    self.wiki_sel = self.target.id;
+                    self.wiki_open = true;
+                }
+            });
 
         match self.page {
             Page::Convert => animating |= self.format_list(ui),
             Page::Library => self.library_nav(ui),
+            // 空页面：列表区什么都不画，等设计
+            Page::Engine => {}
         }
         animating
     }
@@ -309,25 +340,8 @@ impl App {
         let dt = self.dt;
         let mut animating = false;
 
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("输出格式").size(11.0).color(DIM));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Button::new(RichText::new("百科").size(9.0).color(MUTED))
-                            .fill(tint(Color32::WHITE, 8))
-                            .stroke(line(Color32::WHITE, 16))
-                            .rounding(Rounding::same(6.0)),
-                    )
-                    .on_hover_text("看看每个格式到底是什么")
-                    .clicked()
-                {
-                    // 打开时对准当前输出格式：用户多半是"想知道我正在转的这个是什么"
-                    self.wiki_sel = self.target.id;
-                    self.wiki_open = true;
-                }
-            });
-        });
+        // 百科按钮已经挪到侧栏最下面（rail_wiki），标题这里只留文字
+        ui.label(RichText::new("输出格式").size(11.0).color(DIM));
         ui.add_space(4.0);
 
         // 展开状态变化时，把高度动画归零重来
