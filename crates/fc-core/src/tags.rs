@@ -26,6 +26,8 @@ pub struct Tags {
     pub genre: Option<String>,
     pub track: Option<String>,
     pub date: Option<String>,
+    /// ReplayGain 曲目增益（dB）。播放时可选应用；没有标签就是 None。
+    pub replaygain_db: Option<f32>,
 }
 
 impl Tags {
@@ -106,6 +108,9 @@ pub fn read_tags(ffprobe: &Path, file: &Path) -> Tags {
         None
     };
 
+    let replaygain_db = get(&["replaygain_track_gain", "replaygain_album_gain"])
+        .and_then(|v| parse_gain_db(&v));
+
     Tags {
         title: get(&["title"]),
         artist: get(&["artist", "album_artist", "albumartist", "performer"]),
@@ -113,7 +118,16 @@ pub fn read_tags(ffprobe: &Path, file: &Path) -> Tags {
         genre: get(&["genre"]),
         track: get(&["track", "tracknumber"]),
         date: get(&["date", "year"]),
+        replaygain_db,
     }
+}
+
+/// "−6.54 dB" / "-6.54dB" / "+3.2 dB" → -6.54 / 3.2。
+/// 标签格式不统一（有的带 dB、有的用 Unicode 减号），解析失败就当没有。
+fn parse_gain_db(s: &str) -> Option<f32> {
+    let t = s.trim().replace('−', "-").replace(',', ".");
+    let t = t.trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == ' ' || c == '\t');
+    t.trim().parse::<f32>().ok().filter(|v| v.is_finite())
 }
 
 /// 判断有没有内嵌封面（一次 ffprobe）
@@ -213,5 +227,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(t.display_title("x.mp3"), "x.mp3");
+    }
+
+    #[test]
+    fn replaygain_variants_parse() {
+        // 各家的标签格式不一样：带/不带 dB、Unicode 减号、逗号小数点
+        assert_eq!(parse_gain_db("-6.54 dB"), Some(-6.54));
+        assert_eq!(parse_gain_db("-6.54dB"), Some(-6.54));
+        assert_eq!(parse_gain_db("−6,5 dB"), Some(-6.5));
+        assert_eq!(parse_gain_db("+3.2 dB"), Some(3.2));
+        assert_eq!(parse_gain_db(""), None);
+        assert_eq!(parse_gain_db("n/a"), None);
     }
 }

@@ -25,6 +25,7 @@ mod output;
 mod library;
 mod overlays;
 mod tasks;
+mod codec;
 mod bg;
 #[cfg(windows)]
 mod frame;
@@ -59,12 +60,12 @@ pub(crate) enum Analysis {
     Failed(String),
 }
 
-/// 左侧三个大项：音乐库 / 输出（转换）/ 引擎和设备
+/// 左侧三个大项：音乐库 / 输出（转换）/ 编解码（设备与引擎）
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Page {
     Convert,
     Library,
-    /// 「引擎和设备」：内容还没设计，先留一张空页面
+    /// 「编解码」：音频设备、播放输出选择、引擎信息
     Engine,
 }
 
@@ -278,6 +279,10 @@ pub(crate) struct App {
     cover_big: Option<(usize, egui::TextureHandle)>,
     cover_big_tx: std::sync::mpsc::Sender<(usize, Option<(Vec<u8>, u32, u32)>)>,
     cover_big_rx: Receiver<(usize, Option<(Vec<u8>, u32, u32)>)>,
+    /// 「编解码」页第一次进去时枚举的设备
+    audio_devices: Vec<fc_player::devices::AudioDevice>,
+    devices_loaded: bool,
+    devices_error: Option<String>,
     // 背景与动效
     bg: bg::WallpaperBg,
     /// 当前生效的强调色（背景/底色一变就重算，然后重设一遍 egui style 里沾色的项）
@@ -487,6 +492,9 @@ impl App {
             cover_big: None,
             cover_big_tx: btx,
             cover_big_rx: brx,
+            audio_devices: Vec::new(),
+            devices_loaded: false,
+            devices_error: None,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
             bar_h: cfg.bar_height.clamp(BAR_H_MIN, BAR_H_MAX),
@@ -584,15 +592,6 @@ impl App {
     /// 内容才不会钻到悬浮播放栏下面（栏高可拖，所以不能再用常量）。
     pub(crate) fn bar_reserve(&self) -> f32 {
         self.bar_h + BAR_MARGIN + 10.0
-    }
-
-    /// 「引擎和设备」：用户要自己构思的页面，先留空——只放一行说明，
-    /// 别摆任何控件，免得把后面的设计框死。
-    pub(crate) fn engine_view(&self, ui: &mut egui::Ui) {
-        ui.add_space(8.0);
-        para(ui, "引擎和设备", 11.0, DIM);
-        ui.add_space(6.0);
-        para(ui, "这块先留空，等设计。", 9.5, DIM);
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
@@ -936,7 +935,22 @@ impl App {
             self.player_for = Some(self.items[idx].path.clone());
             return;
         };
-        match fc_player::Player::open(&tools.ffmpeg, &it.path, info.duration_s) {
+        // 输出设备 / 采样率跟随 / ReplayGain 都从设置里带过去
+        let opts = fc_player::PlayOptions {
+            device_name: if self.cfg.audio_out_device.is_empty() {
+                None
+            } else {
+                Some(self.cfg.audio_out_device.clone())
+            },
+            source_rate: info.sample_rate,
+            replaygain_db: if self.cfg.replaygain {
+                it.tags.replaygain_db
+            } else {
+                None
+            },
+            exclusive: self.cfg.exclusive_output,
+        };
+        match fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts) {
             Ok(p) => {
                 // 接着上次的音量，不要每次开新文件都跳回默认
                 p.set_volume(self.player_volume);
@@ -1385,7 +1399,7 @@ impl eframe::App for App {
                     match self.page {
                         Page::Convert => animating |= self.queue(ui, ctx),
                         Page::Library => animating |= self.library_view(ui, ctx),
-                        Page::Engine => self.engine_view(ui),
+                        Page::Engine => self.codec_view(ui),
                     }
                 });
 
@@ -1719,6 +1733,32 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    // 命令行：列出音频输出/输入设备（排查"为什么没声音"很有用）
+    if args.first().map(|s| s.as_str()) == Some("--devices") {
+        match fc_player::devices::list() {
+            Ok(list) => {
+                if list.is_empty() {
+                    println!("没有检测到音频设备");
+                }
+                for d in list {
+                    println!(
+                        "{}{:<10} {:<12}{}{}",
+                        if d.is_default { "[默认] " } else { "       " },
+                        match d.flow {
+                            fc_player::devices::Flow::Output => "输出",
+                            fc_player::devices::Flow::Input => "输入",
+                        },
+                        d.kind.label(),
+                        if d.is_bluetooth { "蓝牙 " } else { "" },
+                        format!("{} | {}", d.name, d.format_label)
+                    );
+                }
+            }
+            Err(e) => eprintln!("枚举设备失败: {e:#}"),
+        }
+        return Ok(());
+    }
+
     // 命令行：打印当前用到的 ffmpeg/ffprobe 路径
     if args.first().map(|s| s.as_str()) == Some("--tools") {
         match fc_core::locate() {
@@ -1844,14 +1884,35 @@ fn main() -> eframe::Result<()> {
             info.bitrate_kbps,
             info.duration_s
         );
-        let mut pl = match fc_player::Player::open(&tools.ffmpeg, Path::new(input), info.duration_s)
-        {
+        let cfg = settings::Settings::load();
+        let tags = fc_core::read_tags(&tools.ffprobe, Path::new(input));
+        let popts = fc_player::PlayOptions {
+            device_name: if cfg.audio_out_device.is_empty() {
+                None
+            } else {
+                Some(cfg.audio_out_device.clone())
+            },
+            source_rate: info.sample_rate,
+            replaygain_db: if cfg.replaygain {
+                tags.replaygain_db
+            } else {
+                None
+            },
+            exclusive: cfg.exclusive_output,
+        };
+        let mut pl = match fc_player::Player::open_with(
+            &tools.ffmpeg,
+            Path::new(input),
+            info.duration_s,
+            &popts,
+        ) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("打开音频输出失败: {e:#}");
                 std::process::exit(1);
             }
         };
+        println!("输出: {}", pl.output_label());
         let t0 = std::time::Instant::now();
         while t0.elapsed().as_secs_f64() < secs {
             std::thread::sleep(std::time::Duration::from_millis(500));

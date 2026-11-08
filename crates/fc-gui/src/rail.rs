@@ -56,8 +56,8 @@ impl App {
             }
             self.page = Page::Convert;
         }
-        // 第三个大项：先占位，页面内容等用户构思
-        if rail_big(ui, "引擎和设备", self.page == Page::Engine) {
+        // 第三个大项：编解码（设备与引擎）
+        if rail_big(ui, "编解码", self.page == Page::Engine) {
             if self.page != Page::Engine {
                 self.page_t = 0.0;
             }

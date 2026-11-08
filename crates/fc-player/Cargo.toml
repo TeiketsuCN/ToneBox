@@ -8,3 +8,4 @@ anyhow.workspace = true
 cpal = "0.15"
 
 [target.'cfg(windows)'.dependencies]
+wasapi = "0.27.0"

@@ -205,6 +205,15 @@ pub struct Settings {
     /// 播放栏高度（逻辑点，含顶部拖拽条）。用户拖过就记住，下次启动沿用。
     #[serde(default = "default_bar_h")]
     pub bar_height: f32,
+    /// 播放输出设备（WASAPI 友好名）。空 = 系统默认输出。
+    #[serde(default)]
+    pub audio_out_device: String,
+    /// 播放时应用 ReplayGain（读文件里的 replaygain_track_gain 标签）
+    #[serde(default)]
+    pub replaygain: bool,
+    /// 播放走 WASAPI 独占（直通；失败自动退回共享）
+    #[serde(default)]
+    pub exclusive_output: bool,
     /// 选中文件就自动做频谱分析
     pub auto_analyze: bool,
     /// 输出参数（压缩等级 / 位深 / 码率……）——当前配置的展开
@@ -264,6 +273,9 @@ impl Default for Settings {
             bg_gradient: 0,
             dim: 96,
             bar_height: default_bar_h(),
+            audio_out_device: String::new(),
+            replaygain: false,
+            exclusive_output: false,
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,

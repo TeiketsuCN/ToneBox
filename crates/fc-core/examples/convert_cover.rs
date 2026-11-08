@@ -29,6 +29,7 @@ fn main() -> anyhow::Result<()> {
         album: Some("convert example".into()),
         track: Some("3".into()),
         date: Some("2026".into()),
+        ..Default::default()
     };
     let meta = metadata_args(&MetaWrite {
         tags: &tags,

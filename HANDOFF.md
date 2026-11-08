@@ -24,6 +24,8 @@
 > 暗化滑条三位数不再顶到「关于」；全屏改成铺满工作区（不再碰 HDR 色彩空间）；
 > **视频容器（MKV/MP4/WEBM/AVI）成为正式输出目标**（copy 重封装 + H.264/H.265/VP9/AV1 转码 +
 > 分辨率/帧率 + 音频按容器自动 copy/重编）。详见 `docs/待办-UI改造.md` 的「上一轮待办」。
+> 第三轮又加了：播放栏可上下拉伸、侧栏第三个大项「编解码」、音频设备检测（输出/输入、耳机/蓝牙）、
+> 输出设备选择、WASAPI 独占直通（按源采样率、s32 整数直通）、播放时 ReplayGain。
 
 ---
 
@@ -46,9 +48,11 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 | `fc-player` — 试听 | ✅ |
 | `fc-gui` — 四栏界面 | ✅ 见下 |
 | 视频输出（MKV/MP4/WEBM/AVI） | ✅ copy + H.264/H.265/VP9/AV1，端到端验过 |
+| 音频设备检测（输出/输入、耳机/蓝牙） | ✅ WASAPI 枚举，`编解码`页 |
+| 独占输出 / 设备选择 / ReplayGain | ✅ WASAPI 直通（s32）、按源采样率；ASIO 未支持 |
 | 安装包 | ✅ `D:\Apps\FormatConverter`，**157 MB**（自带 ffmpeg） |
 
-**测试**：`cargo test -p fc-core --lib` = 62 个；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
+**测试**：`cargo test -p fc-core --lib` = 63 个；`cargo test -p fc-player --lib` = 4 个（设备分类）；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
 **分支**：`main` 工作区干净，已 push。
 
 ---
@@ -67,8 +71,10 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 标题栏左上角是 **logo（青色圆角方块 + 三根电平条）+ 名字 ToneBox + 铃铛**，不再是最初的两行文字。
 铃铛有未读通知时右上角亮红点，点开是通知面板（完成/失败都记在这里，详情底部不再放完成卡片）。
 
-左侧顶部是**三个大项**：**音乐库 / 输出 / 引擎和设备**。点哪个显示哪块；「输出」还是原来的四栏。
-「引擎和设备」是留给用户构思的空页面：现在只有一行「这块先留空，等设计。」，没播东西时连播放栏都不画。
+左侧顶部是**三个大项**：**音乐库 / 输出 / 编解码**。点哪个显示哪块；「输出」还是原来的四栏。
+「编解码」页（`codec.rs`）：音频输出/输入设备列表（默认、耳机、蓝牙、HDMI、USB、数字输出标签 +
+设备格式）、点输出设备切换播放输出、ReplayGain 开关、独占输出开关、当前输出、引擎信息，
+以及一节「HiFi 输出」写明做到哪、差什么（ASIO / 无缝 / DSD DoP 未做）。
 
 **音乐库页**：左栏 `库 / 歌曲 / 专辑 / 风格 / 艺术家`（「库」在最前），右侧整块列表（整行可点、双击播放）。
 每行：**37px 封面 + 标题 + 编码·艺术家·专辑 + 右侧音质标识 + 时长**（FLAC/MP3/Vorbis… 和 CD 无损 / Hi-Res 无损 / 有损 320k 都有）。
@@ -190,6 +196,10 @@ Win11 + HDR 下退出后整个桌面会变暗。
 | 容器装不下源编码时自动兜底并警告 | 不能默默产出放不了的 mp4；兜底 = MP4/AVI→H.264，WebM→VP9 |
 | 强调色跟背景走 | 换晚霞/琥珀背景后还顶着青绿色，像贴上去的皮肤 |
 | 「引擎和设备」先留空页面 | 用户要自己构思这块，先摆控件会把设计框死；只留一行占位说明 |
+| 播放输出可选设备、可走 WASAPI 独占 | 共享模式要过系统混音、采样率被锁成混音格式；独占才能按源采样率、s32 整数直通 |
+| 独占时音量 / ReplayGain 不介入 | 位完美优先；音量用功放/系统音量，页面和输出描述都写明「直通」 |
+| 蓝牙/耳机按设备名和驱动描述判断 | Windows 端点没有可靠的传输类型；判不出就不标，不硬猜 |
+| 播放队列统一存 s32le 字节 | 共享输出转 f32，独占直接写声卡；同一份数据两条路径，不重复解码 |
 | 响度预览画「源 + 目标 + 峰值顶线」，不画单条波形 | 归一化是整轨统一增益，形状不变；只画一条缩放后的波形是装饰。真正有用的是加了多少 dB、峰值会不会顶到 −1 dBFS、增益有没有被下调 |
 
 ---
@@ -206,6 +216,8 @@ Win11 + HDR 下退出后整个桌面会变暗。
 | `crates/fc-analyze/PERF.md` | 长文件采样策略 |
 | `docs/留言/from-B.md` | 机器 B 的全部交付与**走前三点提醒** |
 | `crates/fc-core/src/format/video.rs` | 视频容器表、容器兼容矩阵、音频方案（代码即文档） |
+| `crates/fc-player/src/devices.rs` | 音频设备枚举与耳机/蓝牙分类（WASAPI） |
+| `crates/fc-player/src/exclusive.rs` | WASAPI 独占输出（s32 直通、按源采样率） |
 
 ### 前端代码结构（`crates/fc-gui/src/`）
 
@@ -218,6 +230,7 @@ Win11 + HDR 下退出后整个桌面会变暗。
 | `badges.rs` | `Quality` 与徽章（Hi-Res 渐变/倒角/扫光、CD、DSD 码流、有损档位），DSD 格式化 |
 | `titlebar.rs` | 自绘标题栏、窗口按钮、铃铛 |
 | `rail.rs` | 左侧三个大项、格式列表、音乐库分类、用户配置 |
+| `codec.rs` | 「编解码」页：设备列表、播放输出选择、ReplayGain/独占开关、引擎信息 |
 | `queue.rs` | 转换页的队列与拖放区 |
 | `player.rs` | 底部播放栏、大图封面、频谱按钮 |
 | `spectrum.rs` | 全屏频谱视图 |
@@ -257,6 +270,12 @@ Win11 + HDR 下退出后整个桌面会变暗。
 12. **覆盖层（设置页 / 百科）尺寸不能超过窗口**：`egui::Area` 默认 `constrain` 会把超尺寸的
     Area **往上顶到 y=0**，盖住标题栏。标题栏是原生命中区，于是"拖窗口正常、右上角按钮点不到"。
     设置页已经改成 `constrain(false)` + 内容卡住 min/max 高度 + 内部 ScrollArea；新覆盖层照这个写。
+13. **播放队列存的是 s32le 字节，不是 f32 采样**：共享输出在 `fill_f32` 里转 f32，独占直接把字节
+    写声卡。改解码格式要同时改 `spawn_decoder` / `fill_f32` / `exclusive.rs` 三处。
+14. **独占模式不应用音量和 ReplayGain**：这是"位完美"的代价；界面上要写「直通」，别让用户以为
+    音量滑杆坏了。
+15. **设备按 WASAPI 友好名保存**（`audio_out_device`），不是端点 ID：设备改名/重装后自动回默认，
+    比存一个失效 ID 好排查。
 
 ---
 
@@ -323,16 +342,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\FormatConverter\tools\fet
 $env:FC_FFMPEG='D:\Apps\FormatConverter\ffmpeg'
 cargo run -p fc-core --example convert_video -- in.mp4 out.mkv [copy|h264|hevc|vp9|av1]
 # 可选 FC_HEIGHT=720 / FC_FPS=30 验证缩放和改帧率
+
+# 音频设备检测（和「编解码」页同一条枚举）
+cargo run -p fc-player --example devices
+# 独占输出冒烟测试：打印设备描述 + 位置是否在走（不需要耳朵）
+$env:FC_FFMPEG='D:\Apps\FormatConverter\ffmpeg'
+cargo run -p fc-player --example exclusive_test -- <文件> [秒数] [源采样率]
 ```
 
 **命令行**（不起界面，方便排查）：
 
 ```
 format-converter --tools              # 当前用的 ffmpeg/ffprobe 路径
+format-converter --devices            # 输出/输入设备、耳机/蓝牙、格式
 format-converter --identify <文件>     # 是不是加密的、哪家的
 format-converter --tags <文件>         # 标签与封面
 format-converter --convert in out     # 转 FLAC
-format-converter --play <文件>         # 试听
+format-converter --play <文件>         # 试听（跟随设置里的设备/独占/ReplayGain，会打印实际输出）
 ```
 
 ---
@@ -377,16 +403,15 @@ format-converter --play <文件>         # 试听
 
 ## 交接：下一轮要做的三件事
 
-上一轮（2026-11-09）六条已全部完成，详细记录见 `docs/待办-UI改造.md` 的「上一轮待办」。
-现在按新优先级：
+2026-11-09 的 UI 六条、播放栏拉伸、编解码页/设备检测/独占播放都已落地；
+HiFi 清单里 **ASIO、无缝播放、DSD DoP 还没做**（原因见 `编解码` 页的「HiFi 输出」表）：
 
-1. **视频多音轨/字幕**：固定 `-map 0:v:0? -map 0:a:0?` 只处理第一条。
-   要做"保留全部"就得给方案加映射参数，并在详情页把轨列出来。
-2. **视频里的特殊音轨**：MKV 中 DSD/WMA/ATRAC 会转 FLAC（可能很大），
-   给个「转 Opus 96 / 丢弃音轨」的选择，别让用户只能接受默认。
-3. **HDR 真机复测全屏**：代码里已经没有 `ViewportCommand::Fullscreen`，
-   F11 实测窗口矩形正确；但"退出后桌面不变暗"要在开了 HDR 的机器上确认。
+1. **ASIO 输出**：需要 ASIO SDK + 各家驱动，做成可选后端；现在只有 WASAPI 共享/独占。
+2. **无缝播放**：现在只有单文件试听，没有队列连播。要先做播放列表 + 预解码下一首，
+   才能谈 gapless；别在单文件上假装无缝。
+3. **DSD DoP / 原生 DSD**：现在 ffmpeg 把 DSD 解成 PCM；DoP 要独占 + 把 DSD 位流按 24-bit 帧打包，
+   样本和驱动都要实测。
 
 **还没做（按优先级）**：HE-AAC/xHE-AAC 真实样本、ATRAC 样本扩充、编码器效率系数表、
-壁纸热更新强调色、Inno Setup、代码签名。**「引擎和设备」页面内容待用户构思**（现在故意是空的）。
+壁纸热更新强调色、蓝牙识别更准（目前按名字/描述）、Inno Setup、代码签名。
 

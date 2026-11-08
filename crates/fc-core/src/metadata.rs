@@ -111,6 +111,7 @@ mod tests {
             genre: Some("风格".into()),
             track: Some("3".into()),
             date: Some("2026".into()),
+            ..Default::default()
         };
         let args = metadata_args(&MetaWrite {
             tags: &tags,
