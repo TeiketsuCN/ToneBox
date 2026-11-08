@@ -4012,9 +4012,16 @@ impl App {
         let mut shown: Vec<fc_core::WarningKind> = vec![fc_core::WarningKind::Container];
         for k in knobs {
             changed |= self.knob_row(ui, *k);
-            // 挂在旋钮下面的提示：码率类的挂码率，升采样挂采样率
+            // 挂在旋钮下面的提示：码率类挂码率，采样率方向挂采样率，位深挂位深
             let here: &[fc_core::WarningKind] = match k {
-                fc_core::Knob::SampleRate => &[fc_core::WarningKind::Upsample],
+                fc_core::Knob::SampleRate => &[
+                    fc_core::WarningKind::Upsample,
+                    fc_core::WarningKind::Downsample,
+                ],
+                fc_core::Knob::BitDepth => &[
+                    fc_core::WarningKind::BitDepthDown,
+                    fc_core::WarningKind::BitDepthUp,
+                ],
                 fc_core::Knob::Mp3Bitrate
                 | fc_core::Knob::OpusBitrate
                 | fc_core::Knob::VorbisQuality
@@ -4034,11 +4041,14 @@ impl App {
                     out_hint(ui, &w.body, WARN);
                 }
             }
-            // 升采样提示已经把话说完了，就别再重复一行通用说明
+            // 采样率方向已经有具体提示了，就别再重复一行通用说明
             if *k == fc_core::Knob::SampleRate
-                && !warnings
-                    .iter()
-                    .any(|w| w.kind == fc_core::WarningKind::Upsample)
+                && !warnings.iter().any(|w| {
+                    matches!(
+                        w.kind,
+                        fc_core::WarningKind::Upsample | fc_core::WarningKind::Downsample
+                    )
+                })
             {
                 para(ui, fc_core::rate_note(self.target), 8.5, DIM);
             }

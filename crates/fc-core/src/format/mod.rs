@@ -197,6 +197,12 @@ pub enum WarningKind {
     HigherBitrate,
     /// 显式选了更高的采样率
     Upsample,
+    /// 输出采样率比源低（真正在丢高频）
+    Downsample,
+    /// 输出位深比源低（丢动态范围）
+    BitDepthDown,
+    /// 输出位深比源高（只是补零）
+    BitDepthUp,
 }
 
 /// 源文件 → 目标格式 的质量风险。
@@ -212,6 +218,8 @@ pub fn quality_warnings(
     let target_lossless = matches!(spec.kind, Kind::Lossless | Kind::Uncompressed);
     let target_kbps = bitrate_of(spec, o);
     let src_kbps = src.bitrate_kbps as u32;
+    // DSD 的 sample_rate 是"字节率"、bits 是打包字节数，拿来做采样率/位深比较只会得出怪结论
+    let src_dsd = src.codec.starts_with("dsd");
 
     if src.is_lossy() && target_lossless {
         out.push(QualityWarning {
@@ -272,10 +280,11 @@ pub fn quality_warnings(
         }
     }
 
-    // 只有用户自己选了更高的采样率才提醒；Dolby 自动上 48k 是规范，不必吓人
-    if o.sample_rate.is_some() {
+    // 采样率方向：升采样只在用户显式选了更高档时提醒（Dolby 自动上 48k 是规范，不吓人）；
+    // 降采样只要实际输出更低就提醒——这是真的在丢高频。DSD 的采样率是字节率，不参与比较。
+    if !src_dsd {
         if let (Some(out_rate), true) = (output_rate(spec, o), src.sample_rate > 0) {
-            if out_rate > src.sample_rate {
+            if out_rate > src.sample_rate && o.sample_rate.is_some() {
                 out.push(QualityWarning {
                     kind: WarningKind::Upsample,
                     title: "升采样不会增加信息",
@@ -284,10 +293,60 @@ pub fn quality_warnings(
                         src.sample_rate, out_rate
                     ),
                 });
+            } else if out_rate < src.sample_rate {
+                let nyq = (out_rate as f64 / 2000.0 * 10.0).round() / 10.0;
+                out.push(QualityWarning {
+                    kind: WarningKind::Downsample,
+                    title: "降采样会丢掉高频",
+                    body: if o.sample_rate.is_some() {
+                        format!(
+                            "源是 {} Hz，输出 {} Hz。约 {} kHz 以上的频段会被切掉，文件会小一点，但内容回不来；要原样保留就把采样率改回「自动」。",
+                            src.sample_rate, out_rate, nyq
+                        )
+                    } else {
+                        format!(
+                            "源是 {} Hz，这个格式最高只到 {} Hz，约 {} kHz 以上的频段会被丢掉。",
+                            src.sample_rate, out_rate, nyq
+                        )
+                    },
+                });
             }
         }
     }
 
+    // 位深只有无损/未压缩格式的旋钮能改（FLAC 之类直接保留源位深）。
+    // 有损源和 DSD 的 bits 没有比较意义。
+    if let (Some(src_bits), true) = (
+        src.bits,
+        !src_dsd
+            && !src.is_lossy()
+            && matches!(spec.id, "wav" | "caf" | "w64" | "aiff" | "pcm"),
+    ) {
+        let (out_bits, label) = match o.bit_depth {
+            BitDepth::Int16 => (16u32, "16"),
+            BitDepth::Int24 => (24, "24"),
+            BitDepth::Int32f => (32, "32f"),
+        };
+        if out_bits < src_bits {
+            out.push(QualityWarning {
+                kind: WarningKind::BitDepthDown,
+                title: "降位深会丢掉动态范围",
+                body: format!(
+                    "源是 {} bit，输出 {} bit。最低的电平会被量化噪声盖住；要原样保留就选 {} bit。",
+                    src_bits, label, src_bits
+                ),
+            });
+        } else if out_bits > src_bits {
+            out.push(QualityWarning {
+                kind: WarningKind::BitDepthUp,
+                title: "升位深不会增加精度",
+                body: format!(
+                    "源是 {} bit，输出 {} bit。多出来的低位是补零，文件只会变大，不会更接近母带。",
+                    src_bits, label
+                ),
+            });
+        }
+    }
     out
 }
 
@@ -1011,6 +1070,71 @@ mod tests {
         for p in PRESETS {
             assert!(by_id(p.format).is_some(), "预设指向了不存在的格式: {}", p.format);
         }
+    }
+
+    fn mi_bits(codec: &str, sr: u32, bits: u32, kbps: u32) -> MediaInfo {
+        MediaInfo {
+            bits: Some(bits),
+            ..mi(codec, kbps, sr)
+        }
+    }
+
+    #[test]
+    fn hi_res_to_cd_flags_downsample_and_depth() {
+        // 24bit/48k → WAV 16bit/44.1k：两处降级都要提醒
+        let src = mi_bits("flac", 48_000, 24, 1018);
+        let mut o = ConvertOptions::default();
+        o.bit_depth = BitDepth::Int16;
+        o.sample_rate = Some(44_100);
+        let kinds: Vec<WarningKind> = quality_warnings(&src, spec("wav"), &o)
+            .iter()
+            .map(|w| w.kind)
+            .collect();
+        assert!(kinds.contains(&WarningKind::BitDepthDown), "{kinds:?}");
+        assert!(kinds.contains(&WarningKind::Downsample), "{kinds:?}");
+    }
+
+    #[test]
+    fn upsampling_and_up_bit_depth_are_flagged() {
+        let src = mi_bits("flac", 44_100, 16, 900);
+        let mut o = ConvertOptions::default();
+        o.bit_depth = BitDepth::Int24;
+        o.sample_rate = Some(192_000);
+        let kinds: Vec<WarningKind> = quality_warnings(&src, spec("caf"), &o)
+            .iter()
+            .map(|w| w.kind)
+            .collect();
+        assert!(kinds.contains(&WarningKind::Upsample), "{kinds:?}");
+        assert!(kinds.contains(&WarningKind::BitDepthUp), "{kinds:?}");
+    }
+
+    #[test]
+    fn dsd_source_skips_rate_and_depth_warnings() {
+        // DSD 的 sample_rate 是字节率、bits 是打包字节数，不能拿来比
+        let src = mi_bits("dsd_lsbf_planar", 352_800, 8, 5_644);
+        let mut o = ConvertOptions::default();
+        o.bit_depth = BitDepth::Int16;
+        o.sample_rate = Some(44_100);
+        let kinds: Vec<WarningKind> = quality_warnings(&src, spec("wav"), &o)
+            .iter()
+            .map(|w| w.kind)
+            .collect();
+        assert!(!kinds.contains(&WarningKind::BitDepthDown), "{kinds:?}");
+        assert!(!kinds.contains(&WarningKind::Downsample), "{kinds:?}");
+    }
+
+    #[test]
+    fn lossy_source_has_no_bit_depth_warning() {
+        // 有损源的 bits 没有意义，别提示"降位深"
+        let src = mi_bits("mp3", 44_100, 16, 320);
+        let mut o = ConvertOptions::default();
+        o.bit_depth = BitDepth::Int16;
+        let kinds: Vec<WarningKind> = quality_warnings(&src, spec("wav"), &o)
+            .iter()
+            .map(|w| w.kind)
+            .collect();
+        assert!(!kinds.contains(&WarningKind::BitDepthDown), "{kinds:?}");
+        assert!(!kinds.contains(&WarningKind::BitDepthUp), "{kinds:?}");
     }
 }
 
