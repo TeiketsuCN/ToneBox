@@ -50,7 +50,7 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_space(4.0);
-                ui.label(RichText::new("编解码").size(14.0).color(TEXT).strong());
+                ui.label(RichText::new("引擎和设备").size(14.0).color(TEXT).strong());
                 ui.add_space(4.0);
                 para(
                     ui,

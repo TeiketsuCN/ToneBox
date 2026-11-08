@@ -50,14 +50,14 @@ impl App {
                 self.lib_status = "点「重新扫描」扫一遍音乐库".into();
             }
         }
-        if rail_big(ui, "输出", self.page == Page::Convert) {
+        if rail_big(ui, "编解码", self.page == Page::Convert) {
             if self.page != Page::Convert {
                 self.page_t = 0.0;
             }
             self.page = Page::Convert;
         }
-        // 第三个大项：编解码（设备与引擎）
-        if rail_big(ui, "编解码", self.page == Page::Engine) {
+        // 第三个大项：引擎和设备（音频设备与引擎信息）
+        if rail_big(ui, "引擎和设备", self.page == Page::Engine) {
             if self.page != Page::Engine {
                 self.page_t = 0.0;
             }
@@ -375,19 +375,29 @@ impl App {
                         continue;
                     }
 
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(group.title()).size(9.5).color(DIM));
-                    ui.add_space(1.0);
-
-                    for spec in specs {
-                        animating |= self.format_row(ui, spec, dt);
+                    // 分组做成可折叠菜单：点击标题展开/收起，记住状态
+                    let gi = match group {
+                        Group::Lossless => 0,
+                        Group::Lossy => 1,
+                        Group::Video => 2,
+                        Group::Device => 3,
+                    };
+                    let open = self.group_open[gi];
+                    ui.add_space(3.0);
+                    if group_header(ui, group.title(), specs.len(), open) {
+                        self.group_open[gi] = !open;
+                    }
+                    if open {
+                        for spec in specs {
+                            animating |= self.format_row(ui, spec, dt);
+                        }
                     }
                 }
 
                 // 视频容器也是正式格式行（见 Group::Video），只留一行很短的边界说明：
                 // 详细的"容器收什么编码"在输出列和百科里，不在这里堆字
                 ui.add_space(8.0);
-                para(ui, "视频只处理第一条画面和音轨。", 8.5, DIM);
+                para(ui, "视频保留第一条画面 + 全部音轨。", 8.5, DIM);
             });
 
         animating
@@ -550,6 +560,51 @@ impl App {
         }
     }
 
+}
+
+/// 格式分组菜单的标题行：三角 + 名称 + 数量。点击展开/收起。
+fn group_header(ui: &mut egui::Ui, title: &str, count: usize, open: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 24.0),
+        egui::Sense::click(),
+    );
+    let p = ui.painter();
+    if resp.hovered() {
+        p.rect_filled(rect, Rounding::same(6.0), tint(Color32::WHITE, 10));
+    }
+    let c = egui::pos2(rect.left() + 9.0, rect.center().y);
+    let tri = if open {
+        vec![
+            c + egui::vec2(-4.0, 2.5),
+            c + egui::vec2(4.0, 2.5),
+            c + egui::vec2(0.0, -2.5),
+        ]
+    } else {
+        vec![
+            c + egui::vec2(-2.5, -4.0),
+            c + egui::vec2(-2.5, 4.0),
+            c + egui::vec2(2.5, 0.0),
+        ]
+    };
+    p.add(egui::Shape::convex_polygon(tri, DIM, Stroke::NONE));
+    p.text(
+        egui::pos2(rect.left() + 20.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(9.5),
+        if open { MUTED } else { DIM },
+    );
+    p.text(
+        egui::pos2(rect.right() - 4.0, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        count.to_string(),
+        egui::FontId::proportional(8.5),
+        DIM,
+    );
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
 }
 
 /// 左侧两个大项之一。整行 34 高，选中时青色底

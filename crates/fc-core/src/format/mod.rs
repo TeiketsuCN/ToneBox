@@ -201,7 +201,26 @@ pub fn estimate_video_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptio
     if info.duration_s <= 0.0 {
         return 0;
     }
-    let audio_kbps = if info.codec.is_empty() {
+    let audio_kbps = if !info.audio_tracks.is_empty() {
+        // 多音轨：逐条算（copy 用该轨码率，重编用目标码率）
+        info.audio_tracks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| match audio_plan(spec.id, &t.codec) {
+                AudioPlan::Copy => {
+                    if t.bitrate_kbps > 0 {
+                        t.bitrate_kbps
+                    } else if i == 0 {
+                        // MKV 不记单轨码率：第一条退回总音轨码率
+                        info.bitrate_kbps
+                    } else {
+                        0
+                    }
+                }
+                AudioPlan::Encode { kbps, .. } => kbps as u64,
+            })
+            .sum()
+    } else if info.codec.is_empty() {
         // 纯视频文件没有音轨，别在估算里凭空加 900k
         0
     } else {
@@ -523,30 +542,59 @@ fn video_warnings(
         }
     }
 
-    // 音轨：能复制就复制，不能就得按容器规矩重编——这件事必须说出来
-    if !src.codec.is_empty() {
+    // 音轨：能复制就复制，不能就得按容器规矩重编——这件事必须说出来。
+    // 多音轨时只报"有几条要转 / 转成什么"，不逐条刷屏。
+    if !src.audio_tracks.is_empty() {
+        let mut encodes: Vec<(&str, &'static str, u32)> = Vec::new();
+        for t in &src.audio_tracks {
+            if let AudioPlan::Encode { label, kbps, .. } = audio_plan(spec.id, &t.codec) {
+                encodes.push((t.codec.as_str(), label, kbps));
+            }
+        }
+        if !encodes.is_empty() {
+            let total = src.audio_tracks.len();
+            let (_, label, kbps) = encodes[0];
+            let title = if total > 1 {
+                "部分音轨会被重编码"
+            } else {
+                "音轨会被重编码"
+            };
+            let body = if total > 1 {
+                format!(
+                    "{} 条音轨里有 {} 条不在 {} 支持的编码里，会转成 {} {}k；其余音轨原样复制。",
+                    total,
+                    encodes.len(),
+                    spec.name,
+                    label,
+                    kbps
+                )
+            } else {
+                format!(
+                    "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
+                    src.codec_label(),
+                    spec.name,
+                    label,
+                    kbps
+                )
+            };
+            out.push(QualityWarning {
+                kind: WarningKind::Container,
+                title,
+                body,
+            });
+        }
+    } else if !src.codec.is_empty() {
         if let AudioPlan::Encode { label, kbps, .. } = audio_plan(spec.id, &src.codec) {
-            let lossy_src = src.is_lossy();
             out.push(QualityWarning {
                 kind: WarningKind::Container,
                 title: "音轨会被重编码",
-                body: if lossy_src {
-                    format!(
-                        "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。多一次有损编码，细节会再少一点。",
-                        src.codec_label(),
-                        spec.name,
-                        label,
-                        kbps
-                    )
-                } else {
-                    format!(
-                        "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
-                        src.codec_label(),
-                        spec.name,
-                        label,
-                        kbps
-                    )
-                },
+                body: format!(
+                    "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
+                    src.codec_label(),
+                    spec.name,
+                    label,
+                    kbps
+                ),
             });
         }
     }
@@ -1264,18 +1312,23 @@ pub fn args_for_with(
     a
 }
 
-/// 视频容器的完整参数：映射第一条视频 + 第一条音轨，再分别决定 copy/重编码。
+/// 视频容器的完整参数：映射第一条视频 + **全部音轨**，再分别决定 copy/重编码。
 ///
 /// `0:v:0?` 的 `?` 是"没有视频流也别报错"：音频文件也能装进 mkv/mp4
 /// （就变成只有声音的容器），比直接拒绝更有用。
 fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) -> Vec<String> {
     let s = |v: &str| v.to_string();
-    let mut a = vec![
-        s("-map"),
-        s("0:v:0?"),
-        s("-map"),
-        s("0:a:0?"),
-    ];
+    let tracks = src.map(|i| i.audio_tracks.as_slice()).unwrap_or(&[]);
+    let mut a = vec![s("-map"), s("0:v:0?")];
+    if tracks.is_empty() {
+        // 老调用/纯视频：保持原来的可选单音轨映射
+        a.extend([s("-map"), s("0:a:0?")]);
+    } else {
+        // 多音轨全部保留：第 i 条 -> -map 0:a:i
+        for i in 0..tracks.len() {
+            a.extend([s("-map"), format!("0:a:{i}")]);
+        }
+    }
     let src_v = src.and_then(|i| i.video_codec.clone()).unwrap_or_default();
     let vc = effective_video_codec(spec.id, o, &src_v);
     // 编码器名按配置里记的（可能是 libopenh264 这种），没有就用首选
@@ -1343,16 +1396,35 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         }
     }
 
-    let src_a = src.map(|i| i.codec.as_str()).unwrap_or("");
-    // 纯视频文件没有音轨：别再塞 -c:a（ffmpeg 会忽略，但日志里全是噪音）
-    if !src_a.is_empty() {
-        match audio_plan(spec.id, src_a) {
-            AudioPlan::Copy => {
-                a.push(s("-c:a"));
-                a.push(s("copy"));
+    // 音轨：逐条决定 copy / 重编码。容器收就原样保留，不收的单独转，
+    // 不要因为一条音轨不合规就把整组都重编码。
+    if !tracks.is_empty() {
+        for (i, t) in tracks.iter().enumerate() {
+            match audio_plan(spec.id, &t.codec) {
+                AudioPlan::Copy => {
+                    a.extend([format!("-c:a:{i}"), s("copy")]);
+                }
+                AudioPlan::Encode { codec, kbps, .. } => {
+                    a.extend([
+                        format!("-c:a:{i}"),
+                        s(codec),
+                        format!("-b:a:{i}"),
+                        format!("{kbps}k"),
+                    ]);
+                }
             }
-            AudioPlan::Encode { codec, kbps, .. } => {
-                a.extend([s("-c:a"), s(codec), s("-b:a"), format!("{kbps}k")]);
+        }
+    } else {
+        // 兜底：测试/老调用没有音轨列表时，按第一条的编码处理
+        let src_a = src.map(|i| i.codec.as_str()).unwrap_or("");
+        if !src_a.is_empty() {
+            match audio_plan(spec.id, src_a) {
+                AudioPlan::Copy => {
+                    a.extend([s("-c:a"), s("copy")]);
+                }
+                AudioPlan::Encode { codec, kbps, .. } => {
+                    a.extend([s("-c:a"), s(codec), s("-b:a"), format!("{kbps}k")]);
+                }
             }
         }
     }
@@ -1426,6 +1498,7 @@ mod tests {
             duration_s: 120.0,
             size_bytes: 0,
             bits: Some(16),
+            audio_tracks: Vec::new(),
             video_codec: None,
             width: 0,
             height: 0,
@@ -1756,6 +1829,7 @@ mod tests {
             duration_s: 60.0,
             size_bytes: 0,
             bits: Some(16),
+            audio_tracks: Vec::new(),
             video_codec: None,
             width: 0,
             height: 0,
@@ -2031,6 +2105,51 @@ mod tests {
         o.video_height = 720;
         let w = quality_warnings(&src, spec("mkv"), &o);
         assert!(w.iter().any(|x| x.title.contains("分辨率")), "{w:?}");
+    }
+
+    fn with_tracks(mut m: MediaInfo, codecs: &[&str]) -> MediaInfo {
+        m.audio_tracks = codecs
+            .iter()
+            .map(|c| crate::AudioTrackInfo {
+                codec: c.to_string(),
+                channels: 2,
+                bitrate_kbps: 192,
+                language: None,
+                title: None,
+            })
+            .collect();
+        m
+    }
+
+    #[test]
+    fn video_keeps_all_audio_tracks() {
+        let src = with_tracks(miv("aac", "h264", 1920, 1080, 30.0, 4000), &["aac", "ac3", "aac"]);
+        let a = args_for_with(spec("mkv"), &ConvertOptions::default(), Some(&src));
+        // 三条音轨都要映射，不能只留第一条
+        for i in 0..3 {
+            assert!(
+                a.windows(2)
+                    .any(|w| w[0] == "-map" && w[1] == format!("0:a:{i}")),
+                "缺音轨 {i}: {a:?}"
+            );
+        }
+        // MKV 全收：每条都 copy
+        for i in 0..3 {
+            assert!(
+                a.windows(2)
+                    .any(|w| w[0] == format!("-c:a:{i}") && w[1] == "copy"),
+                "音轨 {i} 应该 copy: {a:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn video_encodes_only_incompatible_track() {
+        // MP4 收 AAC，不收 FLAC：只转那条 FLAC，AAC 原样复制
+        let src = with_tracks(miv("aac", "h264", 1920, 1080, 30.0, 4000), &["aac", "flac"]);
+        let a = args_for_with(spec("mp4"), &ConvertOptions::default(), Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-c:a:0" && w[1] == "copy"), "{a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-c:a:1" && w[1] == "aac"), "{a:?}");
     }
 }
 

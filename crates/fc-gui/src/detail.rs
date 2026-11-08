@@ -144,6 +144,21 @@ impl App {
                     if m.channels > 0 {
                         row(ui, "声道", &format!("{}", m.channels));
                     }
+                    // 多音轨（视频常见）：列出来；转音频格式时只会取第一条
+                    if m.audio_tracks.len() > 1 {
+                        let n = m.audio_tracks.len();
+                        let list: Vec<String> = m
+                            .audio_tracks
+                            .iter()
+                            .take(3)
+                            .map(|t| t.label())
+                            .collect();
+                        let mut text = format!("{n} 条：{}", list.join(" / "));
+                        if n > 3 {
+                            text.push_str(" …");
+                        }
+                        row(ui, "音轨", &text);
+                    }
                     // 视频文件只报音频参数没有意义：画面编码/分辨率/帧率才是它的身份
                     if m.has_video() {
                         let codec = m.video_label().unwrap_or("画面");

@@ -49,6 +49,8 @@ impl App {
         egui::Area::new(egui::Id::new("wiki_overlay"))
             .order(egui::Order::Foreground)
             .fixed_pos(area.min)
+            // 和设置页一样：不让 Area 被 egui 上顶盖住标题栏
+            .constrain(false)
             .show(ctx, |ui| {
                 egui::Frame::none()
                     .fill(tint(BG, 255))
@@ -56,13 +58,26 @@ impl App {
                     .show(ui, |ui| {
                         // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2），否则 Area 会比区域大，
                         // egui 会把它往上顶到 y=0、盖住标题栏，关闭/最小化按钮就点不到了。
-                        ui.set_min_size(egui::vec2(area.width() - 56.0, area.height() - 36.0));
-                        ui.set_max_width(area.width() - 56.0);
+                        let content_w = (area.width() - 56.0).max(240.0);
+                        let content_h = (area.height() - 36.0).max(220.0);
+                        ui.set_min_size(egui::vec2(content_w, content_h));
+                        ui.set_max_width(content_w);
+                        ui.set_max_height(content_h);
                         ui.add_space(TITLEBAR_H);
 
-                        // 顶栏：不要返回键了，点齿轮或 Esc 退出
+                        // 顶栏：返回按钮 + 标题 + 搜索
                         ui.horizontal(|ui| {
-                            ui.add_space(88.0);
+                            let back = egui::Button::new(
+                                RichText::new("返回").size(10.0).color(MUTED),
+                            )
+                            .fill(tint(Color32::WHITE, 8))
+                            .stroke(line(Color32::WHITE, 16))
+                            .rounding(Rounding::same(7.0))
+                            .min_size(egui::vec2(56.0, 24.0));
+                            if ui.add(back).on_hover_text("回到主界面（Esc 也行）").clicked() {
+                                self.wiki_open = false;
+                            }
+                            ui.add_space(12.0);
                             ui.label(RichText::new("格式百科").size(15.0).color(TEXT).strong());
                             ui.add_space(16.0);
                             ui.add(

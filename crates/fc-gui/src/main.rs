@@ -60,12 +60,12 @@ pub(crate) enum Analysis {
     Failed(String),
 }
 
-/// 左侧三个大项：音乐库 / 输出（转换）/ 编解码（设备与引擎）
+/// 左侧三个大项：音乐库 / 编解码（转换）/ 引擎和设备
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Page {
     Convert,
     Library,
-    /// 「编解码」：音频设备、播放输出选择、引擎信息
+    /// 「引擎和设备」：音频设备、播放输出选择、引擎信息
     Engine,
 }
 
@@ -283,6 +283,8 @@ pub(crate) struct App {
     audio_devices: Vec<fc_player::devices::AudioDevice>,
     devices_loaded: bool,
     devices_error: Option<String>,
+    /// 左侧格式分组菜单的展开状态（无损/有损/视频/设备专用）
+    group_open: [bool; 4],
     // 背景与动效
     bg: bg::WallpaperBg,
     /// 当前生效的强调色（背景/底色一变就重算，然后重设一遍 egui style 里沾色的项）
@@ -495,6 +497,8 @@ impl App {
             audio_devices: Vec::new(),
             devices_loaded: false,
             devices_error: None,
+            // 常用两组和视频默认展开；设备专用（ATRAC）默认收着
+            group_open: [true, true, true, false],
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
             bar_h: cfg.bar_height.clamp(BAR_H_MIN, BAR_H_MAX),

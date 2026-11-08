@@ -97,6 +97,8 @@ struct Stream {
     r_frame_rate: Option<String>,
     /// 内嵌封面在 ffprobe 里也是一条 video 流，别把它当成"这是视频文件"
     disposition: Option<Disposition>,
+    /// 音轨自己的语言/标题（多音轨视频用）
+    tags: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Deserialize, Default)]
@@ -113,6 +115,30 @@ struct Format {
     size: Option<String>,
 }
 
+/// 一条音频流的信息（视频文件可能有多条音轨）。
+#[derive(Clone, Debug, Default)]
+pub struct AudioTrackInfo {
+    pub codec: String,
+    pub channels: u32,
+    pub bitrate_kbps: u64,
+    pub language: Option<String>,
+    pub title: Option<String>,
+}
+
+impl AudioTrackInfo {
+    /// 显示用的短标签："AAC · 2ch · eng"
+    pub fn label(&self) -> String {
+        let mut s = self.codec.to_uppercase();
+        if self.channels > 0 {
+            s.push_str(&format!(" · {}ch", self.channels));
+        }
+        if let Some(l) = self.language.as_deref().filter(|l| !l.is_empty()) {
+            s.push_str(&format!(" · {l}"));
+        }
+        s
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MediaInfo {
     pub codec: String,
@@ -124,6 +150,8 @@ pub struct MediaInfo {
     pub size_bytes: u64,
     /// 位深。无损才有意义（16 / 24 / 32），有损一般为 None。
     pub bits: Option<u32>,
+    /// 全部音频流（第一条仍是 `codec` / `bitrate_kbps` 那一条）
+    pub audio_tracks: Vec<AudioTrackInfo>,
     /// 视频流编码（h264 / hevc / vp9 / av1 …）。纯音频文件是 None。
     pub video_codec: Option<String>,
     /// 画面宽高（像素）。纯音频文件是 0。
@@ -303,6 +331,28 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
             })
     });
 
+    // 全部音轨：视频可能带多条，转换时默认全部保留
+    let audio_tracks: Vec<AudioTrackInfo> = parsed
+        .streams
+        .iter()
+        .filter(|s| s.codec_type.as_deref() == Some("audio"))
+        .map(|s| {
+            let tag = |k: &str| {
+                s.tags
+                    .as_ref()
+                    .and_then(|m| m.get(k).cloned())
+                    .filter(|v| !v.trim().is_empty())
+            };
+            AudioTrackInfo {
+                codec: s.codec_name.clone().unwrap_or_default(),
+                channels: s.channels.unwrap_or(0),
+                bitrate_kbps: parse_u64(&s.bit_rate) / 1000,
+                language: tag("language"),
+                title: tag("title"),
+            }
+        })
+        .collect();
+
     // 视频容器的 format.bit_rate 是"画面 + 声音"的总码率。有音轨码率就优先用它；
     // 像 MKV 这种容器不记音轨码率的，宁可不填（0），也别把总码率当成音频码率
     // ——"353kbps 的 AAC"这种假数据比空着更糟。
@@ -339,6 +389,7 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         duration_s,
         size_bytes: parse_u64(&fmt.size),
         bits,
+        audio_tracks,
         video_codec: video.and_then(|v| v.codec_name.clone()),
         width: video.and_then(|v| v.width).unwrap_or(0),
         height: video.and_then(|v| v.height).unwrap_or(0),

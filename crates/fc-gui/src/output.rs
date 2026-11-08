@@ -306,38 +306,63 @@ impl App {
         // 视频容器的音轨方案：能复制就复制，不能就得按容器规矩重编——
         // 不写出来用户会以为"只是换了容器，声音没动"。
         if fc_core::is_video(self.target) {
-            let src_audio = self
+            let info = self
                 .items
                 .get(self.selected)
-                .and_then(|i| i.info.as_ref())
-                .map(|m| m.codec.clone())
-                .unwrap_or_default();
-            let plan = fc_core::audio_plan(self.target.id, &src_audio);
+                .and_then(|i| i.info.as_ref());
+            let n_tracks = info.map(|m| m.audio_tracks.len()).unwrap_or(0);
+            let src_audio = info.map(|m| m.codec.clone()).unwrap_or_default();
+            let encodes = info
+                .map(|m| {
+                    m.audio_tracks
+                        .iter()
+                        .filter(|t| {
+                            matches!(
+                                fc_core::audio_plan(self.target.id, &t.codec),
+                                fc_core::AudioPlan::Encode { .. }
+                            )
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            let first_plan = info
+                .and_then(|m| m.audio_tracks.first())
+                .map(|t| fc_core::audio_plan(self.target.id, &t.codec))
+                .unwrap_or(fc_core::AudioPlan::Copy);
             field_row(ui, "音频", |ui| {
                 // 纯视频文件没有音轨：写"无音轨"，别假装会转出一条 FLAC 900k
-                let text = if src_audio.is_empty() {
+                let text = if n_tracks == 0 {
                     "无音轨（纯视频）".to_string()
+                } else if n_tracks == 1 {
+                    first_plan.label()
+                } else if encodes == 0 {
+                    format!("{n_tracks} 条音轨 · 全部复制")
                 } else {
-                    plan.label()
+                    format!("{n_tracks} 条音轨 · {} 条复制", n_tracks - encodes)
                 };
                 ui.label(RichText::new(text).size(10.0).color(TEXT));
             });
-            if !src_audio.is_empty() {
-                if let fc_core::AudioPlan::Encode { label, .. } = plan {
-                    hint_below(
-                        ui,
-                        &format!(
-                            "源的 {} 不在这个容器支持的音频编码里，音轨会转成 {}。",
-                            self.items
-                                .get(self.selected)
-                                .and_then(|i| i.info.as_ref())
-                                .map(|m| m.codec_label().to_string())
-                                .unwrap_or_else(|| src_audio.clone()),
-                            label
-                        ),
-                        WARN,
-                    );
-                }
+            if encodes > 0 {
+                let enc_label = match first_plan {
+                    fc_core::AudioPlan::Encode { label, .. } => label,
+                    _ => "AAC",
+                };
+                hint_below(
+                    ui,
+                    &if n_tracks > 1 {
+                        format!(
+                            "{} 条音轨里有 {encodes} 条不在这个容器支持的编码里，会转成 {enc_label}；其余原样复制。",
+                            n_tracks
+                        )
+                    } else {
+                        format!(
+                            "源的 {} 不在这个容器支持的音频编码里，音轨会转成 {enc_label}。",
+                            info.map(|m| m.codec_label().to_string())
+                                .unwrap_or_else(|| src_audio.clone())
+                        )
+                    },
+                    WARN,
+                );
             }
         }
 
