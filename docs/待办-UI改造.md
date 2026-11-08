@@ -234,6 +234,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 27 | 左侧分「音乐库 / 输出」两页 + 音乐库（歌曲/专辑/风格/艺术家/库） | ✅ 完成（`Page` / `LibTab` / `scan_library`） |
 | 28 | 音乐库「添加音乐 / 添加文件夹」常驻顶部；库排最前；播放条浮起 | ✅ 完成（`lib_button` / 圆角阴影条） |
 | 29 | 库列表显示专辑封面（懒加载）+ 左下用户配置（切换/改名/导出/导入） | ✅ 完成（`spawn_lib_cover` / `Profile`） |
+| 30 | 左上角换成 logo + 改名 tonebox | ✅ 完成（`APP_NAME` + 电平条 logo） |
 
 ### 已踩的坑（写下来省得重踩）
 
@@ -341,6 +342,11 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 - **egui 默认字体没有 "✎" "＋" 这些字形**，会画成豆腐块。用 `改`、`+` 这类一定有的字符。
 - **封面别在扫描时全抽**：几千首会卡几分钟、纹理也吃显存。改成列表行进入视口才排队抽一张
   40×40，按路径缓存（`lib_covers`），重扫时清空。
+- **改 PowerShell 脚本别把 BOM 弄丢**：`tools\install.ps1` 是 UTF-8 **with BOM**，
+  `powershell.exe`（5.1）没有 BOM 就按 ANSI 读，中文注释会把字符串吃掉、直接语法错误
+  （报"缺少右 }"，其实全是注释乱码）。用 edit 工具改完要补回 BOM：
+  `[System.IO.File]::WriteAllText($p,$t,(New-Object System.Text.UTF8Encoding($true)))`。
+  同理 `uninstall.ps1`、`fetch-*.ps1` 都是带 BOM 的。
 
 ---
 

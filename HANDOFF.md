@@ -1,5 +1,9 @@
 # HANDOFF —— 新会话从这里开始
 
+> 显示名 **tonebox**（原来的"格式转换器"）。改名只改 `crates/fc-gui/src/main.rs` 里的
+> `APP_NAME`；exe 名 / 安装目录 / 配置目录还叫 format-converter / FormatConverter，
+> 为的是不丢用户配置、不断快捷方式。
+
 > 这份文件让你 30 秒接上全部上下文。**不需要读任何聊天记录**，所有决定都在这份
 > 和它指向的文档里。
 >
@@ -37,6 +41,8 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 ---
 
 ## 界面长什么样
+
+标题栏左上角是 **logo（青色圆角方块 + 三根电平条）+ 名字 tonebox**，不再是原来的两行文字。
 
 左侧顶部是**两个大项**：**音乐库 / 输出**。点哪个显示哪块；「输出」还是原来的四栏。
 
