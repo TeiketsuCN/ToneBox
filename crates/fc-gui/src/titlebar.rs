@@ -59,17 +59,30 @@ impl App {
         );
         ui.painter()
             .rect_filled(logo, Rounding::same(7.0), accent());
-        // 里面三条"电平条"：一眼能看出是音频工具
-        for (fx, fh) in [(0.30, 0.40), (0.50, 0.64), (0.70, 0.30)] {
-            let bx = logo.left() + logo.width() * fx;
-            let h = logo.height() * fh;
-            ui.painter().rect_filled(
-                egui::Rect::from_center_size(
-                    egui::pos2(bx, logo.center().y),
-                    egui::vec2(2.6, h),
-                ),
-                Rounding::same(1.3),
-                BG,
+        // 声音盒子：深色箱体 + 喇叭 + 两道声波（和 exe/快捷方式图标同一套图形）
+        let c = logo.center();
+        let boxr = egui::Rect::from_center_size(c + egui::vec2(-3.0, 0.0), egui::vec2(12.0, 12.0));
+        ui.painter().rect_filled(boxr, Rounding::same(3.0), BG);
+        ui.painter()
+            .circle_filled(boxr.center() + egui::vec2(-2.0, 0.0), 1.9, accent());
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                boxr.center() + egui::vec2(0.0, -3.2),
+                boxr.center() + egui::vec2(4.6, 0.0),
+                boxr.center() + egui::vec2(0.0, 3.2),
+            ],
+            accent(),
+            Stroke::NONE,
+        ));
+        for (dx, h) in [(6.0f32, 4.0f32), (8.5, 7.0)] {
+            let tip = c + egui::vec2(dx + 1.5, 0.0);
+            ui.painter().line_segment(
+                [c + egui::vec2(dx, -h * 0.5), tip],
+                Stroke::new(1.4, BG),
+            );
+            ui.painter().line_segment(
+                [tip, c + egui::vec2(dx, h * 0.5)],
+                Stroke::new(1.4, BG),
             );
         }
 

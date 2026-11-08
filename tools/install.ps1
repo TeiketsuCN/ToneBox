@@ -15,7 +15,7 @@ $src = Split-Path -Parent $PSScriptRoot
 # D 盘没有就装到用户目录（新机器可能只有 C:）
 $AppDir = if (Test-Path 'D:\') { 'D:\Apps\FormatConverter' } else { Join-Path $env:LOCALAPPDATA 'Programs\FormatConverter' }
 
-$Version  = '0.1.0'
+$Version  = '1.0.0-beta.1'
 $ExeName  = 'format-converter.exe'
 $Display  = 'ToneBox'
 # 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
@@ -38,6 +38,7 @@ Get-Process -Name 'format-converter','格式转换器' -ErrorAction SilentlyCont
 Start-Sleep -Milliseconds 500
 
 Copy-Item -LiteralPath $built -Destination "$AppDir\$ExeName" -Force
+Copy-Item -LiteralPath (Join-Path $src 'crates\fc-gui\assets\icon.ico') -Destination "$AppDir\ToneBox.ico" -Force
 
 # 随包 ffmpeg（LGPL 共享版，由 tools\fetch-ffmpeg.ps1 下载）
 $ffSrc = Join-Path $src 'vendor\ffmpeg'
@@ -66,6 +67,7 @@ foreach ($lnk in $targets) {
   $s.TargetPath       = "$AppDir\$ExeName"
   $s.WorkingDirectory = $AppDir
   $s.Description      = $Display
+  $s.IconLocation     = "$AppDir\ToneBox.ico"
   $s.Save()
   Write-Host "  $lnk"
 }
@@ -93,5 +95,6 @@ Set-ItemProperty -Path $key -Name UninstallString -Value "powershell.exe -NoProf
 
 Copy-Item -LiteralPath (Join-Path $src 'tools\uninstall.ps1') -Destination "$AppDir\uninstall.ps1" -Force
 
+& "$env:SystemRoot\System32\ie4uinit.exe" -show 2>$null | Out-Null
 Write-Host "`n安装完成: $AppDir\$ExeName" -ForegroundColor Green
 Write-Host "桌面 + 开始菜单快捷方式已就位，可在「应用和功能」里卸载。"
