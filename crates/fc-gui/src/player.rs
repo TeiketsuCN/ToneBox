@@ -55,8 +55,17 @@ impl App {
                 it.tags.display_title(&it.name())
             })
             .unwrap_or_else(|| "未在播放".to_string());
+        let sub = display
+            .map(|i| self.items[i].tags.display_sub())
+            .unwrap_or_default();
         let cover = display.and_then(|i| self.items[i].cover.clone());
         let has_cover = cover.is_some();
+        // 只有"当前显示的那首"的波形才拿来画
+        let wave = self.wave.as_ref().and_then(|(p, w)| {
+            display
+                .filter(|i| self.items[*i].path == *p)
+                .map(|_| w)
+        });
 
         let mut toggle = false;
         let mut stop = false;
@@ -65,24 +74,19 @@ impl App {
         let mut open_cover = false;
         let mut open_spec = false;
 
+        // ── 上半：封面 + 走带 + 标题 + 音量 ──
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
-
-            // 封面（点开大图）
-            let resp = bar_cover(ui, cover.as_ref(), 48.0);
+            let resp = bar_cover(ui, cover.as_ref(), 64.0);
             if resp.clicked() && has_cover {
                 open_cover = true;
             }
-
             ui.add_space(2.0);
 
-            // 给右边的音量留固定宽度：否则标题那行会吃掉整条横向空间，
-            // 音量条被挤成一个小点（第一次就是这样）。
-            // 右边要放音量条 + 频谱按钮，宽度不够的话频谱按钮会画到布局外面、点不到
             let vol_w = 122.0;
             let content_w = (ui.available_width() - vol_w).max(160.0);
             ui.allocate_ui_with_layout(
-                egui::vec2(content_w, 48.0),
+                egui::vec2(content_w, 64.0),
                 Layout::top_down(Align::LEFT),
                 |ui| {
                     ui.horizontal(|ui| {
@@ -98,66 +102,19 @@ impl App {
                             stop = true;
                         }
                         ui.add_space(6.0);
-                        // 左对齐 + 截断（add_sized 会居中，标题会跑到中间）
                         ui.add(
                             egui::Label::new(
                                 RichText::new(&name)
-                                    .size(11.0)
+                                    .size(11.5)
                                     .color(if has_player { TEXT } else { MUTED }),
                             )
                             .truncate(),
                         );
                     });
-                    ui.add_space(2.0);
-                    ui.horizontal(|ui| {
-                        let time_w = 92.0;
-                        let bar_w = (ui.available_width() - time_w).max(60.0);
-                        let (rect, resp) = ui.allocate_exact_size(
-                            egui::vec2(bar_w, 16.0),
-                            egui::Sense::click_and_drag(),
-                        );
-                        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
-                        let p = ui.painter();
-                        // 细轨道 + 圆点：比之前一整条 10px 的胶囊干净
-                        let track = egui::Rect::from_center_size(
-                            rect.center(),
-                            egui::vec2(rect.width(), 4.0),
-                        );
-                        p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 16));
-                        if frac > 0.0 {
-                            let mut f = track;
-                            f.set_width(track.width() * frac);
-                            p.rect_filled(f, Rounding::same(2.0), ACCENT);
-                        }
-                        let knob_r = if resp.hovered() || resp.dragged() {
-                            6.0
-                        } else {
-                            4.5
-                        };
-                        p.circle_filled(
-                            egui::pos2(track.left() + track.width() * frac, track.center().y),
-                            knob_r,
-                            if has_player { TEXT } else { DIM },
-                        );
-                        if has_player && (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
-                            if let Some(pp) = resp.interact_pointer_pos() {
-                                seek = Some(
-                                    ((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64
-                                        * dur,
-                                );
-                            }
-                        }
-                        ui.add_space(6.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "{} / {}",
-                                fmt_duration(pos),
-                                fmt_duration(dur)
-                            ))
-                            .size(9.0)
-                            .color(DIM),
-                        );
-                    });
+                    ui.add_space(3.0);
+                    ui.add(
+                        egui::Label::new(RichText::new(&sub).size(9.0).color(DIM)).truncate(),
+                    );
                 },
             );
 
@@ -167,7 +124,6 @@ impl App {
                     .as_ref()
                     .map(|p| p.volume())
                     .unwrap_or(self.player_volume);
-                // 和进度条同一套画法，不用 egui 默认 Slider（风格对不上）
                 if volume_bar(ui, &mut v) {
                     vol_change = Some(v);
                 }
@@ -178,15 +134,117 @@ impl App {
             });
         });
 
+        ui.add_space(4.0);
+
+        // ── 中部：波形（左右声道各一条；点/拖也能跳转）──
+        let wave_h = 52.0;
+        let (wrect, wresp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), wave_h),
+            egui::Sense::click_and_drag(),
+        );
+        let p = ui.painter();
+        p.rect_filled(wrect, Rounding::same(8.0), tint(Color32::WHITE, 6));
+        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
+        if let Some(chans) = wave {
+            let lanes = chans.len().max(1);
+            let lane_h = (wave_h - 6.0) / lanes as f32;
+            for (ci, data) in chans.iter().enumerate() {
+                let cy = wrect.top() + 3.0 + lane_h * (ci as f32 + 0.5);
+                let half = (lane_h * 0.42).max(2.0);
+                let n = data.len().max(1);
+                for (i, (mn, mx)) in data.iter().enumerate() {
+                    let x = wrect.left() + wrect.width() * (i as f32 + 0.5) / n as f32;
+                    let y0 = cy - mx.clamp(-1.0, 1.0) * half;
+                    let y1 = cy - mn.clamp(-1.0, 1.0) * half;
+                    let played = x <= wrect.left() + wrect.width() * frac;
+                    let col = if played { ACCENT } else { tint(Color32::WHITE, 90) };
+                    p.line_segment(
+                        [egui::pos2(x, y0), egui::pos2(x, y1.max(y0 + 1.0))],
+                        Stroke::new(1.2, col),
+                    );
+                }
+            }
+            let px = wrect.left() + wrect.width() * frac;
+            p.line_segment(
+                [egui::pos2(px, wrect.top() + 2.0), egui::pos2(px, wrect.bottom() - 2.0)],
+                Stroke::new(1.4, Color32::WHITE),
+            );
+        } else {
+            p.text(
+                wrect.center(),
+                Align2::CENTER_CENTER,
+                if has_player {
+                    "波形生成中…"
+                } else {
+                    "双击队列里的文件即可试听"
+                },
+                FontId::proportional(9.5),
+                DIM,
+            );
+        }
+        if has_player && (wresp.clicked() || wresp.dragged()) {
+            if let Some(pp) = wresp.interact_pointer_pos() {
+                seek = Some(
+                    ((pp.x - wrect.left()) / wrect.width()).clamp(0.0, 1.0) as f64 * dur,
+                );
+            }
+        }
+
+        ui.add_space(6.0);
+
+        // ── 底部：进度条 ──
+        ui.horizontal(|ui| {
+            let time_w = 96.0;
+            let bar_w = (ui.available_width() - time_w).max(60.0);
+            let (rect, resp) = ui.allocate_exact_size(
+                egui::vec2(bar_w, 16.0),
+                egui::Sense::click_and_drag(),
+            );
+            let p = ui.painter();
+            let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
+            p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 16));
+            if frac > 0.0 {
+                let mut f = track;
+                f.set_width(track.width() * frac);
+                p.rect_filled(f, Rounding::same(2.0), ACCENT);
+            }
+            let knob_r = if resp.hovered() || resp.dragged() {
+                6.0
+            } else {
+                4.5
+            };
+            p.circle_filled(
+                egui::pos2(track.left() + track.width() * frac, track.center().y),
+                knob_r,
+                if has_player { TEXT } else { DIM },
+            );
+            if has_player && (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
+                if let Some(pp) = resp.interact_pointer_pos() {
+                    seek = Some(
+                        ((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64 * dur,
+                    );
+                }
+            }
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!(
+                    "{} / {}",
+                    fmt_duration(pos),
+                    fmt_duration(dur)
+                ))
+                .size(9.0)
+                .color(DIM),
+            );
+        });
+
         if open_spec {
             self.open_spectrum();
         }
-
         if open_cover {
             if let Some(i) = display {
                 self.cover_view = Some(i);
                 self.cover_closing = false;
-                self.cover_t = 0.0; // 从缩小状态开始放大
+                self.cover_t = 0.0;
                 self.start_big_cover(i);
             }
         }

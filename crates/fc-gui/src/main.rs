@@ -317,6 +317,12 @@ pub(crate) struct App {
     delete_source: bool,
     /// 「清除所有元数据」的长按进度
     meta_clear_hold: f32,
+    /// 当前缓存的波形：路径 + 每个声道的 (min,max) 桶
+    wave: Option<(PathBuf, Vec<Vec<(f32, f32)>>)>,
+    /// 正在生成波形的文件（避免重复派发）
+    wave_pending: Option<PathBuf>,
+    wave_tx: std::sync::mpsc::Sender<(PathBuf, Vec<Vec<(f32, f32)>>)>,
+    wave_rx: Receiver<(PathBuf, Vec<Vec<(f32, f32)>>)>,
     lib_tab: LibTab,
     lib_entries: Vec<LibEntry>,
     lib_scanning: bool,
@@ -396,6 +402,7 @@ impl App {
 
         let target = fc_core::default_target();
         let (atx, arx) = channel();
+        let (wtx, wrx) = channel();
         let (mtx, mrx) = channel();
         let (btx, brx) = channel();
         let (ltx, lrx) = channel();
@@ -488,6 +495,10 @@ impl App {
             page_t: 1.0,
             delete_source: false,
             meta_clear_hold: 0.0,
+            wave: None,
+            wave_pending: None,
+            wave_tx: wtx,
+            wave_rx: wrx,
             lib_tab: LibTab::Songs,
             lib_entries: cached_lib,
             lib_scanning: false,
@@ -810,6 +821,26 @@ impl App {
         });
     }
 
+    /// 后台算波形（8 kHz 立体声，一首歌几百毫秒）
+    fn request_wave(&mut self, path: &Path, ctx: &egui::Context) {
+        if self.wave.as_ref().map(|(p, _)| p.as_path()) == Some(path)
+            || self.wave_pending.as_deref() == Some(path)
+        {
+            return;
+        }
+        let Some(tools) = self.tools.clone() else { return };
+        let p = path.to_path_buf();
+        let tx = self.wave_tx.clone();
+        self.wave_pending = Some(p.clone());
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            if let Ok(w) = fc_analyze::waveform(&tools.ffmpeg, &p, 480) {
+                let _ = tx.send((p, w));
+                ctx.request_repaint();
+            }
+        });
+    }
+
     fn start_play(&mut self, idx: usize) {
         // 加密文件只识别：不播放、不解码
         if let Some(it) = self.items.get(idx) {
@@ -884,6 +915,10 @@ impl App {
     }
 
     fn poll(&mut self) {
+        while let Ok((p, w)) = self.wave_rx.try_recv() {
+            self.wave = Some((p, w));
+            self.wave_pending = None;
+        }
         let mut msgs = Vec::new();
         if let Some(rx) = &self.rx {
             while let Ok(m) = rx.try_recv() {
@@ -1034,6 +1069,22 @@ impl eframe::App for App {
         frame::set_ui_scale(BASE_ZOOM * self.cfg.ui_scale);
         self.poll();
         self.poll_analysis();
+
+        // 播放栏波形：当前显示的那首还没算过就后台补上（加密文件没有 info，跳过）
+        if let Some(i) = self.player_for.or_else(|| {
+            if self.items.is_empty() {
+                None
+            } else {
+                Some(self.selected)
+            }
+        }) {
+            if let Some(it) = self.items.get(i) {
+                if it.info.is_some() {
+                    let p = it.path.clone();
+                    self.request_wave(&p, ctx);
+                }
+            }
+        }
         self.poll_media(ctx);
         self.poll_big_cover(ctx);
         self.poll_library();
@@ -1269,7 +1320,7 @@ impl eframe::App for App {
             // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
             let screen = ctx.screen_rect();
-            let bar_h = 80.0;
+            let bar_h = BAR_H;
             // 左右各缩进一点，不贴满两栏（用户要"短一点"）
             let bar_pad = 26.0;
             let bar_w = if self.page == Page::Convert {

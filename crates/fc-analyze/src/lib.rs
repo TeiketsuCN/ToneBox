@@ -685,6 +685,81 @@ pub fn loudness(ffmpeg: &Path, path: &Path) -> Result<fc_core::loudness::Loudnes
     fc_core::loudness::measure(&pcm, 2).context("样本太短，测不出响度（至少 400ms）")
 }
 
+/// 播放栏用的波形：整轨解成 8 kHz 立体声，按桶取每段的最小/最大峰值。
+///
+/// 返回的每个声道一个 Vec（通常是 2 个：左/右），每项是 `(min, max)`。
+/// 8 kHz 足够画包络；一首 4 分钟的歌解码不到 0.3 秒。
+pub fn waveform(ffmpeg: &Path, path: &Path, buckets: usize) -> Result<Vec<Vec<(f32, f32)>>> {
+    const CH: usize = 2;
+    const RATE: u32 = 8_000;
+
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"]).arg(path);
+    cmd.args(["-map", "0:a:0", "-ac", "2", "-ar"])
+        .arg(RATE.to_string())
+        .args(["-f", "f32le", "-"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = cmd.output().context("启动 ffmpeg 解码失败（波形）")?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let tail: String = err
+            .chars()
+            .rev()
+            .take(300)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        bail!("ffmpeg 解码失败（波形）：\n{}", tail.trim());
+    }
+    let pcm: Vec<f32> = out
+        .stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect();
+    let frames = pcm.len() / CH;
+    if frames < 64 {
+        bail!("样本太短，画不出波形");
+    }
+    let buckets = buckets.clamp(64, 4000);
+    let mut chans: Vec<Vec<(f32, f32)>> = Vec::with_capacity(CH);
+    for c in 0..CH {
+        let mut v = Vec::with_capacity(buckets);
+        for i in 0..buckets {
+            let a = frames * i / buckets;
+            let b = (frames * (i + 1) / buckets).max(a + 1).min(frames);
+            let mut mn = 0.0f32;
+            let mut mx = 0.0f32;
+            for f in a..b {
+                let x = pcm[f * CH + c];
+                if x < mn {
+                    mn = x;
+                }
+                if x > mx {
+                    mx = x;
+                }
+            }
+            v.push((mn, mx));
+        }
+        chans.push(v);
+    }
+    // 两个声道几乎一样（单声道源）时，右边那条没意义，省一条线
+    if chans.len() == 2 {
+        let same = chans[0]
+            .iter()
+            .zip(chans[1].iter())
+            .all(|(a, b)| (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3);
+        if same {
+            chans.truncate(1);
+        }
+    }
+    Ok(chans)
+}
+
 /// 给界面画频谱用：对数频率轴上的 (Hz, dB) 点。
 ///
 /// 跟 `analyze` 用同一条解码 + FFT 路径，只是不判质量：按对数频率分带，
