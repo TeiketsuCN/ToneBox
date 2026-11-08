@@ -46,14 +46,6 @@ impl App {
         }
         ui.add_space(10.0);
 
-        // 用户配置：钉在最下面，两页都在
-        egui::TopBottomPanel::bottom("rail_profiles").resizable(false).show_separator_line(false)
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 4.0)))
-            .show_inside(ui, |ui| {
-                ui.set_width(ui.available_width());
-                self.profile_panel(ui);
-            });
-
         match self.page {
             Page::Convert => animating |= self.format_list(ui),
             Page::Library => self.library_nav(ui),
@@ -61,16 +53,16 @@ impl App {
         animating
     }
 
-    /// 左下的用户配置面板：列表 + 重命名 + 导出/导入
+    /// 用户配置：列表 + 重命名 + 导出/导入（现在放在设置页里）
     pub(crate) fn profile_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("配置").size(9.0).color(DIM));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if tiny_text_button(ui, "+") {
-                    self.cfg.add_profile();
-                    self.profile_msg = "已新建一套配置".into();
-                }
-            });
+            if tiny_text_button(ui, "＋ 新建配置") {
+                self.cfg.add_profile();
+                self.profile_msg = "已新建一套配置".into();
+            }
+            if !self.profile_msg.is_empty() {
+                ui.label(RichText::new(&self.profile_msg).size(9.0).color(ACCENT));
+            }
         });
         ui.add_space(2.0);
 
@@ -365,6 +357,18 @@ impl App {
                         animating |= self.format_row(ui, spec, dt);
                     }
                 }
+
+                // 视频容器也能当输入：放在列表最后，不占输出格式的位置
+                ui.add_space(12.0);
+                ui.label(RichText::new("视频输入").size(9.5).color(DIM));
+                ui.add_space(2.0);
+                para(
+                    ui,
+                    "MKV · MP4 · MOV · AVI · WEBM · TS · M2TS · WMV · FLV · 3GP",
+                    9.0,
+                    MUTED,
+                );
+                para(ui, "只取第一条音轨，按上面选的音频格式导出", 8.5, DIM);
             });
 
         animating

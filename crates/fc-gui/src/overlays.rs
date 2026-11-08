@@ -434,6 +434,10 @@ impl App {
                                 );
 
                                 ui.add_space(18.0);
+                                section(ui, "配置");
+                                self.profile_panel(ui);
+
+                                ui.add_space(18.0);
 
                                         },
                                     );

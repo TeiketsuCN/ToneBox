@@ -93,10 +93,6 @@ impl App {
         }
         ui.add_space(10.0);
 
-        if it.info.is_some() {
-            para(ui, "双击队列里的文件即可试听", 9.5, DIM);
-        }
-
         ui.add_space(10.0);
 
         if let Some(m) = &it.info {
@@ -158,7 +154,7 @@ impl App {
                     para(ui, "正在分析频谱…", 9.5, DIM);
                 }
                 Analysis::Failed(e) => {
-                    card(ui, DANGER, |ui| {
+                    ui.vertical(|ui| {
                         para(ui, "频谱分析失败", 11.0, DANGER);
                         ui.add_space(4.0);
                         para(ui, e, 9.0, MUTED);
@@ -240,7 +236,7 @@ impl App {
 
                     if !r.caveats.is_empty() {
                         ui.add_space(8.0);
-                        card(ui, WARN, |ui| {
+                        ui.vertical(|ui| {
                             for c in &r.caveats {
                                 para(ui, &format!("· {c}"), 9.0, MUTED);
                                 ui.add_space(2.0);
@@ -256,7 +252,7 @@ impl App {
 
         if let Some(e) = &it.error {
             ui.add_space(14.0);
-            card(ui, DANGER, |ui| {
+            ui.vertical(|ui| {
                 para(ui, "读不出来", 11.5, DANGER);
                 ui.add_space(5.0);
                 para(ui, e, 9.5, MUTED);

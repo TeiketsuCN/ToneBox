@@ -954,8 +954,9 @@ impl eframe::App for App {
 
         // 设置页打开时把主界面藏起来：设置页是半透明玻璃，
         // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。
-        // 设置页滑出（settings_t 还没到 0）时主界面要画在下面，才能"露"出来
-        let main_visible = !self.settings_open || self.settings_t < 0.999;
+        // 设置页动画期间主界面要画在下面（不然滑动会露出壁纸的"闪屏"）；
+        // 动画快结束时（t>=0.9，设置页已经盖满）再隐起来，切换点上没有可见变化
+        let main_visible = !self.settings_open || self.settings_t < 0.9;
         let mut do_start = false;
 
         if main_visible {

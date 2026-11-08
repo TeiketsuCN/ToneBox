@@ -317,10 +317,8 @@ impl App {
     pub(crate) fn drop_zone(&mut self, ui: &mut egui::Ui) {
         let mut do_pick = false;
         let avail = ui.available_height();
+        // 不要外框：只有文字 + 按钮
         egui::Frame::none()
-            .fill(tint(Color32::WHITE, 6))
-            .stroke(line(Color32::WHITE, 22))
-            .rounding(Rounding::same(16.0))
             .inner_margin(egui::Margin::symmetric(20.0, 16.0))
             .show(ui, |ui| {
                 ui.set_min_height(avail - 40.0);

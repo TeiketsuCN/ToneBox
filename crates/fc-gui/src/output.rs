@@ -546,16 +546,6 @@ impl App {
         }
 
         // 输出列的常驻说明：视频不是转视频，只是把音轨抽出来
-        ui.add_space(14.0);
-        ui.label(RichText::new("视频来源").size(9.0).color(DIM));
-        ui.add_space(3.0);
-        para(
-            ui,
-            "MKV / MP4 / MOV / AVI / WEBM / TS / M2TS / WMV / FLV / 3GP 也能直接拖进来：只取第一条音轨，按上面选的音频格式导出，不会碰画面。",
-            8.5,
-            MUTED,
-        );
-
         // 这一列改了任何设置就落盘（以前只把 changed 当"要不要重绘"用，
         // 结果预设、码率这些改动重启就没了）
         if changed {
