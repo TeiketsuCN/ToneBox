@@ -1,9 +1,11 @@
-//! 「编解码」页：音频设备、播放输出选择、引擎信息。
+//! 「引擎和设备」页：设备 / 蓝牙 / 引擎 三个子页。
 //!
-//! 这个页面是用户自己构思的"引擎和设备"占位页长出来的第一版：
-//! 先把"机器上到底有哪些输出/输入设备、哪个是耳机/蓝牙"说清楚，
-//! 再让用户指定播放用哪个输出。设备枚举在 Windows 上走 WASAPI
-//! （`fc-player::devices`），不做独占，只报告事实。
+//! 设备页先回答"这台机器上到底有哪些输出/输入、哪个是耳机/蓝牙/摄像头"，
+//! 再让用户指定播放用哪个输出；蓝牙单独一页；引擎页放播放选项和引擎信息。
+//!
+//! 设备图标是手绘的（字体里没有这些符号）：耳机、麦克风、摄像头、扬声器、HDMI、
+//! 数字输出、USB、蓝牙、芯片。Steam/Realtek 这些厂商特征用颜色和角标标出来，
+//! USB 声卡用金色 + 呼吸光提示"可能是独立声卡"。
 
 #![allow(unused_imports)]
 
@@ -14,24 +16,57 @@ use crate::util::*;
 use crate::output::*;
 use crate::rail::*;
 
-/// 设备行里的小标签颜色
+/// 「引擎和设备」的三个子页
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodecTab {
+    Devices,
+    Bluetooth,
+    Engine,
+}
+
+/// 各厂商/类型的识别色
+const C_STEAM: Color32 = Color32::from_rgb(58, 104, 220); // 深蓝
+const C_REALTEK: Color32 = Color32::from_rgb(48, 96, 210); // 深蓝（瑞昱/瑞鼎）
+const C_USB: Color32 = Color32::from_rgb(232, 181, 74); // 黄金
+const C_CAMERA: Color32 = Color32::from_rgb(226, 138, 106);
+const C_BT: Color32 = Color32::from_rgb(130, 175, 255);
+const C_HEAD: Color32 = Color32::from_rgb(150, 220, 190);
+const C_MIC: Color32 = Color32::from_rgb(255, 198, 122);
+const C_HDMI: Color32 = Color32::from_rgb(160, 180, 230);
+const C_DIGITAL: Color32 = Color32::from_rgb(140, 200, 210);
+
 fn kind_color(k: fc_player::devices::Kind) -> Color32 {
     use fc_player::devices::Kind;
     match k {
-        Kind::Headphones | Kind::Headset => Color32::from_rgb(150, 220, 190),
-        Kind::Microphone => WARN,
-        Kind::Hdmi => Color32::from_rgb(160, 180, 230),
-        Kind::Digital => Color32::from_rgb(140, 200, 210),
-        Kind::Usb => Color32::from_rgb(180, 200, 220),
+        Kind::Headphones | Kind::Headset => C_HEAD,
+        Kind::Microphone => C_MIC,
+        Kind::Hdmi => C_HDMI,
+        Kind::Digital => C_DIGITAL,
+        Kind::Usb => C_USB,
         Kind::Speakers => MUTED,
         Kind::Other => DIM,
     }
 }
 
-const BT_COLOR: Color32 = Color32::from_rgb(130, 175, 255);
+/// 一个设备的主色：厂商/用途优先级高于类型
+fn device_color(d: &fc_player::devices::AudioDevice) -> Color32 {
+    if d.is_steam {
+        C_STEAM
+    } else if d.is_camera {
+        C_CAMERA
+    } else if d.is_realtek {
+        C_REALTEK
+    } else if d.kind == fc_player::devices::Kind::Usb {
+        C_USB
+    } else if d.is_bluetooth {
+        C_BT
+    } else {
+        kind_color(d.kind)
+    }
+}
 
 impl App {
-    /// 「编解码」空页面 + 设备检测。
+    /// 「引擎和设备」总入口。
     pub(crate) fn codec_view(&mut self, ui: &mut egui::Ui) {
         if !self.devices_loaded {
             self.devices_loaded = true;
@@ -50,190 +85,248 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_space(4.0);
-                ui.label(RichText::new("引擎和设备").size(14.0).color(TEXT).strong());
-                ui.add_space(4.0);
-                para(
-                    ui,
-                    "这里显示系统实际的音频输出/输入设备、播放用哪个输出，以及引擎信息。",
-                    9.5,
-                    MUTED,
-                );
-                ui.add_space(10.0);
-
                 ui.horizontal(|ui| {
-                    if tiny_text_button(ui, "重新检测") {
-                        self.devices_loaded = false;
-                        self.audio_devices.clear();
-                        self.devices_error = None;
-                    }
-                    if let Some(e) = &self.devices_error {
-                        ui.label(RichText::new(format!("检测失败：{e}")).size(9.0).color(DANGER));
-                    } else if self.audio_devices.is_empty() {
-                        ui.label(
-                            RichText::new("没有检测到设备（或当前平台不支持）")
-                                .size(9.0)
-                                .color(DIM),
-                        );
-                    }
+                    ui.label(RichText::new("引擎和设备").size(14.0).color(TEXT).strong());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if tiny_text_button(ui, "重新检测") {
+                            self.devices_loaded = false;
+                            self.audio_devices.clear();
+                            self.devices_error = None;
+                        }
+                    });
                 });
                 ui.add_space(8.0);
 
-                // ── 输出设备 ──
-                ui.label(RichText::new("输出设备").size(10.0).color(DIM));
-                ui.add_space(4.0);
-                let outs: Vec<usize> = (0..self.audio_devices.len())
-                    .filter(|i| self.audio_devices[*i].flow == fc_player::devices::Flow::Output)
-                    .collect();
-                let mut pick: Option<String> = None;
-                for (n, idx) in outs.iter().enumerate() {
-                    let dev = &self.audio_devices[*idx];
-                    let selected = if self.cfg.audio_out_device.is_empty() {
-                        dev.is_default
-                    } else {
-                        dev.name == self.cfg.audio_out_device
-                    };
-                    if self.device_row(ui, n, dev, selected, true) {
-                        pick = Some(if dev.is_default {
-                            // 选默认设备时存空串：换默认设备后自动跟着走
-                            String::new()
-                        } else {
-                            dev.name.clone()
-                        });
+                // 三个子页：设备 / 蓝牙 / 引擎
+                ui.horizontal(|ui| {
+                    for (tab, label) in [
+                        (CodecTab::Devices, "设备"),
+                        (CodecTab::Bluetooth, "蓝牙"),
+                        (CodecTab::Engine, "引擎"),
+                    ] {
+                        if codec_tab(ui, label, self.codec_tab == tab) {
+                            self.codec_tab = tab;
+                        }
+                        ui.add_space(4.0);
                     }
-                }
-                if let Some(name) = pick {
-                    self.cfg.audio_out_device = name;
-                    self.cfg.save();
-                    // 正在播的话下次生效更简单：停掉当前播放，避免"声音还从旧设备出"
-                    self.player = None;
-                }
-                ui.add_space(4.0);
-                pose_hint(
-                    ui,
-                    "选「系统默认」会跟着 Windows 的默认输出走；耳机/蓝牙按设备名和驱动描述判断。",
-                );
-
-                // ── 输入设备 ──
-                ui.add_space(14.0);
-                ui.label(RichText::new("输入设备").size(10.0).color(DIM));
-                ui.add_space(4.0);
-                let ins: Vec<usize> = (0..self.audio_devices.len())
-                    .filter(|i| self.audio_devices[*i].flow == fc_player::devices::Flow::Input)
-                    .collect();
-                for (n, idx) in ins.iter().enumerate() {
-                    let dev = &self.audio_devices[*idx];
-                    self.device_row(ui, 1000 + n, dev, false, false);
-                }
-                if ins.is_empty() {
-                    para(ui, "没有检测到输入设备。", 9.0, DIM);
-                }
-                ui.add_space(4.0);
-                pose_hint(ui, "输入设备只做检测，不录音；耳麦会同时出现在输入和输出里。");
-
-                // ── 播放选项 ──
-                ui.add_space(16.0);
-                ui.label(RichText::new("播放").size(10.0).color(DIM));
-                ui.add_space(6.0);
-                let mut rg = self.cfg.replaygain;
-                if ui
-                    .checkbox(
-                        &mut rg,
-                        RichText::new("播放时应用 ReplayGain（读文件的 gain 标签）")
-                            .size(10.0)
-                            .color(MUTED),
-                    )
-                    .changed()
-                {
-                    self.cfg.replaygain = rg;
-                    self.cfg.save();
-                }
-                pose_hint(
-                    ui,
-                    "只对带 REPLAYGAIN_TRACK_GAIN 标签的文件生效；没有标签就不加不减。",
-                );
-                ui.add_space(6.0);
-                let mut ex = self.cfg.exclusive_output;
-                if ui
-                    .checkbox(
-                        &mut ex,
-                        RichText::new("独占输出（WASAPI 直通，绕过系统混音）")
-                            .size(10.0)
-                            .color(MUTED),
-                    )
-                    .changed()
-                {
-                    self.cfg.exclusive_output = ex;
-                    self.cfg.save();
-                }
-                pose_hint(
-                    ui,
-                    "独占时按源采样率输出、队列里的 s32 字节直通声卡；音量与 ReplayGain 不生效，\
-                     音量请用系统/功放。设备被占用会自动退回共享。",
-                );
-                if let Some(p) = &self.player {
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("当前输出").size(9.0).color(DIM));
-                        ui.label(RichText::new(p.output_label()).size(9.0).color(MUTED));
-                    });
-                }
-
-                // ── 引擎 ──
-                ui.add_space(16.0);
-                ui.label(RichText::new("引擎").size(10.0).color(DIM));
-                ui.add_space(6.0);
-                egui::Grid::new("codec_engine")
-                    .num_columns(2)
-                    .spacing([14.0, 5.0])
-                    .show(ui, |ui| {
-                        row(ui, "解码/编码", "ffmpeg 子进程（崩溃隔离）");
-                        if let Some(t) = &self.tools {
-                            row(ui, "ffmpeg", &t.ffmpeg.display().to_string());
-                        } else {
-                            row(ui, "ffmpeg", "没找到");
-                        }
-                        match &self.atracdenc {
-                            Some(p) => row(ui, "ATRAC 编码", &p.display().to_string()),
-                            None => row(ui, "ATRAC 编码", "未安装 atracdenc"),
-                        }
-                        row(ui, "可用编码器", &format!("{} 个", self.encoders.len()));
-                        row(ui, "格式表", &format!("{} 条", fc_core::all().count()));
-                    });
+                });
                 ui.add_space(10.0);
 
-                // ── HiFi 输出：做到哪一步、差什么，写在页面上，别让人猜 ──
-                ui.add_space(4.0);
-                ui.label(RichText::new("HiFi 输出").size(10.0).color(DIM));
-                ui.add_space(6.0);
-                egui::Grid::new("codec_hifi")
-                    .num_columns(2)
-                    .spacing([14.0, 5.0])
-                    .show(ui, |ui| {
-                        row(ui, "独占输出", if self.cfg.exclusive_output {
-                            "开 · WASAPI 直通"
-                        } else {
-                            "关（用共享输出）"
-                        });
-                        row(ui, "采样率", "独占时按源采样率；共享时由 Windows 混音格式决定");
-                        row(ui, "整数直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
-                        row(ui, "无缝播放", "未做：要先有队列连播（现在是单文件试听）");
-                        row(ui, "DSD", "解成 PCM 播放；DoP/原生 DSD 未做");
-                        row(ui, "ASIO", "未支持（需要 ASIO SDK 和驱动）");
-                    });
-                ui.add_space(10.0);
+                if let Some(e) = &self.devices_error {
+                    para(ui, &format!("设备检测失败：{e}"), 9.0, DANGER);
+                    ui.add_space(8.0);
+                }
+
+                match self.codec_tab {
+                    CodecTab::Devices => self.codec_devices(ui),
+                    CodecTab::Bluetooth => self.codec_bluetooth(ui),
+                    CodecTab::Engine => self.codec_engine(ui),
+                }
+                ui.add_space(12.0);
             });
     }
 
-    /// 一行设备。`selectable` 的输出设备可以点，输入设备只显示。
+    /// 设备子页：输出 + 输入（不含蓝牙，蓝牙在单独一页）
+    fn codec_devices(&mut self, ui: &mut egui::Ui) {
+        let mut pick: Option<String> = None;
+        ui.label(RichText::new("输出设备").size(10.0).color(DIM));
+        ui.add_space(2.0);
+        let outs: Vec<usize> = (0..self.audio_devices.len())
+            .filter(|i| {
+                let d = &self.audio_devices[*i];
+                d.flow == fc_player::devices::Flow::Output && !d.is_bluetooth
+            })
+            .collect();
+        for idx in outs {
+            let dev = &self.audio_devices[idx];
+            let selected = if self.cfg.audio_out_device.is_empty() {
+                dev.is_default
+            } else {
+                dev.name == self.cfg.audio_out_device
+            };
+            if self.device_row(ui, dev, selected, true) {
+                pick = Some(if dev.is_default {
+                    String::new()
+                } else {
+                    dev.name.clone()
+                });
+            }
+        }
+        if let Some(name) = pick {
+            self.cfg.audio_out_device = name;
+            self.cfg.save();
+            // 换输出时停掉当前播放，避免声音还从旧设备出
+            self.player = None;
+        }
+
+        ui.add_space(12.0);
+        ui.label(RichText::new("输入设备").size(10.0).color(DIM));
+        ui.add_space(2.0);
+        let ins: Vec<usize> = (0..self.audio_devices.len())
+            .filter(|i| {
+                let d = &self.audio_devices[*i];
+                d.flow == fc_player::devices::Flow::Input && !d.is_bluetooth
+            })
+            .collect();
+        if ins.is_empty() {
+            para(ui, "没有检测到输入设备。", 9.0, DIM);
+        } else {
+            for idx in ins {
+                let dev = &self.audio_devices[idx];
+                self.device_row(ui, dev, false, false);
+            }
+        }
+        ui.add_space(6.0);
+        para(
+            ui,
+            "耳机/摄像头/USB 声卡按设备名和驱动描述判断；Steam 串流设备标深蓝，Realtek 板载标深蓝。",
+            8.5,
+            DIM,
+        );
+    }
+
+    /// 蓝牙子页：只看蓝牙设备
+    fn codec_bluetooth(&mut self, ui: &mut egui::Ui) {
+        let mut pick: Option<String> = None;
+        let list: Vec<usize> = (0..self.audio_devices.len())
+            .filter(|i| self.audio_devices[*i].is_bluetooth)
+            .collect();
+        if list.is_empty() {
+            para(ui, "没有检测到蓝牙音频设备。", 10.0, MUTED);
+            ui.add_space(4.0);
+            para(
+                ui,
+                "先在 Windows 设置里把耳机/音箱连上，再点右上角「重新检测」。",
+                8.5,
+                DIM,
+            );
+            return;
+        }
+        for idx in list {
+            let dev = &self.audio_devices[idx];
+            let selected = if self.cfg.audio_out_device.is_empty() {
+                dev.is_default && dev.flow == fc_player::devices::Flow::Output
+            } else {
+                dev.name == self.cfg.audio_out_device
+            };
+            let can_pick = dev.flow == fc_player::devices::Flow::Output;
+            if self.device_row(ui, dev, selected, can_pick) {
+                pick = Some(dev.name.clone());
+            }
+        }
+        if let Some(name) = pick {
+            self.cfg.audio_out_device = name;
+            self.cfg.save();
+            self.player = None;
+        }
+        ui.add_space(6.0);
+        para(
+            ui,
+            "蓝牙判断按设备名/描述里的关键字；判不出就不标，不硬猜。",
+            8.5,
+            DIM,
+        );
+    }
+
+    /// 引擎子页：播放选项、当前输出、引擎与 HiFi 状态
+    fn codec_engine(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("播放").size(10.0).color(DIM));
+        ui.add_space(6.0);
+        let mut rg = self.cfg.replaygain;
+        if ui
+            .checkbox(
+                &mut rg,
+                RichText::new("播放时应用 ReplayGain（读文件的 gain 标签）")
+                    .size(10.0)
+                    .color(MUTED),
+            )
+            .changed()
+        {
+            self.cfg.replaygain = rg;
+            self.cfg.save();
+        }
+        pose_hint(
+            ui,
+            "只对带 REPLAYGAIN_TRACK_GAIN 标签的文件生效；没有标签就不加不减。",
+        );
+        ui.add_space(6.0);
+        let mut ex = self.cfg.exclusive_output;
+        if ui
+            .checkbox(
+                &mut ex,
+                RichText::new("独占输出（WASAPI 直通，绕过系统混音）")
+                    .size(10.0)
+                    .color(MUTED),
+            )
+            .changed()
+        {
+            self.cfg.exclusive_output = ex;
+            self.cfg.save();
+        }
+        pose_hint(
+            ui,
+            "独占时按源采样率输出、队列里的 s32 字节直通声卡；音量与 ReplayGain 不生效。\
+             设备被占用会自动退回共享。",
+        );
+        if let Some(p) = &self.player {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("当前输出").size(9.0).color(DIM));
+                ui.label(RichText::new(p.output_label()).size(9.0).color(MUTED));
+            });
+        }
+
+        ui.add_space(14.0);
+        ui.label(RichText::new("引擎").size(10.0).color(DIM));
+        ui.add_space(6.0);
+        egui::Grid::new("codec_engine")
+            .num_columns(2)
+            .spacing([14.0, 5.0])
+            .show(ui, |ui| {
+                row(ui, "解码/编码", "ffmpeg 子进程（崩溃隔离）");
+                if let Some(t) = &self.tools {
+                    row(ui, "ffmpeg", &t.ffmpeg.display().to_string());
+                } else {
+                    row(ui, "ffmpeg", "没找到");
+                }
+                match &self.atracdenc {
+                    Some(p) => row(ui, "ATRAC 编码", &p.display().to_string()),
+                    None => row(ui, "ATRAC 编码", "未安装 atracdenc"),
+                }
+                row(ui, "可用编码器", &format!("{} 个", self.encoders.len()));
+                row(ui, "格式表", &format!("{} 条", fc_core::all().count()));
+            });
+
+        ui.add_space(14.0);
+        ui.label(RichText::new("HiFi 输出").size(10.0).color(DIM));
+        ui.add_space(6.0);
+        egui::Grid::new("codec_hifi")
+            .num_columns(2)
+            .spacing([14.0, 5.0])
+            .show(ui, |ui| {
+                row(ui, "独占输出", if self.cfg.exclusive_output {
+                    "开 · WASAPI 直通"
+                } else {
+                    "关（用共享输出）"
+                });
+                row(ui, "采样率", "独占时按源采样率；共享时由 Windows 混音格式决定");
+                row(ui, "整数直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
+                row(ui, "无缝播放", "未做：要先有队列连播（现在是单文件试听）");
+                row(ui, "DSD", "解成 PCM 播放；DoP/原生 DSD 未做");
+                row(ui, "ASIO", "未支持（需要 ASIO SDK 和驱动）");
+            });
+    }
+
+    /// 一行设备：大图标 + 名称 + 类型/角标 + 格式；输出设备可点选。
+    /// 行背景保持透明（圆点选项不做底色），只有图标和圆点着色。
     fn device_row(
         &self,
         ui: &mut egui::Ui,
-        slot: usize,
         dev: &fc_player::devices::AudioDevice,
         selected: bool,
         selectable: bool,
     ) -> bool {
-        let h = 46.0;
+        let h = 64.0;
         let (rect, resp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), h),
             if selectable {
@@ -243,102 +336,309 @@ impl App {
             },
         );
         let p = ui.painter();
-        let fill = if selected {
-            tint(accent(), 20)
-        } else if resp.hovered() && selectable {
-            tint(Color32::WHITE, 8)
-        } else {
-            tint(Color32::WHITE, 4)
-        };
-        p.rect_filled(rect, Rounding::same(9.0), fill);
-        if selected {
-            p.rect_stroke(rect, Rounding::same(9.0), Stroke::new(1.0, tint(accent(), 90)));
-        }
-
-        let dot_c = egui::pos2(rect.left() + 16.0, rect.center().y);
-        let ring = if selected {
-            accent()
-        } else if resp.hovered() && selectable {
-            tint(Color32::WHITE, 120)
-        } else {
-            tint(Color32::WHITE, 60)
-        };
-        p.circle_stroke(dot_c, 6.0, Stroke::new(1.2, ring));
-        if selected {
-            p.circle_filled(dot_c, 3.3, accent());
-        } else if selectable {
-            // 没选中的输出设备画一个空心的点，暗示"可以点"
-            p.circle_filled(dot_c, 1.6, tint(Color32::WHITE, 40));
-        }
-
-        let name_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left() + 32.0, rect.top() + 6.0),
-            egui::pos2(rect.right() - 210.0, rect.top() + 24.0),
+        // 透明底：只画图标/文字，不整行铺色
+        let color = device_color(dev);
+        let icon = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 8.0, rect.center().y - 22.0),
+            egui::vec2(44.0, 44.0),
         );
-        paint_clipped_v(ui, name_rect, 11.0, TEXT, &dev.name);
+        let t = ui.input(|i| i.time) as f32;
+        paint_device_icon(p, icon, dev, color, t);
 
-        // 第二行：类型 · 格式；蓝牙单独用蓝色标出来
-        let mut x = rect.left() + 32.0;
-        let y = rect.top() + 33.0;
-        let type_text = dev.kind.label();
+        // 选择圆点
+        let dot_c = egui::pos2(icon.right() + 16.0, rect.center().y);
+        if selectable {
+            p.circle_stroke(
+                dot_c,
+                6.5,
+                Stroke::new(
+                    1.3,
+                    if selected {
+                        accent()
+                    } else if resp.hovered() {
+                        tint(Color32::WHITE, 120)
+                    } else {
+                        tint(Color32::WHITE, 55)
+                    },
+                ),
+            );
+            if selected {
+                p.circle_filled(dot_c, 3.6, accent());
+            }
+        }
+
+        let text_x = dot_c.x + 18.0;
+        let name_rect = egui::Rect::from_min_max(
+            egui::pos2(text_x, rect.top() + 9.0),
+            egui::pos2(rect.right() - 12.0, rect.top() + 29.0),
+        );
+        paint_clipped_v(
+            ui,
+            name_rect,
+            11.5,
+            if selected { accent() } else { TEXT },
+            &dev.name,
+        );
+
+        // 第二行：类型 + 厂商/用途角标；格式靠右
+        let y = rect.top() + 42.0;
+        let mut x = text_x;
+        let kind = dev.kind.label();
         p.text(
             egui::pos2(x, y),
             Align2::LEFT_CENTER,
-            type_text,
-            FontId::proportional(9.0),
+            kind,
+            FontId::proportional(9.5),
             kind_color(dev.kind),
         );
-        let tw = ui
-            .ctx()
-            .fonts(|f| f.layout_no_wrap(type_text.into(), FontId::proportional(9.0), TEXT).size().x);
-        x += tw + 8.0;
-        if dev.is_bluetooth {
-            p.text(
-                egui::pos2(x, y),
-                Align2::LEFT_CENTER,
-                "蓝牙",
-                FontId::proportional(9.0),
-                BT_COLOR,
+        x += text_w(ui, kind, 9.5) + 10.0;
+
+        for (label, col) in badges(dev) {
+            // 角标做成小药丸：深蓝/金色本身偏暗，纯文字在深底上看不清
+            let tw = text_w(ui, &label, 8.5);
+            let w = tw + 10.0;
+            let pill = egui::Rect::from_min_size(
+                egui::pos2(x, y - 7.5),
+                egui::vec2(w, 15.0),
             );
-            let bw = ui.ctx().fonts(|f| {
-                f.layout_no_wrap("蓝牙".into(), FontId::proportional(9.0), TEXT)
-                    .size()
-                    .x
-            });
-            x += bw + 8.0;
+            p.rect_filled(pill, Rounding::same(4.0), tint(col, 40));
+            p.text(
+                pill.center(),
+                Align2::CENTER_CENTER,
+                &label,
+                FontId::proportional(8.5),
+                blend(col, Color32::WHITE, 0.45),
+            );
+            x += w + 6.0;
         }
+
         let fmt_rect = egui::Rect::from_min_max(
-            egui::pos2(x, y - 8.0),
-            egui::pos2(rect.right() - 12.0, y + 8.0),
+            egui::pos2(x, y - 9.0),
+            egui::pos2(rect.right() - 12.0, y + 9.0),
         );
         paint_clipped_v(ui, fmt_rect, 8.5, DIM, &dev.detail());
-
-        // 右侧：默认 / 使用中
-        if dev.is_default {
-            p.text(
-                egui::pos2(rect.right() - 12.0, rect.top() + 15.0),
-                Align2::RIGHT_CENTER,
-                "系统默认",
-                FontId::proportional(8.5),
-                accent(),
-            );
-        }
-        if selected && selectable {
-            p.text(
-                egui::pos2(rect.right() - 12.0, rect.top() + 31.0),
-                Align2::RIGHT_CENTER,
-                "播放用这个",
-                FontId::proportional(8.5),
-                MUTED,
-            );
-        }
 
         if resp.hovered() && selectable {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-        let _ = slot;
         resp.clicked() && selectable
     }
+}
+
+/// 设备角标：(文字, 颜色)
+fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
+    let mut out = Vec::new();
+    if d.is_default {
+        out.push(("默认".to_string(), accent()));
+    }
+    if d.is_steam {
+        out.push(("Steam".to_string(), C_STEAM));
+    }
+    if d.is_realtek {
+        out.push(("Realtek".to_string(), C_REALTEK));
+    }
+    if d.is_camera {
+        out.push(("摄像头".to_string(), C_CAMERA));
+    }
+    if d.kind == fc_player::devices::Kind::Usb {
+        out.push(("独立声卡?".to_string(), C_USB));
+    }
+    if d.is_bluetooth {
+        out.push(("蓝牙".to_string(), C_BT));
+    }
+    out
+}
+
+fn text_w(ui: &egui::Ui, text: &str, size: f32) -> f32 {
+    ui.ctx().fonts(|f| {
+        f.layout_no_wrap(text.to_string(), FontId::proportional(size), Color32::WHITE)
+            .size()
+            .x
+    })
+}
+
+/// 手绘设备图标。`color` 已经包含厂商/类型信息；USB 会加一圈呼吸光。
+fn paint_device_icon(
+    p: &egui::Painter,
+    rect: egui::Rect,
+    d: &fc_player::devices::AudioDevice,
+    color: Color32,
+    t: f32,
+) {
+    use fc_player::devices::Kind;
+    // 底：半透明圆角块，深蓝/金色会更有存在感
+    let pulse = if d.kind == Kind::Usb {
+        0.55 + 0.45 * (t * 2.2).sin().abs()
+    } else {
+        1.0
+    };
+    p.rect_filled(rect, Rounding::same(11.0), tint(color, (26.0 * pulse) as u8));
+    p.rect_stroke(
+        rect,
+        Rounding::same(11.0),
+        Stroke::new(1.0, tint(color, (80.0 * pulse) as u8)),
+    );
+    // USB 声卡：外圈呼吸光（"黄金色动态"）
+    if d.kind == Kind::Usb {
+        p.rect_stroke(
+            rect.expand(2.0 + 3.0 * pulse),
+            Rounding::same(13.0),
+            Stroke::new(1.2, tint(color, (60.0 * pulse) as u8)),
+        );
+    }
+
+    let c = rect.center();
+    let stroke = Stroke::new(1.8, color);
+    if d.is_camera {
+        // 摄像头：机身 + 镜头 + 上方取景凸起
+        let body = egui::Rect::from_center_size(c + egui::vec2(0.0, 2.0), egui::vec2(26.0, 18.0));
+        p.rect_stroke(body, Rounding::same(4.0), stroke);
+        p.circle_stroke(c + egui::vec2(0.0, 2.0), 6.0, Stroke::new(1.6, color));
+        p.rect_filled(
+            egui::Rect::from_center_size(c + egui::vec2(-7.0, -10.0), egui::vec2(9.0, 4.0)),
+            Rounding::same(1.5),
+            color,
+        );
+        return;
+    }
+    if d.is_steam {
+        // Steam：游戏手柄（圆角横条 + 两个摇杆）
+        let body = egui::Rect::from_center_size(c, egui::vec2(30.0, 18.0));
+        p.rect_stroke(body, Rounding::same(8.0), stroke);
+        p.circle_filled(c + egui::vec2(-8.0, 1.0), 2.2, color);
+        p.circle_filled(c + egui::vec2(8.0, 1.0), 2.2, color);
+        p.line_segment(
+            [c + egui::vec2(-3.0, -2.0), c + egui::vec2(3.0, 2.0)],
+            Stroke::new(1.4, color),
+        );
+        return;
+    }
+    match d.kind {
+        Kind::Headphones | Kind::Headset => {
+            // 头梁 + 两个耳罩
+            let r = 11.0;
+            let mut pts = Vec::new();
+            for i in 0..=16 {
+                let a = std::f32::consts::PI + std::f32::consts::PI * (i as f32 / 16.0);
+                pts.push(c + egui::vec2(a.cos(), a.sin()) * r + egui::vec2(0.0, 4.0));
+            }
+            p.add(egui::Shape::line(pts, stroke));
+            p.rect_filled(
+                egui::Rect::from_center_size(c + egui::vec2(-11.0, 6.0), egui::vec2(5.0, 11.0)),
+                Rounding::same(2.5),
+                color,
+            );
+            p.rect_filled(
+                egui::Rect::from_center_size(c + egui::vec2(11.0, 6.0), egui::vec2(5.0, 11.0)),
+                Rounding::same(2.5),
+                color,
+            );
+        }
+        Kind::Microphone => {
+            // 胶囊 + 支架
+            let cap = egui::Rect::from_center_size(c + egui::vec2(0.0, -4.0), egui::vec2(9.0, 15.0));
+            p.rect_stroke(cap, Rounding::same(4.5), stroke);
+            let mut pts = Vec::new();
+            for i in 0..=12 {
+                let a = std::f32::consts::PI * (i as f32 / 12.0);
+                pts.push(c + egui::vec2(a.cos() * 9.0, a.sin() * 9.0 + 2.0));
+            }
+            p.add(egui::Shape::line(pts, Stroke::new(1.5, color)));
+            p.line_segment(
+                [c + egui::vec2(0.0, 11.0), c + egui::vec2(0.0, 16.0)],
+                Stroke::new(1.5, color),
+            );
+            p.line_segment(
+                [c + egui::vec2(-5.0, 16.0), c + egui::vec2(5.0, 16.0)],
+                Stroke::new(1.5, color),
+            );
+        }
+        Kind::Hdmi => {
+            // 显示器 + 底座
+            let body = egui::Rect::from_center_size(c + egui::vec2(0.0, -3.0), egui::vec2(26.0, 17.0));
+            p.rect_stroke(body, Rounding::same(2.5), stroke);
+            p.line_segment(
+                [c + egui::vec2(-6.0, 12.0), c + egui::vec2(6.0, 12.0)],
+                Stroke::new(1.5, color),
+            );
+        }
+        Kind::Digital => {
+            // 同轴/光纤：圆口 + 中心点
+            p.circle_stroke(c, 10.0, stroke);
+            p.circle_filled(c, 3.0, color);
+        }
+        Kind::Usb => {
+            // USB 三叉
+            p.line_segment(
+                [c + egui::vec2(0.0, -12.0), c + egui::vec2(0.0, 12.0)],
+                stroke,
+            );
+            p.line_segment(
+                [c + egui::vec2(0.0, 2.0), c + egui::vec2(-9.0, -5.0)],
+                stroke,
+            );
+            p.line_segment(
+                [c + egui::vec2(0.0, -3.0), c + egui::vec2(9.0, -9.0)],
+                stroke,
+            );
+            p.circle_filled(c + egui::vec2(0.0, -12.0), 2.0, color);
+            p.rect_filled(
+                egui::Rect::from_center_size(c + egui::vec2(-9.0, -5.0), egui::vec2(4.0, 4.0)),
+                Rounding::same(1.0),
+                color,
+            );
+            p.circle_filled(c + egui::vec2(9.0, -9.0), 2.0, color);
+        }
+        Kind::Speakers => {
+            // 箱体 + 声波
+            let body = egui::Rect::from_center_size(c + egui::vec2(-5.0, 0.0), egui::vec2(15.0, 22.0));
+            p.rect_stroke(body, Rounding::same(3.0), stroke);
+            p.circle_stroke(c + egui::vec2(-5.0, 4.0), 3.5, Stroke::new(1.4, color));
+            for (i, r) in [8.0f32, 13.0].iter().enumerate() {
+                let mut pts = Vec::new();
+                for k in 0..=10 {
+                    let a = -0.7 + 1.4 * (k as f32 / 10.0);
+                    pts.push(
+                        c + egui::vec2(6.0, 0.0)
+                            + egui::vec2(a.cos() * *r, a.sin() * *r),
+                    );
+                }
+                p.add(egui::Shape::line(
+                    pts,
+                    Stroke::new(1.2, tint(color, if i == 0 { 200 } else { 120 })),
+                ));
+            }
+        }
+        Kind::Other => {
+            p.circle_stroke(c, 8.0, stroke);
+            p.circle_filled(c, 2.5, color);
+        }
+    }
+}
+
+/// 子页标签：透明底，选中项用强调色 + 下划线
+fn codec_tab(ui: &mut egui::Ui, label: &str, on: bool) -> bool {
+    let w = 64.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
+    let p = ui.painter();
+    p.text(
+        rect.center() - egui::vec2(0.0, 2.0),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(10.5),
+        if on { accent() } else { MUTED },
+    );
+    if on {
+        let y = rect.bottom() - 2.0;
+        p.line_segment(
+            [egui::pos2(rect.left() + 10.0, y), egui::pos2(rect.right() - 10.0, y)],
+            Stroke::new(2.0, accent()),
+        );
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
 }
 
 fn pose_hint(ui: &mut egui::Ui, text: &str) {

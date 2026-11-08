@@ -62,6 +62,12 @@ pub struct AudioDevice {
     pub kind: Kind,
     /// 名字/描述里看出是蓝牙（没有可靠传输类型时的近似判断）
     pub is_bluetooth: bool,
+    /// 名字/描述里看出是 Steam 串流设备
+    pub is_steam: bool,
+    /// 名字/描述里看出是 Realtek（瑞昱/瑞鼎）板载声卡
+    pub is_realtek: bool,
+    /// 名字/描述里看出是摄像头（带麦的 webcam 也会标）
+    pub is_camera: bool,
     pub is_default: bool,
     pub channels: u16,
     pub sample_rate: u32,
@@ -119,6 +125,13 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
                 .unwrap_or_else(|_| "未命名设备".to_string());
             let description = dev.get_description().unwrap_or_default();
             let (kind, is_bluetooth) = classify(&name, &description, flow);
+            let keys = format!("{name} {description}").to_lowercase();
+            let is_steam = keys.contains("steam");
+            let is_realtek = keys.contains("realtek") || keys.contains("瑞昱") || keys.contains("瑞鼎");
+            let is_camera = keys.contains("webcam")
+                || keys.contains("camera")
+                || keys.contains("摄像头")
+                || keys.contains("摄像");
             let format = dev.get_device_format().ok();
             let (channels, sample_rate, bits, format_label) = match format {
                 Some(f) => {
@@ -148,6 +161,9 @@ fn list_windows() -> Result<Vec<AudioDevice>> {
                 flow,
                 kind,
                 is_bluetooth,
+                is_steam,
+                is_realtek,
+                is_camera,
                 channels,
                 sample_rate,
                 bits,

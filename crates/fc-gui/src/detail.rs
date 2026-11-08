@@ -315,7 +315,7 @@ impl App {
                                 p.rect_filled(
                                     f,
                                     Rounding::same(5.0),
-                                    if r.confidence > 0.6 { accent() } else { WARN },
+                                    accent(),
                                 );
                                 ui.label(
                                     RichText::new(if bad {
@@ -323,8 +323,8 @@ impl App {
                                     } else {
                                         format!("{:.0}%", r.confidence * 100.0)
                                     })
-                                    .size(9.0)
-                                    .color(DIM),
+                                    .size(9.5)
+                                    .color(TEXT),
                                 );
                                 ui.end_row();
                                 if let Some(l) = it.lufs {
@@ -475,12 +475,12 @@ impl App {
                 p.rect_filled(
                     f,
                     Rounding::same(6.0),
-                    if enc.confidence > 0.8 { accent() } else { WARN },
+                    accent(),
                 );
                 ui.label(
                     RichText::new(format!("{:.0}%", enc.confidence * 100.0))
-                        .size(9.0)
-                        .color(DIM),
+                        .size(9.5)
+                        .color(TEXT),
                 );
                 ui.end_row();
             });
