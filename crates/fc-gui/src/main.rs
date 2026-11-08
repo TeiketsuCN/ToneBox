@@ -4677,7 +4677,7 @@ fn lib_row(
 
     // 右边的音质标识（上方）+ 时长（下方）
     let q = if e.codec == "DSD" {
-        Some(Quality::Dsd)
+        Some(Quality::Dsd(dsd_rate(e.sample_rate, e.bitrate_kbps)))
     } else {
         quality_from(e.lossy, e.sample_rate, e.bits, e.bitrate_kbps)
     };
@@ -5199,12 +5199,41 @@ impl App {
 /// 音质档位：列表/详情里的小标识
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Quality {
-    Dsd,
+    /// DSD 的采样率档位（64 / 128 / 256 / 512 …），0 = 认不出来
+    Dsd(u32),
     HiRes,
     Cd,
     Hq,
     Std,
     Lq,
+}
+
+/// DSD 档位（DSD64 / 128 / 256 / 512…）。
+///
+/// ffprobe 对 DSF 报的采样率是"字节率"（DSD64 = 352.8k），不能直接除以 44.1k；
+/// 优先用码率反推（立体声 DSD 码率 = 档位 × 88.2 kbps），这个不受容器写法影响。
+fn dsd_rate(sr: u32, kbps: u64) -> u32 {
+    const LEVELS: [u32; 5] = [64, 128, 256, 512, 1024];
+    if kbps > 0 {
+        let est = kbps as f64 * 1000.0 / 88200.0;
+        for l in LEVELS {
+            if (est - l as f64).abs() <= l as f64 * 0.06 {
+                return l;
+            }
+        }
+    }
+    for base in [44100u32, 48000] {
+        let bit = sr.saturating_mul(8);
+        if bit >= base && bit % base == 0 && LEVELS.contains(&(bit / base)) {
+            return bit / base;
+        }
+    }
+    for base in [44100u32, 48000] {
+        if sr >= base && sr % base == 0 && LEVELS.contains(&(sr / base)) {
+            return sr / base;
+        }
+    }
+    0
 }
 
 /// 从"有没有损 + 采样率 + 位深 + 码率"判档（音乐库的缓存里只有这些字段）
@@ -5234,7 +5263,7 @@ fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
         return None;
     }
     if m.codec.starts_with("dsd") {
-        return Some(Quality::Dsd);
+        return Some(Quality::Dsd(dsd_rate(m.sample_rate, m.bitrate_kbps)));
     }
     quality_from(m.is_lossy(), m.sample_rate, m.bits, m.bitrate_kbps)
 }
@@ -5242,7 +5271,13 @@ fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
 /// 徽章上写什么：无损的格式把"无损"写出来，有损的给码率档
 fn quality_label(q: Quality, kbps: u64) -> String {
     match q {
-        Quality::Dsd => "DSD".to_string(),
+        Quality::Dsd(rate) => {
+            if rate > 0 {
+                format!("DSD{rate}")
+            } else {
+                "DSD".to_string()
+            }
+        }
         Quality::HiRes => "Hi-Res 无损".to_string(),
         Quality::Cd => "CD 无损".to_string(),
         Quality::Hq | Quality::Std | Quality::Lq => {
@@ -5265,7 +5300,7 @@ fn quality_width(ctx: &egui::Context, q: Quality, kbps: u64) -> f32 {
     });
     match q {
         // DSD 左边有一段码流点串，CD 左边有个小光盘，都要额外留位
-        Quality::Dsd => 48.0,
+        Quality::Dsd(_) => 41.0 + w,
         Quality::Cd => 25.0 + w,
         _ => (w + 14.0).max(30.0),
     }
@@ -5303,6 +5338,39 @@ fn rounded_band(rect: egui::Rect, radius: f32, y0: f32, y1: f32) -> Vec<egui::Po
     pts
 }
 
+/// 一条斜向高光带裁进圆角矩形：整枚徽章都能扫过，又不会从圆角外面冒出白角。
+/// 高光带是斜的（上边比下边靠右 slant），所以每行单独和圆角轮廓求交。
+fn clipped_glint(
+    rect: egui::Rect,
+    radius: f32,
+    x0: f32,
+    w: f32,
+    slant: f32,
+) -> Vec<egui::Pos2> {
+    let n = 16;
+    let mut left = Vec::with_capacity(n + 1);
+    let mut right = Vec::with_capacity(n + 1);
+    for i in 0..=n {
+        let f = i as f32 / n as f32;
+        let y = rect.top() + rect.height() * f;
+        let gx = x0 - slant * f;
+        let lo = rect.left() + corner_inset(rect, radius, y);
+        let hi = rect.right() - corner_inset(rect, radius, y);
+        let l = gx.max(lo);
+        let r = (gx + w).min(hi);
+        if r - l > 0.05 {
+            left.push(egui::pos2(l, y));
+            right.push(egui::pos2(r, y));
+        }
+    }
+    if left.len() < 2 {
+        return Vec::new();
+    }
+    let mut pts = left;
+    pts.extend(right.into_iter().rev());
+    pts
+}
+
 /// 在给定矩形里画标识。返回 true = 有动画（调用方负责请求重绘）。
 fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbps: u64, t: f64) -> bool {
     let r = Rounding::same(8.5);
@@ -5310,42 +5378,49 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbps: u64, t: 
     let label = label.as_str();
     match q {
         Quality::HiRes => {
-            // 金属金：上深下亮的渐变 + 呼吸外发光 + 斜向扫光
+            // 金属金：细切的纵向渐变 + 上沿高光/下沿暗边做倒角 + 慢扫光
             let pulse = 0.5 + 0.5 * (t * 1.7).sin() as f32;
             let gold = Color32::from_rgb(247, 199, 108);
             let gold_hi = Color32::from_rgb(255, 238, 186);
             let deep = Color32::from_rgb(92, 62, 18);
             p.rect_filled(rect, r, deep);
             let clip = p.with_clip_rect(rect);
-            let steps = 5;
+            let steps = 14;
             for i in 0..steps {
-                let f = i as f32 / steps as f32;
-                let y0 = rect.top() + f * rect.height();
-                let y1 = rect.top() + (i + 1) as f32 / steps as f32 * rect.height() + 1.0;
+                let f = i as f32 / (steps - 1) as f32;
+                let y0 = rect.top() + i as f32 / steps as f32 * rect.height();
+                let y1 = rect.top() + (i + 1) as f32 / steps as f32 * rect.height() + 0.9;
                 // 色带也要贴着圆角收边，不然四角会露出方角
                 clip.add(egui::Shape::convex_polygon(
                     rounded_band(rect, 8.5, y0, y1),
-                    blend(deep, gold, 0.25 + f * 0.85),
+                    blend(deep, gold, 0.22 + f * 0.86),
                     Stroke::NONE,
                 ));
             }
+            // 上沿一条细高光、下沿一条暗边：两道倒角叠起来才像金属片
+            clip.add(egui::Shape::convex_polygon(
+                rounded_band(rect, 8.5, rect.top(), rect.top() + 1.3),
+                tint(gold_hi, 90),
+                Stroke::NONE,
+            ));
+            clip.add(egui::Shape::convex_polygon(
+                rounded_band(rect, 8.5, rect.bottom() - 1.2, rect.bottom()),
+                tint(deep, 110),
+                Stroke::NONE,
+            ));
+            // 高光从徽章左端扫到右端；每一行都和圆角求交，扫过圆角时自动收窄，
+            // 所以整条都能扫到，又不会在圆角外面露出白角
             let phase = ((t * 0.4) % 1.0) as f32;
-            // 只在中间平直段扫，而且用三层不同宽度叠出软边，
-            // 一层硬边会看着像多出来一个小方块
-            // 平直段只有 r..width-r，扫光带是斜的，所以左右还要各让出 slant，
-            // 不然扫到端点时白角会从圆角外面透出来
             let slant = 7.0;
-            let span = (rect.width() - 2.0 * 8.5 - 16.0 - slant).max(4.0);
-            let bx = rect.left() + 8.5 + slant + phase * span;
+            let bx = rect.left() - 16.0 + phase * (rect.width() + 16.0);
             for (i, w) in [16.0f32, 10.0, 5.0].iter().enumerate() {
-                let a = (16.0 + 10.0 * pulse) as u8 / (i as u8 + 1);
+                let pts = clipped_glint(rect, 8.5, bx, *w, slant);
+                if pts.len() < 3 {
+                    continue;
+                }
+                let a = (14.0 + 10.0 * pulse) as u8 / (i as u8 + 1);
                 clip.add(egui::Shape::convex_polygon(
-                    vec![
-                        egui::pos2(bx, rect.top()),
-                        egui::pos2(bx + w, rect.top()),
-                        egui::pos2(bx + w - slant, rect.bottom()),
-                        egui::pos2(bx - slant, rect.bottom()),
-                    ],
+                    pts,
                     tint(Color32::WHITE, a.max(4)),
                     Stroke::NONE,
                 ));
@@ -5364,18 +5439,23 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbps: u64, t: 
             );
             true
         }
-        Quality::Dsd => {
-            // 深紫底 + 一条流动的"1-bit 码流"（点串），右边写 DSD
+        Quality::Dsd(_) => {
+            // 深紫底 + 一条流动的"1-bit 码流"（点串），右边写档位（DSD64 / DSD128…）
             let violet = Color32::from_rgb(186, 160, 255);
             p.rect_filled(rect, r, Color32::from_rgb(30, 22, 54));
             p.rect_stroke(rect, r, Stroke::new(1.0, tint(violet, 140)));
+            let font = egui::FontId::proportional(8.5);
+            let label_w = p.layout_no_wrap(label.to_string(), font.clone(), violet).size().x;
+            let dots_l = rect.left() + 7.0;
+            let dots_r = rect.right() - 6.5 - label_w - 5.0;
+            let span = (dots_r - dots_l).max(6.0);
             let clip = p.with_clip_rect(rect.shrink(1.5));
             let n = 12;
             for i in 0..n {
                 let f = i as f32 / (n - 1) as f32;
                 let phase = t as f32 * 3.2 + f * 9.0;
                 let y = rect.center().y + phase.sin() * 4.0;
-                let x = rect.left() + 7.0 + f * (rect.width() - 30.0);
+                let x = dots_l + f * span;
                 let a = (110.0 + 120.0 * phase.sin().abs()) as u8;
                 clip.circle_filled(egui::pos2(x, y), 1.15, tint(violet, a));
             }
@@ -5383,7 +5463,7 @@ fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbps: u64, t: 
                 egui::pos2(rect.right() - 6.5, rect.center().y),
                 egui::Align2::RIGHT_CENTER,
                 label,
-                egui::FontId::proportional(8.5),
+                font,
                 violet,
             );
             true
