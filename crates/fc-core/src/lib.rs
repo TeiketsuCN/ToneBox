@@ -23,7 +23,7 @@ pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
 pub use format::{
-    all, args_for, bitrate_choices, bitrate_of, browsable, by_id, default_target, estimate_size,
+    all, args_for, bit_depths_for, bitrate_choices, bitrate_of, browsable, by_id, default_target, estimate_size,
     external_encoder, knob_note, knobs_for, output_rate, quality_warnings, rate_choices, rate_note,
     split_group, targets_for, BitDepth, Choice, ConvertOptions, FormatSpec, Group, Kind, Knob,
     Patent, Preset, QualityWarning, WarningKind, PRESETS, encoder_for,

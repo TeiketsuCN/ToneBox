@@ -314,18 +314,24 @@ pub fn quality_warnings(
         }
     }
 
-    // 位深只有无损/未压缩格式的旋钮能改（FLAC 之类直接保留源位深）。
+    // 位深只有无损格式的旋钮能改；压缩型无损最高 24 bit，选「自动」时不比较。
     // 有损源和 DSD 的 bits 没有比较意义。
+    let pcm_knob = matches!(spec.id, "wav" | "caf" | "w64" | "aiff" | "pcm");
+    let compressed_knob = matches!(spec.id, "flac" | "alac" | "wavpack" | "tta");
     if let (Some(src_bits), true) = (
         src.bits,
         !src_dsd
             && !src.is_lossy()
-            && matches!(spec.id, "wav" | "caf" | "w64" | "aiff" | "pcm"),
+            && (pcm_knob || compressed_knob)
+            && o.bit_depth != BitDepth::Auto,
     ) {
         let (out_bits, label) = match o.bit_depth {
             BitDepth::Int16 => (16u32, "16"),
             BitDepth::Int24 => (24, "24"),
+            // 压缩型无损最高 24 bit
+            BitDepth::Int32f if compressed_knob => (24, "24"),
             BitDepth::Int32f => (32, "32f"),
+            BitDepth::Auto => (0, "自动"),
         };
         if out_bits < src_bits {
             out.push(QualityWarning {
@@ -355,6 +361,8 @@ pub fn quality_warnings(
 /// 位深。0 位深这种概念在音频里没有，所以用枚举而不是整数。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BitDepth {
+    /// 跟源文件一样（压缩型无损的默认值：16 进 16 出、24 进 24 出）
+    Auto,
     Int16,
     Int24,
     Int32f,
@@ -363,6 +371,7 @@ pub enum BitDepth {
 impl BitDepth {
     pub fn label(self) -> &'static str {
         match self {
+            BitDepth::Auto => "自动（跟源）",
             BitDepth::Int16 => "16-bit",
             BitDepth::Int24 => "24-bit",
             BitDepth::Int32f => "32-bit 浮点",
@@ -371,6 +380,9 @@ impl BitDepth {
     /// 小端（WAV / CAF / W64 / 裸 PCM 用）
     pub fn codec_le(self) -> &'static str {
         match self {
+            // Auto 只存在于压缩型无损，那边的参数由 compressed_fmt() 管；
+            // 这里给个安全兜底，别让 PCM 走到空字符串
+            BitDepth::Auto => "pcm_s24le",
             BitDepth::Int16 => "pcm_s16le",
             BitDepth::Int24 => "pcm_s24le",
             BitDepth::Int32f => "pcm_f32le",
@@ -379,14 +391,31 @@ impl BitDepth {
     /// 大端（AIFF 用）
     pub fn codec_be(self) -> &'static str {
         match self {
+            BitDepth::Auto => "pcm_s24be",
             BitDepth::Int16 => "pcm_s16be",
             BitDepth::Int24 => "pcm_s24be",
             BitDepth::Int32f => "pcm_f32be",
         }
     }
+    /// 压缩型无损（FLAC / ALAC / WavPack / TTA）的 -sample_fmt。
+    /// `Auto` 返回 None = 不传，编码器自己跟着源位深走。
+    pub fn compressed_fmt(self, id: &str) -> Option<&'static str> {
+        let (low, high) = match id {
+            // ALAC / WavPack 只吃 planar
+            "alac" | "wavpack" => ("s16p", "s32p"),
+            _ => ("s16", "s32"),
+        };
+        match self {
+            BitDepth::Auto => None,
+            BitDepth::Int16 => Some(low),
+            BitDepth::Int24 | BitDepth::Int32f => Some(high),
+        }
+    }
+
     /// 裸 PCM 的 muxer 名
     pub fn raw_fmt(self) -> &'static str {
         match self {
+            BitDepth::Auto => "s24le",
             BitDepth::Int16 => "s16le",
             BitDepth::Int24 => "s24le",
             BitDepth::Int32f => "f32le",
@@ -430,7 +459,7 @@ impl Default for ConvertOptions {
     fn default() -> Self {
         Self {
             flac_level: 8,
-            bit_depth: BitDepth::Int24,
+            bit_depth: BitDepth::Auto,
             mp3_bitrate: 320,
             opus_bitrate: 96,
             vorbis_q: 6,
@@ -594,11 +623,11 @@ pub enum Knob {
 /// 这个格式能调什么。空数组表示"没得调，用默认值"。
 pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
     match spec.id {
-        "flac" => &[Knob::FlacLevel, Knob::SampleRate],
+        "flac" => &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate],
         "wav" | "caf" | "w64" => &[Knob::BitDepth, Knob::SampleRate],
         "aiff" => &[Knob::BitDepth, Knob::SampleRate],
         "pcm" => &[Knob::BitDepth, Knob::SampleRate],
-        "alac" | "wavpack" | "tta" => &[Knob::SampleRate],
+        "alac" | "wavpack" | "tta" => &[Knob::BitDepth, Knob::SampleRate],
         "mp3" => &[Knob::Mp3Bitrate, Knob::SampleRate],
         // Opus 输出流固定 48k，给采样率旋钮只会骗人
         "opus" => &[Knob::OpusBitrate],
@@ -610,6 +639,18 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "mp2" => &[Knob::SampleRate],
         // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
         "atrac3" => &[Knob::Atrac3Bitrate],
+        _ => &[],
+    }
+}
+
+/// 某个格式能选哪些位深。空数组 = 这个格式不该显示位深旋钮。
+pub fn bit_depths_for(spec: &FormatSpec) -> &'static [BitDepth] {
+    match spec.id {
+        // 压缩型无损：可以降/升，但最高 24；默认跟源
+        "flac" | "alac" | "wavpack" | "tta" => &[BitDepth::Auto, BitDepth::Int16, BitDepth::Int24],
+        "wav" | "caf" | "w64" | "aiff" | "pcm" => {
+            &[BitDepth::Int16, BitDepth::Int24, BitDepth::Int32f]
+        }
         _ => &[],
     }
 }
@@ -629,21 +670,42 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
 /// 这是把「静态 args」换成「可调参数」的唯一入口，GUI 不要自己拼参数字符串。
 pub fn args_for(spec: &FormatSpec, o: &ConvertOptions) -> Vec<String> {
     let s = |v: &str| v.to_string();
+    // PCM 系列没有「自动」：默认按 24-bit 处理
+    let pcm_bit_depth = |b: BitDepth| if b == BitDepth::Auto { BitDepth::Int24 } else { b };
     let mut a = match spec.id {
-        "flac" => vec![
-            s("-c:a"),
-            s("flac"),
-            s("-compression_level"),
-            o.flac_level.min(12).to_string(),
-        ],
-        "wav" | "caf" | "w64" => vec![s("-c:a"), s(o.bit_depth.codec_le())],
-        "aiff" => vec![s("-c:a"), s(o.bit_depth.codec_be())],
-        "pcm" => vec![
-            s("-c:a"),
-            s(o.bit_depth.codec_le()),
-            s("-f"),
-            s(o.bit_depth.raw_fmt()),
-        ],
+        "flac" => {
+            let mut v = vec![
+                s("-c:a"),
+                s("flac"),
+                s("-compression_level"),
+                o.flac_level.min(12).to_string(),
+            ];
+            if let Some(fmt) = o.bit_depth.compressed_fmt("flac") {
+                v.push(s("-sample_fmt"));
+                v.push(s(fmt));
+            }
+            v
+        }
+        "alac" | "wavpack" | "tta" => {
+            let mut v = vec![s("-c:a"), s(spec.id)];
+            if let Some(fmt) = o.bit_depth.compressed_fmt(spec.id) {
+                v.push(s("-sample_fmt"));
+                v.push(s(fmt));
+            }
+            v
+        }
+        "wav" | "caf" | "w64" => {
+            let bd = pcm_bit_depth(o.bit_depth);
+            vec![s("-c:a"), s(bd.codec_le())]
+        }
+        "aiff" => {
+            let bd = pcm_bit_depth(o.bit_depth);
+            vec![s("-c:a"), s(bd.codec_be())]
+        }
+        "pcm" => {
+            let bd = pcm_bit_depth(o.bit_depth);
+            vec![s("-c:a"), s(bd.codec_le()), s("-f"), s(bd.raw_fmt())]
+        }
         "mp3" => vec![
             s("-c:a"),
             s("libmp3lame"),
@@ -812,16 +874,48 @@ mod tests {
     }
 
     #[test]
+    fn bit_depth_options_and_args() {
+        // 压缩型无损：自动 / 16 / 24（没有 32f）
+        assert_eq!(
+            bit_depths_for(spec("flac")),
+            &[BitDepth::Auto, BitDepth::Int16, BitDepth::Int24]
+        );
+        // PCM：16 / 24 / 32f（没有自动）
+        assert_eq!(
+            bit_depths_for(spec("wav")),
+            &[BitDepth::Int16, BitDepth::Int24, BitDepth::Int32f]
+        );
+        assert!(bit_depths_for(spec("mp3")).is_empty());
+
+        let mut o = ConvertOptions::default();
+        // 默认「自动」：不传 -sample_fmt，编码器跟源位深
+        assert!(!args_for(spec("flac"), &o).contains(&"-sample_fmt".to_string()));
+        o.bit_depth = BitDepth::Int16;
+        let a = args_for(spec("flac"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-sample_fmt" && w[1] == "s16"));
+        o.bit_depth = BitDepth::Int24;
+        let a = args_for(spec("alac"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-sample_fmt" && w[1] == "s32p"));
+        let a = args_for(spec("wavpack"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-sample_fmt" && w[1] == "s32p"));
+        let a = args_for(spec("tta"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-sample_fmt" && w[1] == "s32"));
+        // PCM 遇到「自动」兜底成 24-bit
+        o.bit_depth = BitDepth::Auto;
+        assert!(args_for(spec("wav"), &o).contains(&"pcm_s24le".to_string()));
+    }
+
+    #[test]
     fn knobs_match_formats() {
-        assert_eq!(knobs_for(spec("flac")), &[Knob::FlacLevel, Knob::SampleRate]);
+        assert_eq!(knobs_for(spec("flac")), &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("wav")), &[Knob::BitDepth, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("mp3")), &[Knob::Mp3Bitrate, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("ac3")), &[Knob::Ac3Bitrate, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("eac3")), &[Knob::Eac3Bitrate, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("wma")), &[Knob::WmaBitrate, Knob::SampleRate]);
-        // 无损自适应格式只有采样率可调
-        assert_eq!(knobs_for(spec("alac")), &[Knob::SampleRate]);
-        assert_eq!(knobs_for(spec("wavpack")), &[Knob::SampleRate]);
+        // 压缩型无损：位深 + 采样率
+        assert_eq!(knobs_for(spec("alac")), &[Knob::BitDepth, Knob::SampleRate]);
+        assert_eq!(knobs_for(spec("wavpack")), &[Knob::BitDepth, Knob::SampleRate]);
         // Opus 输出流固定 48k，不该给采样率旋钮
         assert_eq!(knobs_for(spec("opus")), &[Knob::OpusBitrate]);
         assert!(rate_choices("opus").is_empty());

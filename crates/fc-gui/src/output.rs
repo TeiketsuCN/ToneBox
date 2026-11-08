@@ -666,16 +666,28 @@ impl App {
                 }
             }
             Knob::BitDepth => {
+                let depths = fc_core::bit_depths_for(self.target);
+                // 换格式后原来的位深可能不在可选范围里：落到 24（有的话）或第一项
+                if !depths.is_empty() && !depths.contains(&self.cfg.opts.bit_depth) {
+                    self.cfg.opts.bit_depth = if depths.contains(&BitDepth::Int24) {
+                        BitDepth::Int24
+                    } else {
+                        depths[0]
+                    };
+                    changed = true;
+                }
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new("位深").size(9.5).color(MUTED));
-                    for (d, label) in [
-                        (BitDepth::Int16, "16"),
-                        (BitDepth::Int24, "24"),
-                        (BitDepth::Int32f, "32f"),
-                    ] {
-                        let on = self.cfg.opts.bit_depth == d;
+                    for d in depths {
+                        let label = match d {
+                            BitDepth::Auto => "自动",
+                            BitDepth::Int16 => "16",
+                            BitDepth::Int24 => "24",
+                            BitDepth::Int32f => "32f",
+                        };
+                        let on = self.cfg.opts.bit_depth == *d;
                         if seg_button(ui, label, on) {
-                            self.cfg.opts.bit_depth = d;
+                            self.cfg.opts.bit_depth = *d;
                             changed = true;
                         }
                     }
