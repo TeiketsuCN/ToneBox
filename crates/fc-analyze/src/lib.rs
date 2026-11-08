@@ -559,6 +559,32 @@ fn decode_segment(
 }
 
 
+/// 测整合响度（EBU R128）。整轨解码到 48 kHz 立体声，再用 fc-core 的测量实现算。
+///
+/// 这是唯一一条"把整首歌解一遍"的路径：几分钟的歌大概 1~3 秒，别在 UI 线程上调。
+pub fn loudness(ffmpeg: &Path, path: &Path) -> Result<fc_core::loudness::Loudness> {
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"]).arg(path);
+    cmd.args(["-map", "0:a:0", "-ac", "2", "-ar", "48000", "-f", "f32le", "-"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = cmd.output().context("启动 ffmpeg 解码失败（响度）")?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let tail: String = err.chars().rev().take(400).collect::<String>().chars().rev().collect();
+        bail!("ffmpeg 解码失败（响度）：\n{}", tail.trim());
+    }
+    let pcm: Vec<f32> = out
+        .stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect();
+    fc_core::loudness::measure(&pcm, 2).context("样本太短，测不出响度（至少 400ms）")
+}
+
 /// 给界面画频谱用：对数频率轴上的 (Hz, dB) 点。
 ///
 /// 跟 `analyze` 用同一条解码 + FFT 路径，只是不判质量：按对数频率分带，

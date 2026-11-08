@@ -12,9 +12,11 @@ pub mod tags;
 pub mod metadata;
 pub mod wiki;
 pub mod dsd;
+pub mod loudness;
 
 pub use ffmpeg::{convert, locate, probe, MediaInfo, ProgressFn, Tools};
 pub use dsd::{bit_rate_hz as dsd_bit_rate_hz, tier as dsd_tier};
+pub use loudness::Loudness as LoudnessReport;
 pub use encoders::list_encoders;
 /// 外部 ATRAC 编码器（atracdenc）：检测 + 调用。我们不随包分发它。
 pub use external::find as find_atracdenc;

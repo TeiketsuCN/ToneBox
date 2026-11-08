@@ -13,6 +13,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod util;
+mod single;
 mod badges;
 mod titlebar;
 mod rail;
@@ -155,6 +156,8 @@ pub(crate) struct Item {
     hovered: bool,
     progress_t: f32,
     analysis: Analysis,
+    /// 整合响度（LUFS）/ 采样峰值；分析线程顺手测的，测不出来就是 None
+    lufs: Option<fc_core::loudness::Loudness>,
     tags: fc_core::Tags,
     cover: Option<egui::TextureHandle>,
     /// 单文件标题覆盖（空 = 沿用源标签）
@@ -198,6 +201,8 @@ pub(crate) enum Job {
         out: PathBuf,
         args: Vec<String>,
         dur: f64,
+        /// 响度归一化目标（LUFS）；None = 不动
+        norm: Option<f32>,
     },
     /// 外部 atracdenc：先 ffmpeg 解码成 WAV，再交给它编码
     Atrac {
@@ -258,8 +263,8 @@ pub(crate) struct App {
     /// 窗口是否置顶
     pinned: bool,
     /// 频谱分析结果通道
-    analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>)>,
-    analysis_rx: Receiver<(usize, Result<QualityReport, String>)>,
+    analysis_tx: std::sync::mpsc::Sender<(usize, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
+    analysis_rx: Receiver<(usize, Result<QualityReport, String>, Option<fc_core::loudness::Loudness>)>,
     /// 标签/封面回传（后台线程读，主线程建纹理）
     media_tx: std::sync::mpsc::Sender<MediaMsg>,
     media_rx: Receiver<MediaMsg>,
@@ -510,6 +515,7 @@ impl App {
                 hovered: false,
                 progress_t: 0.0,
                 analysis: Analysis::Idle,
+                lufs: None,
                 tags: fc_core::Tags::default(),
                 cover: None,
                 title_ov: None,
@@ -588,6 +594,7 @@ impl App {
                 out,
                 args,
                 dur,
+                norm: self.cfg.loudness,
             });
             it.state = State::Running(0.0);
         }
@@ -613,9 +620,25 @@ impl App {
                         idx,
                         input,
                         out,
-                        args,
+                        mut args,
                         dur,
+                        norm,
                     } => {
+                        // 响度归一化：先量一遍，再用 volume 增益（峰值留 1 dB 余量）
+                        if let Some(target) = norm {
+                            if let Ok(m) = fc_analyze::loudness(&tools.ffmpeg, &input) {
+                                let mut gain = target - m.lufs;
+                                let ceiling = -1.0 - (m.peak_dbfs + gain);
+                                if ceiling < 0.0 {
+                                    gain += ceiling;
+                                }
+                                let gain = gain.clamp(-30.0, 30.0);
+                                if gain.abs() >= 0.05 {
+                                    args.push("-af".into());
+                                    args.push(format!("volume={gain:.2}dB"));
+                                }
+                            }
+                        }
                         let tx_p = tx.clone();
                         let ctx_p = ctx2.clone();
                         let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
@@ -690,9 +713,14 @@ impl App {
 
         let tx = self.analysis_tx.clone();
         let ctx = ctx.clone();
+        let ffmpeg = self.tools.as_ref().map(|t| t.ffmpeg.clone());
         std::thread::spawn(move || {
             let res = fc_analyze::analyze(&path, &info).map_err(|e| format!("{e:#}"));
-            let _ = tx.send((idx, res));
+            // 响度要解整轨，跟着这次分析一起做，别让用户再等一次
+            let loud = ffmpeg
+                .as_ref()
+                .and_then(|f| fc_analyze::loudness(f, &path).ok());
+            let _ = tx.send((idx, res, loud));
             ctx.request_repaint();
         });
     }
@@ -748,12 +776,15 @@ impl App {
     }
 
     fn poll_analysis(&mut self) {
-        while let Ok((idx, res)) = self.analysis_rx.try_recv() {
+        while let Ok((idx, res, loud)) = self.analysis_rx.try_recv() {
             if let Some(it) = self.items.get_mut(idx) {
                 it.analysis = match res {
                     Ok(r) => Analysis::Done(r),
                     Err(e) => Analysis::Failed(e),
                 };
+                if loud.is_some() {
+                    it.lufs = loud;
+                }
             }
         }
     }
@@ -1312,6 +1343,12 @@ pub(crate) fn apply_backdrop() -> bool {
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // GUI 模式才做单实例检查；--convert 是命令行，允许多开
+    if args.first().map(|s| s.as_str()) != Some("--convert") && single::already_running() {
+        single::activate_existing();
+        return Ok(());
+    }
 
     if args.first().map(|s| s.as_str()) == Some("--convert") {
         let (Some(input), Some(output)) = (args.get(1), args.get(2)) else {

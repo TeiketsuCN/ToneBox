@@ -231,6 +231,9 @@ impl App {
                                         .color(DIM),
                                 );
                                 ui.end_row();
+                                if let Some(l) = it.lufs {
+                                    row(ui, "响度", &format!("{:.1} LUFS", l.lufs));
+                                }
                             });
                     }
 

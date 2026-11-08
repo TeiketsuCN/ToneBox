@@ -268,6 +268,28 @@ impl App {
             );
         }
 
+        // 响度归一化：和旋钮分开一行，因为它是"处理"不是"编码参数"
+        ui.add_space(10.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("响度").size(9.5).color(MUTED));
+            let opts: [(&str, Option<f32>); 4] = [
+                ("关", None),
+                ("-14", Some(-14.0)),
+                ("-16", Some(-16.0)),
+                ("-23", Some(-23.0)),
+            ];
+            for (label, target) in opts {
+                let on = self.cfg.loudness == target;
+                if seg_button(ui, label, on) {
+                    self.cfg.loudness = target;
+                    changed = true;
+                }
+            }
+        });
+        if self.cfg.loudness.is_some() {
+            para(ui, "按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。", 8.5, DIM);
+        }
+
         ui.add_space(14.0);
         ui.label(RichText::new("输出到").size(9.0).color(DIM));
         ui.add_space(4.0);

@@ -194,6 +194,15 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 
 ---
 
+## 响度（EBU R128）
+
+`fc-core/src/loudness.rs` 是按 ITU-R BS.1770 自己写的，没有第三方依赖：
+K 加权（高架 + 38 Hz 高通，48 kHz 系数表）→ 400 ms 块 / 100 ms 步进 → 绝对 -70 LUFS、
+相对 -10 LU 门限 → 整合响度。解码统一走 ffmpeg 重采样到 48 kHz。
+
+界面三处：详情「质量评估 → 响度」；输出栏「响度」旋钮（关 / -14 / -16 / -23）；
+归一化在转换线程里先量再补 `-af volume=X dB`，采样峰值留 1 dB 余量。
+
 ## 构建 / 安装
 
 ```powershell

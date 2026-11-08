@@ -74,6 +74,8 @@ pub struct Profile {
     #[serde(default)]
     pub output_dir: String,
     #[serde(default)]
+    pub loudness: Option<f32>,
+    #[serde(default)]
     pub write_tags: bool,
     #[serde(default)]
     pub meta_artist: String,
@@ -93,6 +95,7 @@ impl Profile {
             opts: s.opts.clone(),
             output_mode: s.output_mode,
             output_dir: s.output_dir.clone(),
+            loudness: s.loudness,
             write_tags: s.write_tags,
             meta_artist: s.meta_artist.clone(),
             meta_album: s.meta_album.clone(),
@@ -155,6 +158,9 @@ pub struct Settings {
     /// 封面图路径（空 = 沿用源文件内嵌封面）
     #[serde(default)]
     pub meta_cover: String,
+    /// 响度归一化目标（LUFS）；None = 不动。存在配置里，切配置会跟着走。
+    #[serde(default)]
+    pub loudness: Option<f32>,
     /// 是否写标签（默认关：先把文件转出来，标签需要时再开）
     #[serde(default)]
     pub write_tags: bool,
@@ -194,6 +200,7 @@ impl Default for Settings {
             meta_artist: String::new(),
             meta_album: String::new(),
             meta_cover: String::new(),
+            loudness: None,
             write_tags: false,
             ui_scale: 1.0,
             library_dirs: Vec::new(),
@@ -260,6 +267,7 @@ impl Settings {
         self.opts = p.opts;
         self.output_mode = p.output_mode;
         self.output_dir = p.output_dir;
+        self.loudness = p.loudness;
         self.write_tags = p.write_tags;
         self.meta_artist = p.meta_artist;
         self.meta_album = p.meta_album;
