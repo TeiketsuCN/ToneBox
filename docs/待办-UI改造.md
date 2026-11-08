@@ -240,6 +240,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 33 | HDR 模式；压缩等级/暗化换成自绘滑杆；Hi-Res 多出来的小方块 | ✅ 完成（`accent_glow` / `bar_slider`） |
 | 34 | 徽章写明无损/有损：Hi-Res 无损 / CD 无损 / 有损 320k；宽度按文字量算 | ✅ 完成（`quality_label` / `quality_width`） |
 | 35 | DSD 徽章带档位（DSD64/128/256/512）；Hi-Res 改平滑金属渐变 + 倒角 + 满宽扫光 | ✅ 完成（`dsd_rate` / `clipped_glint`） |
+| 36 | DSD 采样率/位深按 1-bit 口径显示（`DSD64 · 2.8224 MHz` / `1 bit`），队列、详情、频谱头三处一致 | ✅ 完成（`fmt_dsd_mhz` / `dsd_tier`） |
 
 ### 已踩的坑（写下来省得重踩）
 

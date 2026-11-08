@@ -1837,13 +1837,21 @@ impl App {
                                         let mut parts: Vec<String> =
                                             vec![m.codec_label().to_string()];
                                         if m.sample_rate > 0 {
-                                            match m.bits {
-                                                Some(b) => parts.push(format!(
-                                                    "{}/{}bit",
-                                                    fmt_k(m.sample_rate),
-                                                    b
-                                                )),
-                                                None => parts.push(fmt_khz(m.sample_rate)),
+                                            if is_dsd(&m.codec) {
+                                                // DSD 是 1-bit：kHz 和"8 bit"都是字节口径，换成 1-bit 写法
+                                                parts.push(format!(
+                                                    "{}/1bit",
+                                                    fmt_dsd_m(m.sample_rate)
+                                                ));
+                                            } else {
+                                                match m.bits {
+                                                    Some(b) => parts.push(format!(
+                                                        "{}/{}bit",
+                                                        fmt_k(m.sample_rate),
+                                                        b
+                                                    )),
+                                                    None => parts.push(fmt_khz(m.sample_rate)),
+                                                }
                                             }
                                         }
                                         if m.bitrate_kbps > 0 {
@@ -3587,9 +3595,22 @@ impl App {
                         row(ui, "码率", &format!("{} kbps", m.bitrate_kbps));
                     }
                     if m.sample_rate > 0 {
-                        row(ui, "采样率", &format!("{} Hz", m.sample_rate));
+                        let text = if is_dsd(&m.codec) {
+                            let tier = dsd_tier(&m.codec, m.sample_rate, m.bitrate_kbps);
+                            if tier.is_empty() {
+                                fmt_dsd_mhz(m.sample_rate)
+                            } else {
+                                format!("{tier} · {}", fmt_dsd_mhz(m.sample_rate))
+                            }
+                        } else {
+                            format!("{} Hz", m.sample_rate)
+                        };
+                        row(ui, "采样率", &text);
                     }
-                    if let Some(b) = m.bits {
+                    if is_dsd(&m.codec) {
+                        // DSD 是 1-bit 脉冲密度，ffprobe 报的 8 bit 是打包字节数
+                        row(ui, "位深", "1 bit");
+                    } else if let Some(b) = m.bits {
                         row(ui, "位深", &format!("{b} bit"));
                     }
                     if m.channels > 0 {
@@ -5021,10 +5042,18 @@ impl App {
             .map(|m| {
                 let mut s = m.codec_label().to_string();
                 if m.sample_rate > 0 {
-                    s.push_str(&format!(" · {}", fmt_khz(m.sample_rate)));
-                }
-                if let Some(b) = m.bits {
-                    s.push_str(&format!(" · {b} bit"));
+                    if is_dsd(&m.codec) {
+                        let tier = dsd_tier(&m.codec, m.sample_rate, m.bitrate_kbps);
+                        if !tier.is_empty() {
+                            s.push_str(&format!(" · {tier}"));
+                        }
+                        s.push_str(&format!(" · {} · 1 bit", fmt_dsd_mhz(m.sample_rate)));
+                    } else {
+                        s.push_str(&format!(" · {}", fmt_khz(m.sample_rate)));
+                        if let Some(b) = m.bits {
+                            s.push_str(&format!(" · {b} bit"));
+                        }
+                    }
                 }
                 if m.bitrate_kbps > 0 {
                     s.push_str(&format!(" · {} kbps", m.bitrate_kbps));
@@ -5526,6 +5555,38 @@ fn fmt_khz(sr: u32) -> String {
         format!("{} kHz", sr / 1000)
     } else {
         format!("{:.1} kHz", sr as f64 / 1000.0)
+    }
+}
+
+/// 是不是 DSD（ffprobe 的 codec 名是 dsd_lsbf / dsd_msbf / *_planar）
+fn is_dsd(codec: &str) -> bool {
+    codec.starts_with("dsd")
+}
+
+/// DSD 的采样率写法：ffprobe 报的是"字节率"（DSD64 = 352.8k），×8 才是真正的 1-bit 频率。
+/// 用 MHz 写（2.8224 MHz），别跟 PCM 的 kHz 混在一起。
+fn fmt_dsd_mhz(sr: u32) -> String {
+    let mhz = sr as f64 * 8.0 / 1_000_000.0;
+    let s = format!("{mhz:.4}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    format!("{s} MHz")
+}
+
+/// 队列里更短的 DSD 采样率写法：2.8M
+fn fmt_dsd_m(sr: u32) -> String {
+    format!("{:.1}M", sr as f64 * 8.0 / 1_000_000.0)
+}
+
+/// DSD 的档位标签（DSD64 / DSD128…），认不出来就空
+fn dsd_tier(codec: &str, sr: u32, kbps: u64) -> String {
+    if !is_dsd(codec) {
+        return String::new();
+    }
+    let rate = dsd_rate(sr, kbps);
+    if rate > 0 {
+        format!("DSD{rate}")
+    } else {
+        String::new()
     }
 }
 
