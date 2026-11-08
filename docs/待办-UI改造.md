@@ -246,7 +246,7 @@ B 要做的是把这些格式的「是什么 / 什么来头 / 为什么不给编
 | 39 | 降采样、降位深也出提示（升采样/升位深同理），挂在采样率/位深旋钮下面；DSD 与有损源不参与位深比较 | ✅ 完成（`Downsample` / `BitDepthDown` / `BitDepthUp`） |
 | 40 | 拆分 main.rs（6600 行 → 11 个模块）+ 播放条用和详情/列表同一个底 | ✅ 完成（`util/badges/titlebar/rail/queue/player/spectrum/detail/output/library/overlays`） |
 | 41 | 播放栏改成悬浮层（队列/详情一通到底）；输出列的圆点统一成「删除源文件」那套 | ✅ 完成（`Order::Middle` 的 Area / `radio_dot`） |
-| 42 | 播放栏改半透明玻璃（上方渐隐）；队列的「添加文件/清空」挪到列表顶部；三处滚动区留出 `BAR_RESERVE` | ✅ 完成 |
+| 42 | 播放栏改半透明玻璃；队列的「添加文件/清空」挪到列表顶部；三处滚动区留出 `BAR_RESERVE`；去掉顶部渐隐、左右各缩进 26 | ✅ 完成 |
 | 40 | 视频容器当输入（只取第一条音轨）；元数据默认收起；输出列尾加视频来源说明 | ✅ 完成（`INPUT_EXTS` / `-map 0:a:0` / `meta_open=false`） |
 | 41 | 「开始转换」按钮内嵌总进度；完成/失败改成标题栏铃铛通知（红点 + 面板） | ✅ 完成（`start_button` / `Notice` / `notices_overlay` / `frame::set_bell_left`） |
 | 42 | 「删除源文件」改成必须长按 3 秒生效，按住时右侧倒计时、圆点转圈 | ✅ 完成（`delete_source_row` / `delete_hold`） |

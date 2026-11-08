@@ -1035,45 +1035,24 @@ impl eframe::App for App {
             // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
             let screen = ctx.screen_rect();
             let bar_h = 80.0;
+            // 左右各缩进一点，不贴满两栏（用户要"短一点"）
+            let bar_pad = 26.0;
             let bar_w = if self.page == Page::Convert {
-                (screen.width() - LEFT_W - OUT_W - inset * 2.0).max(240.0)
+                (screen.width() - LEFT_W - OUT_W - inset * 2.0 - bar_pad * 2.0).max(240.0)
             } else {
-                (screen.width() - LEFT_W - inset * 2.0).max(240.0)
+                (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0).max(240.0)
             };
             let bar_pos = egui::pos2(
-                LEFT_W + inset,
+                LEFT_W + inset + bar_pad,
                 screen.bottom() - bar_h - 10.0 - inset,
             );
-            // 条上方留一段渐隐：底下的列表滚到这儿先淡出，不会与播放栏的文字打架
-            let fade_h = 20.0;
             egui::Area::new(egui::Id::new("player_float"))
                 .order(egui::Order::Middle)
-                .fixed_pos(egui::pos2(bar_pos.x, bar_pos.y - fade_h))
+                .fixed_pos(bar_pos)
                 .show(ctx, |ui| {
                     ui.set_width(bar_w);
-                    let (fade_rect, _) = ui.allocate_exact_size(
-                        egui::vec2(bar_w, fade_h),
-                        egui::Sense::hover(),
-                    );
-                    let p = ui.painter();
-                    let steps = 13;
-                    for i in 0..steps {
-                        let f = i as f32 / steps as f32;
-                        let a = (150.0 * f) as u8;
-                        let y0 = fade_rect.top() + fade_rect.height() * f;
-                        let y1 = fade_rect.top() + fade_rect.height() * (i + 1) as f32 / steps as f32;
-                        p.rect_filled(
-                            egui::Rect::from_min_max(
-                                egui::pos2(fade_rect.left(), y0),
-                                egui::pos2(fade_rect.right(), y1 + 0.5),
-                            ),
-                            0.0,
-                            tint(BG, a),
-                        );
-                    }
-                    ui.add_space(0.0);
                     egui::Frame::none()
-                        // 半透明玻璃 + 上面的渐隐，底下的行不会直接透到文字上
+                        // 半透明玻璃（列表已经在上面收住，不会有文字透过来）
                         .fill(tint(BG, 150))
                         .rounding(Rounding::same(14.0))
                         .inner_margin(egui::Margin::symmetric(12.0, 8.0))
