@@ -57,6 +57,13 @@ impl App {
         });
         ui.add_space(6.0);
 
+        // 刚点了「清空」：这一帧直接收工，别再用上面算好的旧下标去访问 items（会越界 panic）
+        if self.items.is_empty() {
+            self.drop_zone(ui);
+            return false;
+        }
+        let count = self.items.len();
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             // 底部给悬浮播放栏留位，列表不要钻到它下面
