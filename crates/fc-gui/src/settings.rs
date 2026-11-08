@@ -30,6 +30,8 @@ pub enum WindowSize {
     Normal,
     /// 大（2000×900）—— 2K 屏
     Large,
+    /// 超大（2200×1100）—— 大屏
+    Huge,
 }
 
 impl WindowSize {
@@ -38,6 +40,7 @@ impl WindowSize {
             WindowSize::Compact => "小",
             WindowSize::Normal => "中",
             WindowSize::Large => "大",
+            WindowSize::Huge => "超大",
         }
     }
     /// 返回 (宽, 高)，单位是物理像素。
@@ -48,10 +51,16 @@ impl WindowSize {
             WindowSize::Compact => (1800.0, 780.0),
             WindowSize::Normal => (1874.0, 840.0),
             WindowSize::Large => (2000.0, 900.0),
+            WindowSize::Huge => (2200.0, 1100.0),
         }
     }
-    pub fn all() -> [WindowSize; 3] {
-        [WindowSize::Compact, WindowSize::Normal, WindowSize::Large]
+    pub fn all() -> [WindowSize; 4] {
+        [
+            WindowSize::Compact,
+            WindowSize::Normal,
+            WindowSize::Large,
+            WindowSize::Huge,
+        ]
     }
 }
 

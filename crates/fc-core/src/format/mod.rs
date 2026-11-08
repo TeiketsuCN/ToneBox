@@ -284,7 +284,8 @@ pub fn quality_warnings(
     // 降采样只要实际输出更低就提醒——这是真的在丢高频。DSD 的采样率是字节率，不参与比较。
     if !src_dsd {
         if let (Some(out_rate), true) = (output_rate(spec, o), src.sample_rate > 0) {
-            if out_rate > src.sample_rate && o.sample_rate.is_some() {
+            let can_pick_rate = !rate_choices(spec.id).is_empty();
+            if out_rate > src.sample_rate && can_pick_rate && o.sample_rate.is_some() {
                 out.push(QualityWarning {
                     kind: WarningKind::Upsample,
                     title: "升采样不会增加信息",
@@ -582,9 +583,22 @@ fn snap_rate(id: &str, v: u32) -> u32 {
 /// 实际要写进 ffmpeg 的采样率。`None` = 不传 `-ar`，跟着源文件走。
 ///
 /// Dolby 是例外：用户没选时按规范给 48 kHz，而不是跟源。
+/// 编码器写死的输出采样率（界面不给旋钮，但它一定会重采样到这个值）。
+pub fn fixed_rate(id: &str) -> Option<u32> {
+    match id {
+        // libopus 内部只按 48 kHz 工作
+        "opus" => Some(48000),
+        // atracdenc 只吃 44.1 kHz
+        "atrac1" | "atrac3" | "atrac3p" => Some(44100),
+        _ => None,
+    }
+}
+
 pub fn output_rate(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
     if rate_choices(spec.id).is_empty() {
-        return None;
+        // 没有旋钮不代表不做重采样：Opus 锁 48k、ATRAC 锁 44.1k，
+        // 源不是这个采样率的时候确实会被重采样，提示里必须算进去。
+        return fixed_rate(spec.id);
     }
     match o.sample_rate {
         Some(r) => Some(snap_rate(spec.id, r)),
@@ -1059,6 +1073,59 @@ mod tests {
         let w = quality_warnings(&mi("flac", 900, 44100), spec("flac"), &o2);
         assert_eq!(w.len(), 1);
         assert!(w[0].title.contains("升采样"));
+    }
+
+    /// 每个带「采样率 / 位深」旋钮的格式，改了值都必须出提示。
+    /// 之前是靠人肉点，漏了好几种格式。
+    #[test]
+    fn every_rate_and_depth_knob_has_a_warning() {
+        let src = mi("flac", 900, 44100); // 16 bit 无损
+        let mut missing: Vec<String> = Vec::new();
+        for f in all() {
+            if !f.can_encode {
+                continue;
+            }
+            let knobs = knobs_for(f);
+            if knobs.contains(&Knob::SampleRate) {
+                let choices = rate_choices(f.id);
+                if let Some(&r) = choices.iter().find(|&&r| r != 44100) {
+                    let mut o = ConvertOptions::default();
+                    o.sample_rate = Some(r);
+                    let w = quality_warnings(&src, f, &o);
+                    if !w.iter().any(|x| {
+                        matches!(
+                            x.kind,
+                            WarningKind::Upsample | WarningKind::Downsample
+                        )
+                    }) {
+                        missing.push(format!("{} 采样率 {}", f.id, r));
+                    }
+                }
+            }
+            if knobs.contains(&Knob::BitDepth) {
+                let mut o = ConvertOptions::default();
+                o.bit_depth = BitDepth::Int24;
+                let w = quality_warnings(&src, f, &o);
+                if !w.iter().any(|x| x.kind == WarningKind::BitDepthUp) {
+                    missing.push(format!("{} 位深 24", f.id));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "这些组合没有提示: {missing:?}");
+    }
+
+    /// 锁死采样率的编码器（Opus 48k、ATRAC 44.1k）也必须提示重采样
+    #[test]
+    fn fixed_rate_encoders_warn_on_resample() {
+        let hi = mi("flac", 900, 96000);
+        for id in ["opus", "atrac1", "atrac3", "atrac3p"] {
+            let o = ConvertOptions::default();
+            let w = quality_warnings(&hi, spec(id), &o);
+            assert!(
+                w.iter().any(|x| x.kind == WarningKind::Downsample),
+                "{id} 从 96k 源下来没有降采样提示: {w:?}"
+            );
+        }
     }
 
     #[test]

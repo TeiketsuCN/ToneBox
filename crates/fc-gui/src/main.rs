@@ -260,6 +260,8 @@ pub(crate) struct App {
     play_error: Option<String>,
     /// 播放音量（没有播放器时也记住，下次 open 直接套上）
     player_volume: f32,
+    /// 是否全屏（F11 切换，不写进配置）
+    fullscreen: bool,
     /// 正在看大图的队列下标（None = 没开）
     cover_view: Option<usize>,
     /// 大图开/关的动画进度 0~1
@@ -468,6 +470,7 @@ impl App {
             player_for: None,
             play_error: None,
             player_volume: 0.75,
+            fullscreen: false,
             cover_view: None,
             cover_t: 0.0,
             cover_closing: false,
@@ -1073,6 +1076,23 @@ impl App {
     }
 }
 
+/// 全屏开关：进出都顺手把窗口尺寸对回配置里那一档
+pub(crate) fn set_fullscreen(
+    full: &mut bool,
+    ctx: &egui::Context,
+    size_px: (f32, f32),
+) {
+    *full = !*full;
+    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(*full));
+    if !*full {
+        let (w, h) = size_px;
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+            w / BASE_ZOOM,
+            h / BASE_ZOOM,
+        )));
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frames += 1;
@@ -1082,6 +1102,13 @@ impl eframe::App for App {
             frame::install(APP_NAME);
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
+
+        // F11 / Esc 切换全屏（Esc 只在全屏时退出）
+        let f11 = ctx.input(|i| i.key_pressed(egui::Key::F11));
+        let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if f11 || (esc && self.fullscreen) {
+            set_fullscreen(&mut self.fullscreen, ctx, self.cfg.window.size_px());
+        }
         // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
         #[cfg(windows)]
         frame::set_ui_scale(BASE_ZOOM);
@@ -1704,6 +1731,28 @@ fn main() -> eframe::Result<()> {
                 );
             }
             Err(e) => eprintln!("{e:#}"),
+        }
+        return Ok(());
+    }
+
+    // 命令行：列出所有格式在当前源文件上的质量提示（测试用）
+    if args.first().map(|s| s.as_str()) == Some("--warnings") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter --warnings <文件>");
+            std::process::exit(2);
+        };
+        let tools = fc_core::locate().expect("找不到 ffmpeg");
+        let info = fc_core::probe(&tools, Path::new(input)).expect("读不到音频信息");
+        let mut opts = fc_core::ConvertOptions::default();
+        opts.bit_depth = fc_core::format::BitDepth::Int24;
+        opts.sample_rate = Some(48000);
+        for f in fc_core::format::browsable() {
+            let w = fc_core::format::quality_warnings(&info, f, &opts);
+            let kinds: Vec<String> = w
+                .iter()
+                .map(|x| format!("{:?}", x.kind))
+                .collect();
+            println!("{:<10} {}", f.id, kinds.join(","));
         }
         return Ok(());
     }

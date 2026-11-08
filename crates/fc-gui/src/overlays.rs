@@ -437,9 +437,24 @@ impl App {
                                         }
                                     }
                                 });
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    if seg_button(ui, "全屏", self.fullscreen) {
+                                        crate::set_fullscreen(
+                                            &mut self.fullscreen,
+                                            ui.ctx(),
+                                            self.cfg.window.size_px(),
+                                        );
+                                    }
+                                    ui.label(
+                                        RichText::new("F11 切换；Esc 退出全屏")
+                                            .size(9.0)
+                                            .color(DIM),
+                                    );
+                                });
                                 ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("窗口固定尺寸：小 1800×780，中 1874×840，大 2000×900")
+                                    RichText::new("窗口固定尺寸：小 1800×780，中 1874×840，大 2000×900，超大 2200×1100")
                                         .size(9.0)
                                         .color(DIM),
                                 );
