@@ -76,6 +76,7 @@ impl App {
                     let override_id = self.items[i].override_id;
                     let tags = self.items[i].tags.clone();
                     let cover = self.items[i].cover.clone();
+                    let encrypted = self.items[i].encrypted.is_some();
 
                     // 动效值先算，再画
                     let (sel_t, hov_t) = {
@@ -106,7 +107,10 @@ impl App {
                     let resp = frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let row_w = ui.available_width();
-                            cover_thumb(ui, cover.as_ref(), 36.0);
+                            let thumb = cover_thumb(ui, cover.as_ref(), 36.0);
+                        if encrypted {
+                            paint_lock(ui.painter(), thumb);
+                        }
                             ui.add_space(5.0);
                             ui.vertical(|ui| {
                                 // 右边要放：状态 + ··· + ×，有音质标识还要再宽一点
@@ -358,7 +362,11 @@ impl App {
 }
 
 /// 队列行左边的封面缩略图。没有封面就给一个占位方块。
-pub(crate) fn cover_thumb(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) {
+pub(crate) fn cover_thumb(
+    ui: &mut egui::Ui,
+    tex: Option<&egui::TextureHandle>,
+    size: f32,
+) -> egui::Rect {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
     let p = ui.painter();
     match tex {
@@ -381,4 +389,5 @@ pub(crate) fn cover_thumb(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, 
             );
         }
     }
+    rect
 }

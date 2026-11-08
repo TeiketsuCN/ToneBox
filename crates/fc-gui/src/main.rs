@@ -811,6 +811,15 @@ impl App {
     }
 
     fn start_play(&mut self, idx: usize) {
+        // 加密文件只识别：不播放、不解码
+        if let Some(it) = self.items.get(idx) {
+            if it.encrypted.is_some() {
+                self.player = None;
+                self.player_for = Some(idx);
+                self.play_error = Some("加密文件：本工具只识别，不解码也不播放。".into());
+                return;
+            }
+        }
         self.player = None;
         self.play_error = None;
         let Some(tools) = self.tools.clone() else {

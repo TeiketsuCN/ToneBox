@@ -284,23 +284,44 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
             .any(|w| w == b"musicex")
         {
             let h = entropy(&head);
+            let mut evidence = vec![
+                Evidence {
+                    delta: 60.0,
+                    reason: "文件末尾 2 KB 内有 'musicex' 标记，是 QMC 容器的结尾结构".to_string(),
+                },
+                Evidence {
+                    delta: 20.0,
+                    reason: format!("文件头不是已知音频魔数，头部熵 {h:.2}（加密载荷）"),
+                },
+            ];
+            // 尾部有一段明文结构，记着内部 ID 和服务器上的原始文件名
+            if let Some(f) = crate::qmc::footer(path) {
+                if let Some(id) = &f.id {
+                    evidence.push(Evidence {
+                        delta: 8.0,
+                        reason: format!("容器尾部记录了 QQ 音乐内部编号 {id}"),
+                    });
+                }
+                if let Some(name) = &f.name {
+                    evidence.push(Evidence {
+                        delta: 10.0,
+                        reason: format!("容器尾部记录了原始文件名 {name}（改名前的名字）"),
+                    });
+                }
+                evidence.push(Evidence {
+                    delta: -8.0,
+                    reason: "音频和封面都在加密区里，本工具不解密：能对上号，但看不到封面也验证不了标签"
+                        .to_string(),
+                });
+            }
+            let score: f32 = evidence.iter().map(|e| e.delta).sum();
             return Some(Encrypted {
                 platform: "QQ 音乐",
                 format: "QMC（mflac / mgg）",
                 hint: "QQ 音乐会员下载的 QMC 加密文件。密钥在客户端，文件本身不含解密信息。",
                 advice: ADVICE_CLIENT,
-                confidence: 0.90,
-                evidence: vec![
-                    Evidence {
-                        delta: 60.0,
-                        reason: "文件末尾 2 KB 内有 'musicex' 标记，是 QMC 容器的结尾结构"
-                            .to_string(),
-                    },
-                    Evidence {
-                        delta: 30.0,
-                        reason: format!("文件头不是已知音频魔数，头部熵 {h:.2}（加密载荷）"),
-                    },
-                ],
+                confidence: (score / 100.0).clamp(0.0, 0.99),
+                evidence,
             });
         }
     }

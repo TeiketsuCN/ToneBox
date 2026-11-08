@@ -431,6 +431,25 @@ pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool
     resp.clicked()
 }
 
+/// 在封面右下角画一个小锁：表示这文件是加密的（只识别，不解密）
+pub(crate) fn paint_lock(p: &egui::Painter, rect: egui::Rect) {
+    let c = rect.right_bottom() - egui::vec2(8.0, 8.0);
+    p.circle_filled(c, 7.5, Color32::from_rgba_premultiplied(10, 12, 16, 210));
+    // 锁体
+    let body = egui::Rect::from_center_size(c + egui::vec2(0.0, 1.6), egui::vec2(7.0, 5.4));
+    p.rect_filled(body, Rounding::same(1.5), ACCENT);
+    // 锁梁：半圆
+    let r = 2.4;
+    let steps = 10;
+    let mut prev = c + egui::vec2(-r, 0.6);
+    for i in 1..=steps {
+        let a = std::f32::consts::PI + std::f32::consts::PI * (i as f32 / steps as f32);
+        let pt = c + egui::vec2(a.cos() * r, a.sin() * r + 0.6);
+        p.line_segment([prev, pt], Stroke::new(1.4, ACCENT));
+        prev = pt;
+    }
+}
+
 /// 和「删除源文件」同一套圆点：空心环 + 选中时实心点。
 /// egui 自带的 radio 是另一套观感（小方块感的圆），不要混着用。
 pub(crate) fn radio_dot(ui: &mut egui::Ui, label: &str, on: bool) -> bool {

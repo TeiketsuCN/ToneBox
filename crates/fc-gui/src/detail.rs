@@ -288,10 +288,17 @@ impl App {
             if let Some(tex) = &it.cover {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Image::new(tex)
-                            .fit_to_exact_size(egui::vec2(96.0, 96.0)),
+                    let (img_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(96.0, 96.0),
+                        egui::Sense::hover(),
                     );
+                    ui.painter().image(
+                        tex.id(),
+                        img_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    paint_lock(ui.painter(), img_rect);
                     ui.add_space(10.0);
                     ui.vertical(|ui| {
                         para(ui, "容器内封面（明文）", 9.0, MUTED);
