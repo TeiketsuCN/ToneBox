@@ -291,6 +291,8 @@ pub(crate) struct App {
     page: Page,
     /// 切页动画进度 0~1（1 = 静止）
     page_t: f32,
+    /// 转换后删除源文件。**不进配置**：破坏性操作每次启动都回到关
+    delete_source: bool,
     lib_tab: LibTab,
     lib_entries: Vec<LibEntry>,
     lib_scanning: bool,
@@ -445,6 +447,7 @@ impl App {
             wiki_filter: String::new(),
             page: Page::Convert,
             page_t: 1.0,
+            delete_source: false,
             lib_tab: LibTab::Songs,
             lib_entries: cached_lib,
             lib_scanning: false,
@@ -785,7 +788,7 @@ impl App {
                     if let Some(it) = self.items.get_mut(i) {
                         it.state = State::Done(path, size);
                     }
-                    if self.cfg.delete_source {
+                    if self.delete_source {
                         if let Some(src) = src {
                             // 删不掉就算了（源文件可能正被占用），不打断整批
                             let _ = std::fs::remove_file(&src);

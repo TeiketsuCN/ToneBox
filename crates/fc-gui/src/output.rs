@@ -289,22 +289,35 @@ impl App {
         }
         if self.cfg.output_mode == settings::OutputMode::Custom {
             ui.horizontal(|ui| {
-                let w = (ui.available_width() - 56.0).max(56.0);
+                let w = (ui.available_width() - 58.0).max(56.0);
                 let mut dir = self.cfg.output_dir.clone();
-                if ui
-                    .add_sized(
-                        [w, 22.0],
-                        egui::TextEdit::singleline(&mut dir).hint_text("选一个目录"),
-                    )
-                    .changed()
-                {
+                // 自绘一个和整体风格一致的输入框（egui 默认那个底和字色都太跳）
+                let mut edited = false;
+                egui::Frame::none()
+                    .fill(tint(Color32::WHITE, 8))
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(7.0))
+                    .inner_margin(egui::Margin::symmetric(8.0, 5.0))
+                    .show(ui, |ui| {
+                        ui.set_width(w - 16.0);
+                        edited = ui
+                            .add(
+                                egui::TextEdit::singleline(&mut dir)
+                                    .frame(false)
+                                    .text_color(MUTED)
+                                    .hint_text(RichText::new("选一个目录").size(10.0).color(DIM)),
+                            )
+                            .changed();
+                    });
+                if edited {
                     self.cfg.output_dir = dir;
                     changed = true;
                 }
-                if ui
-                    .add_sized([50.0, 22.0], egui::Button::new(RichText::new("选…").size(10.0)))
-                    .clicked()
-                {
+                let browse = egui::Button::new(RichText::new("浏览").size(10.0).color(MUTED))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(line(Color32::WHITE, 20))
+                    .rounding(Rounding::same(7.0));
+                if ui.add_sized([52.0, 26.0], browse).clicked() {
                     if let Some(p) = rfd::FileDialog::new().pick_folder() {
                         self.cfg.output_dir = p.to_string_lossy().to_string();
                         changed = true;
@@ -316,14 +329,14 @@ impl App {
         ui.add_space(12.0);
         ui.label(RichText::new("转换后").size(9.0).color(DIM));
         ui.add_space(4.0);
-        if radio_dot(ui, "保留源文件", !self.cfg.delete_source) {
-            self.cfg.delete_source = false;
+        if radio_dot(ui, "保留源文件", !self.delete_source) {
+            self.delete_source = false;
             changed = true;
         }
         if self.delete_source_row(ui) {
             changed = true;
         }
-        if self.cfg.delete_source {
+        if self.delete_source {
             ui.add_space(2.0);
             para(ui, "删了就找不回来了，谨慎。", 8.5, DANGER);
         }
@@ -559,7 +572,7 @@ impl App {
     /// 按住时右侧走倒计时、圆点转一圈把进度画出来，松手就取消。
     pub(crate) fn delete_source_row(&mut self, ui: &mut egui::Ui) -> bool {
         let dt = self.dt;
-        let selected = self.cfg.delete_source;
+        let selected = self.delete_source;
         let mut changed = false;
         let (rect, resp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), 22.0),
@@ -573,7 +586,7 @@ impl App {
             self.delete_hold = 0.0;
         }
         if holding && self.delete_hold >= 3.0 {
-            self.cfg.delete_source = true;
+            self.delete_source = true;
             self.delete_hold = 0.0;
             changed = true;
         }

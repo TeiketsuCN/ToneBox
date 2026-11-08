@@ -74,8 +74,6 @@ pub struct Profile {
     #[serde(default)]
     pub output_dir: String,
     #[serde(default)]
-    pub delete_source: bool,
-    #[serde(default)]
     pub write_tags: bool,
     #[serde(default)]
     pub meta_artist: String,
@@ -95,7 +93,6 @@ impl Profile {
             opts: s.opts.clone(),
             output_mode: s.output_mode,
             output_dir: s.output_dir.clone(),
-            delete_source: s.delete_source,
             write_tags: s.write_tags,
             meta_artist: s.meta_artist.clone(),
             meta_album: s.meta_album.clone(),
@@ -149,9 +146,6 @@ pub struct Settings {
     /// 指定目录（output_mode = Custom 时用）
     #[serde(default)]
     pub output_dir: String,
-    /// 转换成功后删除源文件
-    #[serde(default)]
-    pub delete_source: bool,
     /// 批量元数据：艺术家（空 = 沿用源文件标签）
     #[serde(default)]
     pub meta_artist: String,
@@ -197,7 +191,6 @@ impl Default for Settings {
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,
             output_dir: String::new(),
-            delete_source: false,
             meta_artist: String::new(),
             meta_album: String::new(),
             meta_cover: String::new(),
@@ -250,7 +243,6 @@ impl Settings {
         p.opts = self.opts.clone();
         p.output_mode = self.output_mode;
         p.output_dir = self.output_dir.clone();
-        p.delete_source = self.delete_source;
         p.write_tags = self.write_tags;
         p.meta_artist = self.meta_artist.clone();
         p.meta_album = self.meta_album.clone();
@@ -268,7 +260,6 @@ impl Settings {
         self.opts = p.opts;
         self.output_mode = p.output_mode;
         self.output_dir = p.output_dir;
-        self.delete_source = p.delete_source;
         self.write_tags = p.write_tags;
         self.meta_artist = p.meta_artist;
         self.meta_album = p.meta_album;
