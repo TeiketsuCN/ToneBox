@@ -234,22 +234,46 @@ pub fn identify(path: &Path) -> Option<Encrypted> {
     // 2. 网易云 NCM 有魔数，最可靠
     if head.starts_with(b"CTENFDAM") {
         let h = entropy(&head);
+        let mut evidence = vec![Evidence {
+            delta: 70.0,
+            reason: "文件头 8 字节 = 'CTENFDAM'，是网易云 NCM 容器的固定魔数".to_string(),
+        }];
+        // 封面是明文存的：能读出来，说明这确实是一个带专辑封面的音乐文件
+        match crate::ncm::cover(path) {
+            Some(c) if c.width > 0 && c.height > 0 => {
+                evidence.push(Evidence {
+                    delta: 15.0,
+                    reason: format!(
+                        "容器内封面是明文图片（{}×{}），说明这确实是一首带专辑封面的音乐",
+                        c.width, c.height
+                    ),
+                });
+            }
+            Some(_) => {
+                evidence.push(Evidence {
+                    delta: 10.0,
+                    reason: "容器内有一张明文封面图，说明这确实是一首音乐".to_string(),
+                });
+            }
+            None => {}
+        }
+        evidence.push(Evidence {
+            delta: 10.0,
+            reason: format!("头部熵 {h:.2}（NCM 的元数据段之后就是加密载荷）"),
+        });
+        evidence.push(Evidence {
+            delta: -5.0,
+            reason: "音频和标签仍然是加密的，本工具不解密：能认出是哪首，但验证不了内容和标签是否对应"
+                .to_string(),
+        });
+        let score: f32 = evidence.iter().map(|e| e.delta).sum();
         return Some(Encrypted {
             platform: "网易云音乐",
             format: "ncm",
             hint: "网易云音乐会员下载的 NCM 加密文件。密钥在客户端，文件本身不含解密信息。",
             advice: ADVICE_CLIENT,
-            confidence: 0.90,
-            evidence: vec![
-                Evidence {
-                    delta: 70.0,
-                    reason: "文件头 8 字节 = 'CTENFDAM'，是网易云 NCM 容器的固定魔数".to_string(),
-                },
-                Evidence {
-                    delta: 20.0,
-                    reason: format!("头部熵 {h:.2}（NCM 的元数据段之后就是加密载荷）"),
-                },
-            ],
+            confidence: (score / 100.0).clamp(0.0, 0.99),
+            evidence,
         });
     }
 
@@ -416,9 +440,28 @@ mod tests {
         let p = tmp("t.ncm", &b);
         let r = identify(&p).expect("应该识别出 NCM");
         assert_eq!(r.platform, "网易云音乐");
-        // 现在是"证据求和"：魔数 70 + 高熵 20 = 90
-        assert!(r.confidence >= 0.89);
-        assert_eq!(r.evidence.iter().map(|e| e.delta).sum::<f32>(), 90.0);
+        // 证据求和：魔数 70 + 高熵 10 - 音频仍加密 5 = 75（这个样本没有封面）
+        assert!((r.confidence - 0.75).abs() < 0.01, "confidence = {}", r.confidence);
+        assert_eq!(r.evidence.iter().map(|e| e.delta).sum::<f32>(), 75.0);
+    }
+
+    #[test]
+    fn ncm_with_cover_scores_higher() {
+        // 带一张明文封面时，多一条"确实是音乐"的加分
+        let mut b = b"CTENFDAM".to_vec();
+        b.extend_from_slice(&[0x01, 0x70]);
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&[0u8; 8]);
+        let mut jpg = vec![0xFF, 0xD8];
+        jpg.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x40, 0x00, 0x40, 0x01, 0x01, 0x11, 0x00]);
+        jpg.extend_from_slice(&[0u8; 600]);
+        jpg.extend_from_slice(&[0xFF, 0xD9]);
+        b.extend_from_slice(&(jpg.len() as u32).to_le_bytes());
+        b.extend_from_slice(&jpg);
+        let p = tmp("t_cover.ncm", &b);
+        let r = identify(&p).expect("应该识别出带封面的 NCM");
+        assert!((r.confidence - 0.90).abs() < 0.01, "confidence = {}", r.confidence);
+        std::fs::remove_file(&p).ok();
     }
 
     #[test]

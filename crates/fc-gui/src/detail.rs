@@ -294,8 +294,8 @@ impl App {
                     );
                     ui.add_space(10.0);
                     ui.vertical(|ui| {
-                        para(ui, "容器内封面", 9.0, MUTED);
-                        para(ui, "未加密，直接读取；音频仍然是加密的", 8.5, DIM);
+                        para(ui, "容器内封面（明文）", 9.0, MUTED);
+                        para(ui, "只读这张图，不碰加密音频", 8.5, DIM);
                     });
                 });
             }
