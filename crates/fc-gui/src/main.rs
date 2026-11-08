@@ -1046,8 +1046,13 @@ impl eframe::App for App {
                 let x0 = LEFT_W + inset;
                 let y0 = TITLEBAR_H;
                 let w = (scr.right() - x0).max(1.0);
-                let edge = x0 + w * self.page_t;
                 let soft = (w * 0.16).max(28.0);
+                // 让遮罩完整扫出右边（而不是卡在右边缘突然消失）；
+                // 最后 25% 再整体淡出，收尾不突兀
+                let edge = x0 - soft + (w + 2.0 * soft) * self.page_t;
+                let f = ((self.page_t - 0.75) / 0.25).clamp(0.0, 1.0);
+                let fade = 1.0 - f * f * (3.0 - 2.0 * f);
+                let alpha_max = (236.0 * fade) as u8;
                 // 用 Mesh 做水平渐变，比一条条矩形干净（不会有竖条纹）
                 let xs = [
                     x0,
@@ -1055,7 +1060,7 @@ impl eframe::App for App {
                     (edge + soft).clamp(x0, scr.right()),
                     scr.right(),
                 ];
-                let alphas = [0u8, 0, 236, 236];
+                let alphas = [0u8, 0, alpha_max, alpha_max];
                 let mut mesh = egui::Mesh::default();
                 for (i, x) in xs.iter().enumerate() {
                     let c = tint(BG, alphas[i]);
