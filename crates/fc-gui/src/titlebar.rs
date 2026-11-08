@@ -72,6 +72,7 @@ impl App {
                 BG,
             );
         }
+
         let name_font = egui::FontId::proportional(13.5);
         let name_w = ui
             .painter()
@@ -84,6 +85,29 @@ impl App {
             APP_NAME,
             name_font.clone(),
             TEXT,
+        );
+        // 版本与风险提示（测试版，所有操作请自行备份）
+        let beta_text = "测试版 beta 1.0";
+        let beta_font = egui::FontId::proportional(9.0);
+        let beta_x = logo.right() + 10.0 + name_w + 16.0;
+        ui.painter().text(
+            egui::pos2(beta_x, full.center().y),
+            egui::Align2::LEFT_CENTER,
+            beta_text,
+            beta_font.clone(),
+            accent(),
+        );
+        let beta_w = ui
+            .painter()
+            .layout_no_wrap(beta_text.to_string(), beta_font, accent())
+            .size()
+            .x;
+        ui.painter().text(
+            egui::pos2(beta_x + beta_w + 10.0, full.center().y),
+            egui::Align2::LEFT_CENTER,
+            "建议所有操作备份 · 慎防设备损坏 请自己负责",
+            egui::FontId::proportional(8.5),
+            DIM,
         );
         // 点左上角的 logo + 名字 = 回首页（输出页），顺手关掉设置
         let home_rect = egui::Rect::from_min_max(

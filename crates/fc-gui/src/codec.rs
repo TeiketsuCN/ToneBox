@@ -35,6 +35,7 @@ const C_MIC: Color32 = Color32::from_rgb(255, 198, 122);
 const C_HDMI: Color32 = Color32::from_rgb(160, 180, 230);
 const C_DIGITAL: Color32 = Color32::from_rgb(140, 200, 210);
 const C_NVIDIA: Color32 = Color32::from_rgb(118, 185, 0); // NVIDIA 绿
+const C_FXSOUND: Color32 = Color32::from_rgb(255, 122, 61); // FxSound 橙
 
 fn kind_color(k: fc_player::devices::Kind) -> Color32 {
     use fc_player::devices::Kind;
@@ -57,6 +58,8 @@ fn device_color(d: &fc_player::devices::AudioDevice) -> Color32 {
         C_CAMERA
     } else if d.is_nvidia {
         C_NVIDIA
+    } else if d.is_fxsound {
+        C_FXSOUND
     } else if d.is_realtek {
         C_REALTEK
     } else if d.kind == fc_player::devices::Kind::Usb {
@@ -515,6 +518,9 @@ fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
     }
     if d.is_nvidia {
         out.push(("英伟达".to_string(), C_NVIDIA));
+    }
+    if d.is_fxsound {
+        out.push(("FxSound".to_string(), C_FXSOUND));
     }
     if d.kind == fc_player::devices::Kind::Usb {
         out.push(("独立声卡".to_string(), C_USB));

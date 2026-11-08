@@ -532,9 +532,6 @@ impl App {
                     changed = true;
                 }
                 ui.add_space(10.0);
-                if self.clear_meta_button(ui) {
-                    changed = true;
-                }
             });
         }
 

@@ -3,7 +3,7 @@
 一个"格式顾问"，不是格式转换工具。转换只是入口，**判断 + 解释**才是产品价值。
 顺带能管理音乐库、试听、记住你几套常用配置。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。
+Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。\n\n> **测试版 beta 1.0** · 建议所有操作备份 · 慎防设备损坏，请自己负责\n
 
 ---
 

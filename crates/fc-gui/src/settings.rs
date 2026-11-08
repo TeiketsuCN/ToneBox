@@ -39,10 +39,10 @@ fn default_bar_w() -> f32 {
 pub enum WindowSize {
     /// 小（1800×780）—— 1080p 的机器
     Compact,
-    /// 中（1874×840，默认）
-    #[default]
+    /// 中（1874×840）
     Normal,
-    /// 大（2000×900）—— 2K 屏
+    /// 大（2000×900）—— 默认
+    #[default]
     Large,
     /// 超大（2200×1100）—— 大屏
     Huge,
@@ -288,7 +288,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            bg_mode: BgMode::Wallpaper,
+            bg_mode: BgMode::Gradient,
             bg_color: default_bg_color(),
             bg_gradient: 0,
             dim: 96,

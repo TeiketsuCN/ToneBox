@@ -1483,8 +1483,8 @@ impl eframe::App for App {
                         let b = egui::Button::new(
                             RichText::new("播放栏").size(10.0).color(accent()),
                         )
-                        .fill(tint(BG, 225))
-                        .stroke(line(accent(), 90))
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(line(accent(), 140))
                         .rounding(Rounding::same(8.0))
                         .min_size(egui::vec2(92.0, 30.0));
                         if ui.add(b).on_hover_text("把播放栏拿回来").clicked() {
@@ -1532,22 +1532,23 @@ impl eframe::App for App {
                 .fixed_pos(egui::pos2(bx, by))
                 .show(ctx, |ui| {
                     ui.set_width(bar_w);
-                    egui::Frame::none()
-                        // 半透明玻璃（列表已经在上面收住，不会有文字透过来）
+                    let mut frame = egui::Frame::none()
                         .fill(bar_fill)
                         .rounding(Rounding::same(14.0))
-                        // 悬浮：底部一圈柔和阴影，和下面的面板分开
-                        .shadow(egui::epaint::Shadow {
+                        .inner_margin(egui::Margin::symmetric(12.0, 8.0));
+                    // 透明时不要阴影：否则底下会多一条"不知名"的暗带
+                    if bar_fill != Color32::TRANSPARENT {
+                        frame = frame.shadow(egui::epaint::Shadow {
                             offset: egui::vec2(0.0, 8.0),
                             blur: 24.0,
                             spread: 0.0,
                             color: Color32::from_black_alpha(90),
-                        })
-                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            self.player_bar(ui);
                         });
+                    }
+                    frame.show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        self.player_bar(ui);
+                    });
                 });
             }
         }
