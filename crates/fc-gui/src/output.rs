@@ -271,24 +271,20 @@ impl App {
         ui.add_space(14.0);
         ui.label(RichText::new("输出到").size(9.0).color(DIM));
         ui.add_space(4.0);
-        if ui
-            .radio_value(
-                &mut self.cfg.output_mode,
-                settings::OutputMode::Source,
-                RichText::new("源文件同目录").size(10.0).color(MUTED),
-            )
-            .changed()
-        {
+        if radio_dot(
+            ui,
+            "源文件同目录",
+            self.cfg.output_mode == settings::OutputMode::Source,
+        ) {
+            self.cfg.output_mode = settings::OutputMode::Source;
             changed = true;
         }
-        if ui
-            .radio_value(
-                &mut self.cfg.output_mode,
-                settings::OutputMode::Custom,
-                RichText::new("指定目录").size(10.0).color(MUTED),
-            )
-            .changed()
-        {
+        if radio_dot(
+            ui,
+            "指定目录",
+            self.cfg.output_mode == settings::OutputMode::Custom,
+        ) {
+            self.cfg.output_mode = settings::OutputMode::Custom;
             changed = true;
         }
         if self.cfg.output_mode == settings::OutputMode::Custom {
@@ -320,14 +316,8 @@ impl App {
         ui.add_space(12.0);
         ui.label(RichText::new("转换后").size(9.0).color(DIM));
         ui.add_space(4.0);
-        if ui
-            .radio_value(
-                &mut self.cfg.delete_source,
-                false,
-                RichText::new("保留源文件").size(10.0).color(MUTED),
-            )
-            .changed()
-        {
+        if radio_dot(ui, "保留源文件", !self.cfg.delete_source) {
+            self.cfg.delete_source = false;
             changed = true;
         }
         if self.delete_source_row(ui) {

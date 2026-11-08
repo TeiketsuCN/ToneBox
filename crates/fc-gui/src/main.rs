@@ -993,23 +993,7 @@ impl eframe::App for App {
                     });
             }
 
-            // 播放栏：常驻。做成"浮起来的一块玻璃"，不要贴着窗口底边
-            egui::TopBottomPanel::bottom("player").resizable(false).show_separator_line(false)
-                .exact_height(80.0)
-                .frame(egui::Frame::none().inner_margin(egui::Margin {
-                    left: 14.0,
-                    right: 14.0,
-                    top: 2.0,
-                    bottom: 10.0,
-                }))
-                .show(ctx, |ui| {
-                    egui::Frame::none()
-                        // 和「详情 / 歌曲列表」同一个底，不再单独做成一块深色卡片
-                        .fill(tint(BG, 100))
-                        .rounding(Rounding::same(14.0))
-                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
-                        .show(ui, |ui| self.player_bar(ui));
-                });
+            // 播放栏不再占布局：放到队列/详情之上，让两栏一直滚到窗口底（见下面的悬浮 Area）
 
             if self.page == Page::Convert {
                 egui::SidePanel::right("detail").show_separator_line(false)
@@ -1045,6 +1029,35 @@ impl eframe::App for App {
                     } else {
                         animating |= self.library_view(ui, ctx);
                     }
+                });
+
+            // 悬浮播放栏：不占布局，盖在「队列 + 详情」上面——两栏可以一直滚到窗口底。
+            // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
+            let screen = ctx.screen_rect();
+            let bar_h = 80.0;
+            let bar_w = if self.page == Page::Convert {
+                (screen.width() - LEFT_W - OUT_W - inset * 2.0).max(240.0)
+            } else {
+                (screen.width() - LEFT_W - inset * 2.0).max(240.0)
+            };
+            let bar_pos = egui::pos2(
+                LEFT_W + inset,
+                screen.bottom() - bar_h - 10.0 - inset,
+            );
+            egui::Area::new(egui::Id::new("player_float"))
+                .order(egui::Order::Middle)
+                .fixed_pos(bar_pos)
+                .show(ctx, |ui| {
+                    ui.set_width(bar_w);
+                    egui::Frame::none()
+                        // 实色，和列表/详情的观感一致；半透明会让下面的行透出来
+                        .fill(Color32::from_rgb(20, 24, 34))
+                        .rounding(Rounding::same(14.0))
+                        .inner_margin(egui::Margin::symmetric(12.0, 8.0))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            self.player_bar(ui);
+                        });
                 });
         }
         if do_start {
