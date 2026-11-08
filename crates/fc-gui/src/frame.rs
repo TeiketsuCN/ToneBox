@@ -40,6 +40,7 @@ pub fn set_ui_scale(s: f32) {
 pub const MAXIMIZE_INSET: f32 = 8.0;
 
 const WM_NCHITTEST: u32 = 0x0084;
+const WM_NCLBUTTONDBLCLK: u32 = 0x00A3;
 const WM_GETMINMAXINFO: u32 = 0x0024;
 
 const HTCLIENT: isize = 1;
@@ -55,7 +56,7 @@ const HTBOTTOMRIGHT: isize = 17;
 
 /// 和 main.rs 里的 TITLEBAR_H 保持一致
 const TITLEBAR_H: f32 = 44.0;
-const RESIZE_BORDER: f32 = 6.0;
+const RESIZE_BORDER: f32 = 0.0;
 /// 右上角按钮个数（设置 / 图钉 / 最小化 / 最大化 / 关闭）。
 ///
 /// ⚠️ 这个数必须和 main.rs 里 `titlebar()` 实际画的按钮数一致：
@@ -111,6 +112,11 @@ unsafe extern "system" fn subclass_proc(
                 return 0;
             }
         }
+    }
+
+    // 固定尺寸窗口：双击标题栏不要最大化
+    if msg == WM_NCLBUTTONDBLCLK {
+        return 0;
     }
 
     if msg == WM_NCHITTEST {
@@ -221,6 +227,18 @@ pub fn install(title: &str) -> bool {
             DWMWA_WINDOW_CORNER_PREFERENCE,
             &round as *const i32 as *const _,
             4,
+        );
+
+        // 固定尺寸：把最大化框和可缩放边框从窗口样式里去掉。
+        // 只设 with_resizable(false) 不够——双击标题栏仍然会被系统最大化。
+        const GWL_STYLE: i32 = -16;
+        const WS_MAXIMIZEBOX: isize = 0x0001_0000;
+        const WS_THICKFRAME: isize = 0x0004_0000;
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_STYLE,
+            style & !(WS_MAXIMIZEBOX | WS_THICKFRAME),
         );
 
         // 手动子类化：保存原窗口过程，再把自己的挂上去
