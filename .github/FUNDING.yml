@@ -1,0 +1,10 @@
+# GitHub Sponsors / 赞助配置
+# 把注释去掉并填上自己的账号，GitHub 仓库页就会出现「Sponsor」按钮。
+#
+# github: [your-github-username]
+# patreon: your-patreon
+# ko_fi: your-kofi
+# custom: ["https://afdian.com/a/your-afdian", "https://your-site.example/donate"]
+#
+# 中国用户常用：爱发电（afdian）、面包多；也可以直接放支付宝/微信收款码页面。
+# 注意：赞助是自愿赠与，不影响 MIT 许可下任何人使用、修改、再分发的权利。

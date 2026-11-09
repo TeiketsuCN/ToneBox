@@ -62,6 +62,8 @@ ATRAC encoding needs atracdenc (included only if atracdenc\ exists).
 Uninstall: delete this folder. No registry entries, no services.
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding ASCII
+Copy-Item (Join-Path $src 'LICENSE') (Join-Path $stage 'LICENSE') -Force
+Copy-Item (Join-Path $src 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md') -Force
 
 Write-Host "== 4/4 zip ==" -ForegroundColor Cyan
 $dist = Split-Path -Parent $Out

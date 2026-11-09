@@ -129,3 +129,21 @@ ffmpeg 查找顺序：程序同目录 → 同目录 `ffmpeg\` → WinGet Links �
 
 4. **PowerShell 5.1 读无 BOM 的 UTF-8 脚本会当 ANSI**，中文乱码导致解析失败。
    仓库里的 `.ps1` 一律带 BOM。
+
+---
+
+## 许可证
+
+ToneBox 以 **MIT** 许可发布（见 `LICENSE`）——可以免费使用、修改、再分发，也可以商用；
+保留版权声明即可，不要求开源你的修改。
+
+随包 FFmpeg 是 **LGPL v3** 构建（未启用 GPL），遵守它自己的许可：保留许可文件、允许替换 DLL、
+提供对应源码。详见 `THIRD_PARTY_NOTICES.md` 和 `docs/FFmpeg-LGPL.md`。
+
+## 赞助
+
+项目免费开源，接受自愿赞助，不影响任何人在 MIT 下的权利。
+在 `.github/FUNDING.yml` 里填上 GitHub Sponsors / 爱发电等地址，仓库页就会出现 Sponsor 按钮；
+也可以在 README 这里直接放收款码或赞助链接。
+
+> 测试版：建议所有操作备份，慎防设备损坏，请自己负责。
