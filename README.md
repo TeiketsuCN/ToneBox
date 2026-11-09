@@ -143,7 +143,9 @@ ToneBox 以 **MIT** 许可发布（见 `LICENSE`）——可以免费使用、�
 ## 赞助
 
 项目免费开源，接受自愿赞助，不影响任何人在 MIT 下的权利。
-在 `.github/FUNDING.yml` 里填上 GitHub Sponsors / 爱发电等地址，仓库页就会出现 Sponsor 按钮；
-也可以在 README 这里直接放收款码或赞助链接。
+<img width="1080" height="1620" alt="1794159094116" src="https://github.com/user-attachments/assets/f53df0ad-01b1-4a4a-a9c2-c7db07b8cd3e" />
+<img width="1242" height="1692" alt="mm_facetoface_collect_qrcode_1794159073731" src="https://github.com/user-attachments/assets/9647d9f2-6607-46c3-93e8-423f9ebdf1c1" />
+
+
 
 > 测试版：建议所有操作备份，慎防设备损坏，请自己负责。
