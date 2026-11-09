@@ -634,7 +634,7 @@ impl App {
                                             if let Some(t) = tex {
                                                 ui.add(
                                                     egui::Image::new(t)
-                                                        .fit_to_exact_size(egui::vec2(126.0, 126.0)),
+                                                        .fit_to_exact_size(egui::vec2(96.0, 96.0)),
                                                 );
                                             }
                                             ui.add_space(3.0);

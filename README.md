@@ -6,6 +6,12 @@
 Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.0
  · 建议所有操作备份 · 慎防设备损坏，请自己负责
 
+## 下载（Windows x64）
+
+- [ToneBox-beta1.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.0.0-beta.1/ToneBox-beta1.0-win64.zip)（约 67 MB，含 ffmpeg）
+- SHA256：`FDE77FF76956E5A243D08E37E8690F2285C8E40DBE856E82A14080197A516CEB`
+- 解压后双击 `format-converter.exe`；不要单独移动或删除 `ffmpeg\` 目录。
+
 ---
 
 ## 当前能力
