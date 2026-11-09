@@ -24,7 +24,8 @@ try {
 } finally {
     Pop-Location
 }
-$exe = Join-Path $src 'target\release\format-converter.exe'
+$targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $src 'target' }
+$exe = Join-Path $targetRoot 'release\format-converter.exe'
 if (-not (Test-Path $exe)) { throw "missing $exe" }
 
 $ffmpeg = Join-Path $src 'vendor\ffmpeg'

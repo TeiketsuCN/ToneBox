@@ -536,7 +536,7 @@ impl App {
                                     .spacing([16.0, 6.0])
                                     .show(ui, |ui| {
                                         row(ui, "程序", APP_NAME);
-                                        row(ui, "版本", "0.1.0");
+                                        row(ui, "版本", "1.0.0-beta.1");
                                         // 署名用昵称，不写真名：隐私和以后转手都方便
                                         row(ui, "开发", "克洛伊Chloe");
                                         // 不写真名：昵称和收款码上的署名一致，隐私和转手都方便
@@ -546,6 +546,34 @@ impl App {
                                         row(ui, "频谱分析", "fc-analyze（自研）");
                                         row(ui, "许可", "开源，详见仓库");
                                     });
+
+                                // GitHub：图标 + 仓库链接，点哪个都打开仓库
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    if let Some(icon) = &self.github_icon {
+                                        let r = ui.add(
+                                            egui::ImageButton::new(
+                                                egui::Image::new(icon)
+                                                    .fit_to_exact_size(egui::vec2(22.0, 22.0)),
+                                            )
+                                            .frame(false),
+                                        );
+                                        if r.on_hover_text(GITHUB_URL).clicked() {
+                                            ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
+                                        }
+                                    }
+                                    let link = ui.add(
+                                        egui::Label::new(
+                                            RichText::new("TeiketsuCN / ToneBox")
+                                                .size(9.5)
+                                                .color(accent()),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    );
+                                    if link.clicked() {
+                                        ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
+                                    }
+                                });
 
                                 ui.add_space(8.0);
                                 match &self.atracdenc {

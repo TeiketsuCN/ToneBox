@@ -664,6 +664,8 @@ pub(crate) fn seek_bar(ui: &mut egui::Ui, pos: f64, dur: f64) -> Option<f64> {
 /// 读一张收款码图片（放程序目录，用户自己换）。没有就返回 None。
 /// 收款码直接嵌进二进制：不依赖程序目录里的外挂文件。
 pub(crate) const DONATE_WECHAT: &[u8] = include_bytes!("../assets/donate-wechat.png");
+pub(crate) const GITHUB_ICON: &[u8] = include_bytes!("../assets/github.png");
+pub(crate) const GITHUB_URL: &str = "https://github.com/TeiketsuCN/-ToneBox";
 pub(crate) const DONATE_ALIPAY: &[u8] = include_bytes!("../assets/donate-alipay.png");
 
 pub(crate) fn load_qr(ctx: &egui::Context, name: &str, bytes: &[u8]) -> Option<egui::TextureHandle> {

@@ -27,7 +27,8 @@ Write-Host "== 1/4 构建 release ==" -ForegroundColor Cyan
 $ErrorActionPreference = 'Continue'
 & (Join-Path $src "build.ps1") release 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
-$built = Join-Path $src 'target\release\format-converter.exe'
+$targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $src 'target' }
+$built = Join-Path $targetRoot 'release\format-converter.exe'
 if (-not (Test-Path $built)) { throw "构建产物不存在: $built" }
 
 Write-Host "== 2/4 安装到 $AppDir ==" -ForegroundColor Cyan

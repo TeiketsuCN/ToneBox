@@ -333,6 +333,7 @@ pub(crate) struct App {
     /// 「删除源文件」已经按住了多少秒（0..3），松手清零
     delete_hold: f32,
     /// 捐赠收款码（放在程序目录，runtime 读取，改名即可换）
+    github_icon: Option<egui::TextureHandle>,
     donate_wechat: Option<egui::TextureHandle>,
     donate_alipay: Option<egui::TextureHandle>,
     /// 当前 ffmpeg 实际带哪些编码器（开机问一次）
@@ -544,6 +545,7 @@ impl App {
             notices_open: false,
             bell_rect: egui::Rect::NOTHING,
             delete_hold: 0.0,
+            github_icon: load_qr(&cc.egui_ctx, "github", GITHUB_ICON),
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat", DONATE_WECHAT),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay", DONATE_ALIPAY),
             encoders,
