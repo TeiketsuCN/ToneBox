@@ -991,20 +991,31 @@ impl App {
         use fc_core::{BitDepth, Knob};
         let mut changed = false;
         match k {
-            Knob::FlacLevel => field_row(ui, "压缩等级", |ui| {
-                let mut v = self.cfg.opts.flac_level as i32;
-                if level_slider_inline(ui, &mut v, 0, 12) {
-                    self.cfg.opts.flac_level = v as u8;
-                    changed = true;
-                }
-            }),
-            Knob::VorbisQuality => field_row(ui, "质量", |ui| {
-                let mut v = self.cfg.opts.vorbis_q as i32;
-                if level_slider_inline(ui, &mut v, 0, 10) {
-                    self.cfg.opts.vorbis_q = v as u8;
-                    changed = true;
-                }
-            }),
+            Knob::FlacLevel => {
+                field_row(ui, "压缩等级", |ui| {
+                    let mut v = self.cfg.opts.flac_level as i32;
+                    if level_slider_inline(ui, &mut v, 0, 12) {
+                        self.cfg.opts.flac_level = v as u8;
+                        changed = true;
+                    }
+                });
+                // 这条滑块到底在改什么：左右两端各是什么结果 + 当前档位的人话
+                slider_ends(ui, "← 编码快 · 文件大", "编码慢 · 文件小 →");
+                let lv = self.cfg.opts.flac_level;
+                out_hint(ui, &flac_level_hint(lv), DIM);
+            }
+            Knob::VorbisQuality => {
+                field_row(ui, "质量", |ui| {
+                    let mut v = self.cfg.opts.vorbis_q as i32;
+                    if level_slider_inline(ui, &mut v, 0, 10) {
+                        self.cfg.opts.vorbis_q = v as u8;
+                        changed = true;
+                    }
+                });
+                slider_ends(ui, "← 省空间 · 细节少", "细节多 · 文件大 →");
+                let q = self.cfg.opts.vorbis_q;
+                out_hint(ui, &vorbis_q_hint(q), DIM);
+            }
             Knob::BitDepth => {
                 let depths = fc_core::bit_depths_for(self.target);
                 // 换格式后原来的位深可能不在可选范围里：落到 24（有的话）或第一项
@@ -1196,4 +1207,38 @@ pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
         hint_below(ui, note, DIM);
     }
     changed
+}
+
+/// 滑块下面那行「左端 ↔ 右端」，让人一眼知道往哪边拉会得到什么
+fn slider_ends(ui: &mut egui::Ui, left: &str, right: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(LABEL_W);
+        ui.label(RichText::new(left).size(8.0).color(DIM));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(RichText::new(right).size(8.0).color(DIM));
+        });
+    });
+}
+
+/// FLAC 压缩等级 0~12 的人话解释（无损：只有速度和体积变，音质不变）
+fn flac_level_hint(level: u8) -> String {
+    let what = match level {
+        0..=2 => "编码最快，文件比默认大一些",
+        3..=6 => "偏快档，文件略大于默认",
+        7..=9 => "默认档（8 就是 ffmpeg 默认），速度和体积比较均衡",
+        10..=12 => "编码最慢，体积只比默认再小一点点，长文件会慢好几倍",
+        _ => "默认档",
+    };
+    format!("当前 {level}：{what}；音质完全不变（无损）")
+}
+
+/// Vorbis 质量 0~10 的人话解释（有损：越往右细节越多、文件越大）
+fn vorbis_q_hint(q: u8) -> String {
+    let what = match q {
+        0..=3 => "低质量档，适合语音/试听，高频会明显变糊",
+        4..=6 => "中等档，日常听够用",
+        7..=9 => "高质量档，接近透明",
+        _ => "最高档，文件最大，和 8~9 档差别很小",
+    };
+    format!("当前 {q}：{what}")
 }
