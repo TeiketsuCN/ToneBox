@@ -54,10 +54,13 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(RichText::new("输出").size(11.0).color(DIM));
             ui.add_space(6.0);
-            ui.label(
-                RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
-                    .size(12.0)
-                    .color(accent()),
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
+                        .size(12.0)
+                        .color(accent()),
+                )
+                .truncate(),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let can = self
@@ -1015,6 +1018,18 @@ impl App {
                 slider_ends(ui, "← 省空间 · 细节少", "细节多 · 文件大 →");
                 let q = self.cfg.opts.vorbis_q;
                 out_hint(ui, &vorbis_q_hint(q), DIM);
+            }
+            Knob::Channels => {
+                field_row(ui, "声道", |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    for m in fc_core::ChannelMode::all() {
+                        if seg_button(ui, m.label(), self.cfg.opts.channels == m) {
+                            self.cfg.opts.channels = m;
+                            changed = true;
+                        }
+                    }
+                });
+                out_hint(ui, fc_core::channel_note(self.target), DIM);
             }
             Knob::BitDepth => {
                 let depths = fc_core::bit_depths_for(self.target);

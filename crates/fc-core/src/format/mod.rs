@@ -189,8 +189,16 @@ pub fn estimate_size(info: &MediaInfo, spec: &FormatSpec, o: &ConvertOptions) ->
         return 0;
     }
     let bits = if spec.kind == Kind::Uncompressed { 24.0 } else { 16.0 };
-    let pcm = info.duration_s * sr as f64 * info.channels.max(1) as f64 * bits / 8.0;
-    (pcm * spec.size_ratio as f64) as u64
+    let ch = output_channels(spec, o).unwrap_or(info.channels.max(1) as u16) as f64;
+    let pcm = info.duration_s * sr as f64 * ch * bits / 8.0;
+    // FLAC 的压缩等级会真的改体积：0 档比默认大几个点，12 档再小几个点。
+    // 不按这个算的话，拖滑块时「预计体积」纹丝不动，看着像没生效。
+    let level_factor = if spec.id == "flac" {
+        1.0 + (8.0 - o.flac_level.min(12) as f64) * 0.006
+    } else {
+        1.0
+    };
+    (pcm * spec.size_ratio as f64 * level_factor) as u64
 }
 
 /// 视频输出的体积：画面 + 声音一起算。
@@ -801,6 +809,9 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
             VideoCodec::Av1,
         ],
         "webm" => &[VideoCodec::Copy, VideoCodec::Vp9, VideoCodec::Av1],
+        "mov" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Hevc],
+        "ts" | "m2ts" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Hevc],
+        "flv" => &[VideoCodec::Copy, VideoCodec::H264],
         "avi" => &[VideoCodec::Copy, VideoCodec::H264],
         _ => &[],
     }
@@ -815,6 +826,10 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "mp4" => matches!(c.as_str(), "h264" | "hevc" | "av1"),
         // WebM 只认这两个（VP8 也算，但这里只开放 VP9/AV1）
         "webm" => matches!(c.as_str(), "vp8" | "vp9" | "av1"),
+        "mov" => matches!(c.as_str(), "h264" | "hevc" | "av1" | "prores" | "mpeg4"),
+        // MPEG-TS 是广播容器：H.264/H.265 和 MPEG-2 都能装
+        "ts" | "m2ts" => matches!(c.as_str(), "h264" | "hevc" | "mpeg2video" | "av1"),
+        "flv" => matches!(c.as_str(), "h264"),
         // AVI 的老规矩：MPEG-4 Part 2 / H.264 都有人认，但容器里放 H.265 基本没设备能放
         "avi" => matches!(c.as_str(), "mpeg4" | "msmpeg4v3" | "h264" | "mjpeg"),
         _ => false,
@@ -857,6 +872,12 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
             "aac" | "aac_latm" | "alac" | "ac3" | "eac3" | "mp3" | "mp2"
         ),
         "webm" => matches!(c.as_str(), "opus" | "vorbis"),
+        "mov" => matches!(
+            c.as_str(),
+            "aac" | "alac" | "ac3" | "eac3" | "mp3" | "mp2"
+        ) || c.starts_with("pcm_"),
+        "ts" | "m2ts" => matches!(c.as_str(), "aac" | "ac3" | "eac3" | "mp2" | "mp3"),
+        "flv" => matches!(c.as_str(), "aac" | "mp3"),
         "avi" => matches!(c.as_str(), "mp3" | "mp2" | "ac3"),
         _ => false,
     }
@@ -874,6 +895,21 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
         "mp4" => AudioPlan::Encode {
             codec: "aac",
             kbps: 256,
+            label: "AAC",
+        },
+        "mov" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 256,
+            label: "AAC",
+        },
+        "ts" | "m2ts" => AudioPlan::Encode {
+            codec: "ac3",
+            kbps: 448,
+            label: "AC-3",
+        },
+        "flv" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 128,
             label: "AAC",
         },
         "webm" => AudioPlan::Encode {
@@ -902,6 +938,9 @@ pub fn container_note(container: &str) -> &'static str {
         "mkv" => "Matroska 通吃；视频直接复制，音频能复制就复制。",
         "mp4" => "MP4 只收 H.264/H.265/AV1；音频只收 AAC/AC-3/ALAC/MP3。",
         "webm" => "WebM 只收 VP9/AV1 + Opus/Vorbis，浏览器里最省心。",
+        "mov" => "QuickTime 容器：画面 H.264/H.265，声音 AAC/ALAC/AC-3 都收。",
+        "ts" | "m2ts" => "电视/蓝光容器：H.264/H.265 + AAC/AC-3，没索引、拖进度条不灵。",
+        "flv" => "老网页容器：只有 H.264 + AAC/MP3，别指望新设备认。",
         "avi" => "AVI 给老设备用：画面 H.264、声音 MP3 最稳。",
         _ => "",
     }
@@ -913,7 +952,66 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "mp4" => "H.265 会加 hvc1 标记，苹果设备才认。",
         "webm" => "VP9/AV1 编码很慢，长视频建议先剪短。",
         "avi" => "AVI 装 H.265 基本没有播放器认，别选。",
+        "mov" => "MOV 的 H.265 用 hvc1 标记，Final Cut/QuickTime 才认。",
+        "ts" | "m2ts" => "TS/M2TS 没有索引，剪起来难受；只是给电视/蓝光机放就无所谓。",
+        "flv" => "FLV 早就没人维护了，除非必须，别选。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
+    }
+}
+
+/// 输出声道：保持源 / 立体声 / 5.1。
+///
+/// 为什么放 core：码率、体积、能不能装进容器都和它有关，界面只负责画按钮。
+/// 注意这不是"升混"——把 2.0 变成 5.1 只是把左右声道抄到环绕里，不会凭空多出信息，
+/// 界面上要给这句提示（见 `channel_note`）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub enum ChannelMode {
+    #[default]
+    Auto,
+    Stereo,
+    Surround51,
+}
+
+impl ChannelMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            ChannelMode::Auto => "保持源",
+            ChannelMode::Stereo => "立体声",
+            ChannelMode::Surround51 => "5.1",
+        }
+    }
+    pub fn all() -> [ChannelMode; 3] {
+        [ChannelMode::Auto, ChannelMode::Stereo, ChannelMode::Surround51]
+    }
+    fn count(self) -> Option<u16> {
+        match self {
+            ChannelMode::Auto => None,
+            ChannelMode::Stereo => Some(2),
+            ChannelMode::Surround51 => Some(6),
+        }
+    }
+}
+
+/// 这个格式支不支持改声道（不支持就别给旋钮）
+pub fn channels_for(spec: &FormatSpec) -> bool {
+    matches!(spec.id, "flac" | "alac" | "aac" | "ac3" | "eac3" | "opus" | "vorbis")
+}
+
+/// 实际输出声道数：`None` = 不传 `-ac`，跟着源走
+pub fn output_channels(spec: &FormatSpec, o: &ConvertOptions) -> Option<u16> {
+    if !channels_for(spec) {
+        return None;
+    }
+    o.channels.count()
+}
+
+/// 声道旋钮下面那行小字
+pub fn channel_note(spec: &FormatSpec) -> &'static str {
+    match spec.id {
+        "ac3" => "AC-3 的 5.1 是 DVD/游戏机的标准配置，448k 起步。",
+        "eac3" => "E-AC-3 的 5.1 常用于流媒体；Dolby Atmos 元数据 ffmpeg 编不出来，只能从源直通。",
+        "flac" => "FLAC 支持多声道（5.1 无损），但很多播放器/手机只按立体声放。",
+        _ => "保持源最安全；改成 2.0 会下混，改成 5.1 不会凭空多出环绕信息。",
     }
 }
 
@@ -947,6 +1045,8 @@ pub struct ConvertOptions {
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
+    /// 输出声道布局
+    pub channels: ChannelMode,
     /// 视频流怎么处理（只有视频容器看它）
     pub video_codec: VideoCodec,
     /// 视频质量：CRF，越小越清晰也越大（18~32，默认 23）
@@ -974,6 +1074,7 @@ impl Default for ConvertOptions {
             wma_bitrate: 192,
             atrac3_bitrate: 132,
             sample_rate: None,
+            channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
             video_crf: 23,
             video_height: 0,
@@ -1139,6 +1240,8 @@ pub enum Knob {
     Atrac3Bitrate,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
+    /// 输出声道（保持源 / 立体声 / 5.1）
+    Channels,
     /// 视频容器：视频流编码方式（复制 / H.264 / H.265 / VP9 / AV1）
     VideoCodec,
     /// 视频容器：画面质量（CRF）
@@ -1152,24 +1255,25 @@ pub enum Knob {
 /// 这个格式能调什么。空数组表示"没得调，用默认值"。
 pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
     match spec.id {
-        "flac" => &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate],
+        "flac" => &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate, Knob::Channels],
         "wav" | "caf" | "w64" => &[Knob::BitDepth, Knob::SampleRate],
         "aiff" => &[Knob::BitDepth, Knob::SampleRate],
         "pcm" => &[Knob::BitDepth, Knob::SampleRate],
-        "alac" | "wavpack" | "tta" => &[Knob::BitDepth, Knob::SampleRate],
+        "alac" => &[Knob::BitDepth, Knob::SampleRate, Knob::Channels],
+        "wavpack" | "tta" => &[Knob::BitDepth, Knob::SampleRate],
         "mp3" => &[Knob::Mp3Bitrate, Knob::SampleRate],
         // Opus 输出流固定 48k，给采样率旋钮只会骗人
-        "opus" => &[Knob::OpusBitrate],
-        "vorbis" => &[Knob::VorbisQuality, Knob::SampleRate],
-        "aac" => &[Knob::AacBitrate, Knob::SampleRate],
-        "ac3" => &[Knob::Ac3Bitrate, Knob::SampleRate],
-        "eac3" => &[Knob::Eac3Bitrate, Knob::SampleRate],
+        "opus" => &[Knob::OpusBitrate, Knob::Channels],
+        "vorbis" => &[Knob::VorbisQuality, Knob::SampleRate, Knob::Channels],
+        "aac" => &[Knob::AacBitrate, Knob::SampleRate, Knob::Channels],
+        "ac3" => &[Knob::Ac3Bitrate, Knob::SampleRate, Knob::Channels],
+        "eac3" => &[Knob::Eac3Bitrate, Knob::SampleRate, Knob::Channels],
         "wma" => &[Knob::WmaBitrate, Knob::SampleRate],
         "mp2" => &[Knob::SampleRate],
         // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
         "atrac3" => &[Knob::Atrac3Bitrate],
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
-        "mkv" | "mp4" | "webm" | "avi" => &[
+        "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -1308,6 +1412,11 @@ pub fn args_for_with(
     if let Some(rate) = output_rate(spec, o) {
         a.push(s("-ar"));
         a.push(rate.to_string());
+    }
+    // 声道：只有用户明确选了 2.0 / 5.1 才传，自动就不动源布局
+    if let Some(ch) = output_channels(spec, o) {
+        a.push(s("-ac"));
+        a.push(ch.to_string());
     }
     a
 }
@@ -1582,18 +1691,75 @@ mod tests {
     }
 
     #[test]
+    fn channels_option_becomes_ac() {
+        let mut o = ConvertOptions::default();
+        // 默认「保持源」：不传 -ac
+        assert!(!args_for(spec("flac"), &o).contains(&"-ac".to_string()));
+        o.channels = ChannelMode::Stereo;
+        let a = args_for(spec("ac3"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-ac" && w[1] == "2"), "{a:?}");
+        o.channels = ChannelMode::Surround51;
+        let a = args_for(spec("eac3"), &o);
+        assert!(a.windows(2).any(|w| w[0] == "-ac" && w[1] == "6"), "{a:?}");
+        // 不支持改声道的格式（mp3）就算选了也不能传
+        o.channels = ChannelMode::Surround51;
+        assert!(!args_for(spec("mp3"), &o).contains(&"-ac".to_string()));
+    }
+
+    #[test]
+    fn flac_level_changes_estimated_size() {
+        let info = MediaInfo {
+            codec: "flac".into(),
+            container: "flac".into(),
+            sample_rate: 44_100,
+            channels: 2,
+            bitrate_kbps: 900,
+            duration_s: 60.0,
+            size_bytes: 0,
+            bits: Some(16),
+            audio_tracks: Vec::new(),
+            video_codec: None,
+            width: 0,
+            height: 0,
+            fps: 0.0,
+            video_bitrate_kbps: 0,
+        };
+        let mut o = ConvertOptions::default();
+        o.flac_level = 0;
+        let big = estimate_size(&info, spec("flac"), &o);
+        o.flac_level = 12;
+        let small = estimate_size(&info, spec("flac"), &o);
+        assert!(big > small, "等级 0 应该比 12 估得大：{big} vs {small}");
+        // 差得别太夸张（±10% 以内）
+        let ratio = big as f64 / small.max(1) as f64;
+        assert!(ratio < 1.12, "{big} / {small} = {ratio}");
+    }
+
+    #[test]
     fn knobs_match_formats() {
-        assert_eq!(knobs_for(spec("flac")), &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate]);
+        assert_eq!(
+            knobs_for(spec("flac")),
+            &[Knob::FlacLevel, Knob::BitDepth, Knob::SampleRate, Knob::Channels]
+        );
         assert_eq!(knobs_for(spec("wav")), &[Knob::BitDepth, Knob::SampleRate]);
         assert_eq!(knobs_for(spec("mp3")), &[Knob::Mp3Bitrate, Knob::SampleRate]);
-        assert_eq!(knobs_for(spec("ac3")), &[Knob::Ac3Bitrate, Knob::SampleRate]);
-        assert_eq!(knobs_for(spec("eac3")), &[Knob::Eac3Bitrate, Knob::SampleRate]);
+        assert_eq!(
+            knobs_for(spec("ac3")),
+            &[Knob::Ac3Bitrate, Knob::SampleRate, Knob::Channels]
+        );
+        assert_eq!(
+            knobs_for(spec("eac3")),
+            &[Knob::Eac3Bitrate, Knob::SampleRate, Knob::Channels]
+        );
         assert_eq!(knobs_for(spec("wma")), &[Knob::WmaBitrate, Knob::SampleRate]);
         // 压缩型无损：位深 + 采样率
-        assert_eq!(knobs_for(spec("alac")), &[Knob::BitDepth, Knob::SampleRate]);
+        assert_eq!(
+            knobs_for(spec("alac")),
+            &[Knob::BitDepth, Knob::SampleRate, Knob::Channels]
+        );
         assert_eq!(knobs_for(spec("wavpack")), &[Knob::BitDepth, Knob::SampleRate]);
         // Opus 输出流固定 48k，不该给采样率旋钮
-        assert_eq!(knobs_for(spec("opus")), &[Knob::OpusBitrate]);
+        assert_eq!(knobs_for(spec("opus")), &[Knob::OpusBitrate, Knob::Channels]);
         assert!(rate_choices("opus").is_empty());
     }
 
@@ -1605,6 +1771,7 @@ mod tests {
                 match k {
                     Knob::FlacLevel
                     | Knob::VorbisQuality
+                    | Knob::Channels
                     | Knob::BitDepth
                     // 视频旋钮的档位来自枚举/固定表，不走码率档位
                     | Knob::VideoCodec
@@ -1988,7 +2155,7 @@ mod tests {
 
     #[test]
     fn video_containers_are_selectable_targets() {
-        for id in ["mkv", "mp4", "webm", "avi"] {
+        for id in ["mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi"] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
             assert_eq!(s.group, Group::Video, "{id} 分组不对");
@@ -2002,7 +2169,7 @@ mod tests {
         }
         assert_eq!(
             video_containers().map(|f| f.id).collect::<Vec<_>>(),
-            vec!["mkv", "mp4", "webm", "avi"]
+            vec!["mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi"]
         );
     }
 

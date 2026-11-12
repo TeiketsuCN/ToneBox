@@ -119,7 +119,7 @@ pub(crate) const BG: Color32 = Color32::from_rgb(14, 16, 22);
 /// 队列能接受的输入扩展名：音频 + 视频容器。
 ///
 /// 视频容器现在也是正式的输出目标（`Group::Video`）：可以只换容器（copy），
-/// 也可以选 H.264/H.265/VP9/AV1 重编码。默认只处理第一条画面 + 第一条音轨。
+/// 也可以选 H.264/H.265/VP9/AV1 重编码。画面取第一条，**音轨全保留**。
 pub(crate) const INPUT_EXTS: &[&str] = &[
     "mp3", "mp2", "flac", "wav", "m4a", "aac", "ogg", "oga", "opus", "wma", "ape", "wv", "tta",
     "oma", "aa3", "at3", "at9", "aiff", "aif", "caf", "w64", "ac3", "eac3",

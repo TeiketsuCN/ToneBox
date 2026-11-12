@@ -369,7 +369,7 @@ impl App {
                     );
                     ui.add_space(3.0);
                     ui.label(
-                        RichText::new("视频只取第一条音轨；认不出来的会告诉你为什么")
+                        RichText::new("视频来源：全部音轨都会保留；认不出来的会告诉你为什么")
                             .size(9.5)
                             .color(DIM),
                     );
