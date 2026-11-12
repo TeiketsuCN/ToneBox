@@ -25,469 +25,354 @@ pub(crate) enum Icon {
     Stop,
 }
 
+/// 播放栏这一帧想做点的事：播放/暂停、停止、跳转、音量、开频谱、看大图。
+/// 先收集再统一执行，避免在画 UI 的闭包里改播放器状态。
+#[derive(Default)]
+pub(crate) struct BarAction {
+    pub toggle: bool,
+    pub stop: bool,
+    pub seek: Option<f64>,
+    pub volume: Option<f32>,
+    pub open_spec: bool,
+    pub open_cover: bool,
+}
+
+impl BarAction {
+    fn merge(&mut self, o: BarAction) {
+        self.toggle |= o.toggle;
+        self.stop |= o.stop;
+        self.volume = o.volume.or(self.volume);
+        self.open_spec |= o.open_spec;
+        self.open_cover |= o.open_cover;
+        if o.seek.is_some() {
+            self.seek = o.seek;
+        }
+    }
+}
+
 impl App {
 
-    /// 底部播放栏：常驻在"队列 + 详情"两栏下面。
+    /// 播放栏的细条：封面 / 走带 / 标题 / 进度 / 时间。
     ///
-    /// 没在播的时候不消失——显示当前选中项的封面和时长，按钮置灰。
-    /// 点封面看大图（队列里那张只有 96px，点开时后台重新抽一次原图）。
-    pub(crate) fn player_bar(&mut self, ui: &mut egui::Ui) {
-        ui.set_width(ui.available_width());
-        // 行间距自己控制，别让默认 spacing 把总高度顶出 BAR_H
-        ui.spacing_mut().item_spacing.y = 0.0;
-
-        // ── 顶部拖拽条：整条播放栏可自由拖动；双击回到默认贴底位置 ──
-        // 高度改由右下角拉伸（波形是唯一能伸缩的部分，见 BAR_CHROME）。
-        let (hrect, hresp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), 10.0),
-            egui::Sense::click_and_drag(),
-        );
-        if hresp.hovered() || hresp.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-        }
-        if hresp.dragged() {
-            let (bx, by) = self.bar_pos.unwrap_or(self.bar_draw_pos);
-            self.bar_pos = Some((
-                bx + hresp.drag_delta().x,
-                by + hresp.drag_delta().y,
-            ));
-        }
-        if hresp.drag_stopped() {
-            if let Some((x, y)) = self.bar_pos {
-                self.cfg.bar_x = x;
-                self.cfg.bar_y = y;
-                self.cfg.save();
-            }
-        }
-        if hresp.double_clicked() {
-            // 双击复位：位置回默认贴底，高度回默认
-            self.bar_pos = None;
-            self.bar_h = BAR_H;
-            self.cfg.bar_x = -1.0;
-            self.cfg.bar_y = -1.0;
-            self.cfg.bar_height = self.bar_h;
-            self.cfg.save();
-        }
-        // 抓手：中间一小段横线 + 三个点，提示这里能拖
-        let gp = ui.painter();
-        let grab = egui::Rect::from_center_size(hrect.center(), egui::vec2(44.0, 2.5));
-        gp.rect_filled(
-            grab,
-            Rounding::same(1.5),
-            tint(
-                Color32::WHITE,
-                if hresp.hovered() || hresp.dragged() { 120 } else { 60 },
-            ),
-        );
-        for i in -1..=1 {
-            gp.circle_filled(
-                egui::pos2(hrect.center().x + i as f32 * 7.0, hrect.center().y),
-                1.2,
-                tint(Color32::WHITE, 120),
-            );
-        }
-
-        let display = self
-            .player_for
-            .as_ref()
-            .and_then(|p| self.items.iter().position(|it| &it.path == p))
-            .or_else(|| (!self.items.is_empty()).then_some(self.selected))
-            .filter(|i| *i < self.items.len());
-        let (playing, pos, dur) = match self.player.as_ref() {
-            Some(p) => (p.is_playing(), p.position_s(), p.duration_s().max(0.1)),
-            None => {
-                let d = display
-                    .and_then(|i| self.items[i].info.as_ref())
-                    .map(|m| m.duration_s)
-                    .unwrap_or(0.0);
-                (false, 0.0, d.max(0.1))
-            }
-        };
+    /// 细条高度固定 46，占布局；展开出来的波形是浮在内容之上的（见
+    /// `player_bar_expanded`）——这样鼠标扫过来时下面的按钮不会被顶走。
+    pub(crate) fn player_bar(&mut self, ui: &mut egui::Ui) -> BarAction {
+        let mut act = BarAction::default();
+        let display = self.display_item();
+        let (playing, pos, dur) = self.play_state();
         let has_player = self.player.is_some();
         let name = display
             .map(|i| {
                 let it = &self.items[i];
                 it.tags.display_title(&it.name())
             })
-            .unwrap_or_else(|| "未在播放".to_string());
+            .unwrap_or_else(|| "没有在播放".to_string());
         let sub = display
             .map(|i| self.items[i].tags.display_sub())
             .unwrap_or_default();
         let cover = display.and_then(|i| self.items[i].cover.clone());
         let has_cover = cover.is_some();
-        // 只有"当前显示的那首"的波形才拿来画
-        let wave = self.wave.as_ref().and_then(|(p, w)| {
-            display
-                .filter(|i| self.items[*i].path == *p)
-                .map(|_| w)
-        });
+        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
 
-        let mut toggle = false;
-        let mut stop = false;
-        let mut seek: Option<f64> = None;
-        let mut vol_change: Option<f32> = None;
-        let mut open_cover = false;
-        let mut open_spec = false;
-        let mut collapse_bar = false;
-
-        // ── 上半：封面 + 走带 + 标题 + 音量 ──
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
-            let resp = bar_cover(ui, cover.as_ref(), 64.0);
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 0.0);
+            let resp = bar_cover(ui, cover.as_ref(), 30.0);
             if resp.clicked() && has_cover {
-                open_cover = true;
+                act.open_cover = true;
             }
-            ui.add_space(2.0);
-
-            let vol_w = 122.0;
-            let content_w = (ui.available_width() - vol_w).max(160.0);
+            if icon_button(
+                ui,
+                if playing { Icon::Pause } else { Icon::Play },
+                true,
+                has_player,
+            ) {
+                act.toggle = true;
+            }
+            let right_w = 430.0;
+            let mid_w = (ui.available_width() - right_w - 8.0).max(90.0);
             ui.allocate_ui_with_layout(
-                egui::vec2(content_w, 64.0),
+                egui::vec2(mid_w, 28.0),
                 Layout::top_down(Align::LEFT),
                 |ui| {
-                    ui.horizontal(|ui| {
-                        if icon_button(
-                            ui,
-                            if playing { Icon::Pause } else { Icon::Play },
-                            true,
-                            has_player,
-                        ) {
-                            toggle = true;
-                        }
-                        if icon_button(ui, Icon::Stop, false, has_player) {
-                            stop = true;
-                        }
-                        ui.add_space(6.0);
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(&name)
-                                    .size(11.5)
-                                    .color(if has_player { TEXT } else { MUTED }),
-                            )
-                            .truncate(),
-                        );
-                    });
-                    ui.add_space(3.0);
+                    ui.spacing_mut().item_spacing.y = 1.0;
                     ui.add(
-                        egui::Label::new(RichText::new(&sub).size(9.0).color(DIM)).truncate(),
+                        egui::Label::new(
+                            RichText::new(&name)
+                                .size(11.5)
+                                .color(if has_player { TEXT } else { MUTED }),
+                        )
+                        .truncate(),
                     );
+                    if !sub.is_empty() {
+                        ui.add(
+                            egui::Label::new(RichText::new(&sub).size(9.0).color(DIM))
+                                .truncate(),
+                        );
+                    }
                 },
             );
-
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // 最右边：收起播放栏
-                let cb = egui::Button::new(RichText::new("收起").size(8.5).color(DIM))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(Stroke::NONE)
-                    .min_size(egui::vec2(32.0, 18.0));
-                if ui.add(cb).on_hover_text("收起播放栏，右下角可再拿出来").clicked() {
-                    collapse_bar = true;
-                }
-                let mut v = self
-                    .player
-                    .as_ref()
-                    .map(|p| p.volume())
-                    .unwrap_or(self.player_volume);
-                if volume_bar(ui, &mut v) {
-                    vol_change = Some(v);
-                }
+                ui.label(
+                    RichText::new(format!("{} / {}", fmt_duration(pos), fmt_duration(dur)))
+                        .size(9.0)
+                        .color(DIM),
+                );
                 ui.add_space(6.0);
-                if spec_button(ui) {
-                    open_spec = true;
+                let w = (ui.available_width() - 4.0).clamp(90.0, 520.0);
+                let (rect, resp) =
+                    ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::click_and_drag());
+                if resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                let p = ui.painter();
+                let track =
+                    egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
+                p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 22));
+                if frac > 0.0 {
+                    let mut f = track;
+                    f.set_width(track.width() * frac);
+                    p.rect_filled(f, Rounding::same(2.0), accent());
+                }
+                let knob = if resp.hovered() || resp.dragged() { 5.5 } else { 4.0 };
+                p.circle_filled(
+                    egui::pos2(track.left() + track.width() * frac, track.center().y),
+                    knob,
+                    if has_player { TEXT } else { DIM },
+                );
+                if has_player
+                    && (resp.clicked() || resp.dragged() || resp.drag_stopped())
+                {
+                    if let Some(pp) = resp.interact_pointer_pos() {
+                        act.seek = Some(
+                            ((pp.x - track.left()) / track.width()).clamp(0.0, 1.0) as f64 * dur,
+                        );
+                    }
                 }
             });
         });
+        act
+    }
 
-        ui.add_space(4.0);
-
-        // ── 中部：波形（左右声道各一条；点/拖也能跳转）──
-        // 栏高可拖：除波形外的固定部分见 BAR_CHROME，剩下的都给波形
-        let wave_h = (self.bar_h - BAR_CHROME).clamp(22.0, 260.0);
-        let (wrect, wresp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), wave_h),
-            egui::Sense::click_and_drag(),
-        );
-        let p = ui.painter();
-        // 波形左右各收 12px，不顶到播放栏边缘
-        let wave_rect = wrect.shrink2(egui::vec2(12.0, 0.0));
-        p.rect_filled(wave_rect, Rounding::same(8.0), tint(Color32::WHITE, 6));
-        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
-        if let Some(chans) = wave {
-            let lanes = chans.len().max(1);
-            let lane_h = (wave_h - 6.0) / lanes as f32;
-            for (ci, data) in chans.iter().enumerate() {
-                let cy = wave_rect.top() + 3.0 + lane_h * (ci as f32 + 0.5);
-                let half = (lane_h * 0.42).max(2.0);
-                let n = data.len().max(1);
-                for (i, (mn, mx)) in data.iter().enumerate() {
-                    let x = wave_rect.left() + wave_rect.width() * (i as f32 + 0.5) / n as f32;
-                    let y0 = cy - mx.clamp(-1.0, 1.0) * half;
-                    let y1 = cy - mn.clamp(-1.0, 1.0) * half;
-                    let played = x <= wave_rect.left() + wave_rect.width() * frac;
-                    let col = if played { accent() } else { tint(Color32::WHITE, 90) };
-                    p.line_segment(
-                        [egui::pos2(x, y0), egui::pos2(x, y1.max(y0 + 1.0))],
-                        Stroke::new(1.2, col),
-                    );
-                }
-            }
-            let px = wave_rect.left() + wave_rect.width() * frac;
-            p.line_segment(
-                [egui::pos2(px, wave_rect.top() + 2.0), egui::pos2(px, wave_rect.bottom() - 2.0)],
-                Stroke::new(1.4, Color32::WHITE),
-            );
-        } else {
-            p.text(
-                wave_rect.center(),
-                Align2::CENTER_CENTER,
-                if display.map(|i| self.items[i].encrypted.is_some()).unwrap_or(false) {
-                    "加密文件：只识别，不解码也不播放"
-                } else if has_player {
-                    "波形生成中…"
-                } else {
-                    "双击队列里的文件即可试听"
-                },
-                FontId::proportional(9.5),
-                DIM,
-            );
-        }
-        // 波形右边缘 12px：左右拉伸播放栏宽度（拖动时不再当跳转）
-        let edge_x = wrect.right() - 12.0;
-        let hover_edge = wresp
-            .hover_pos()
-            .map(|p| p.x > edge_x)
+    /// 展开出来的那一块：左边走带 + 音量，中间波形，右边频谱。
+    /// 浮在内容之上（不参与布局），所以鼠标扫过来时下面的按钮不会被顶走。
+    pub(crate) fn player_bar_expanded(&mut self, ui: &mut egui::Ui) -> BarAction {
+        let display = self.display_item();
+        let (_, pos, dur) = self.play_state();
+        let has_player = self.player.is_some();
+        let encrypted = display
+            .map(|i| self.items[i].encrypted.is_some())
             .unwrap_or(false);
-        if hover_edge {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-            p.line_segment(
-                [
-                    egui::pos2(wrect.right() - 2.0, wrect.top() + 6.0),
-                    egui::pos2(wrect.right() - 2.0, wrect.bottom() - 6.0),
-                ],
-                Stroke::new(2.0, tint(Color32::WHITE, 110)),
-            );
-        }
-        if wresp.drag_started() {
-            if let Some(pp) = wresp.interact_pointer_pos() {
-                self.bar_w_drag = pp.x > edge_x;
-            }
-        }
-        if self.bar_w_drag && wresp.dragged() {
-            self.bar_w = (self.bar_w + wresp.drag_delta().x).clamp(BAR_W_MIN, BAR_W_MAX);
-        } else if has_player && (wresp.clicked() || wresp.dragged()) {
-            if let Some(pp) = wresp.interact_pointer_pos() {
-                seek = Some(
-                    ((pp.x - wave_rect.left()) / wave_rect.width()).clamp(0.0, 1.0) as f64 * dur,
-                );
-            }
-        }
-        if self.bar_w_drag && wresp.drag_stopped() {
-            self.cfg.bar_width = self.bar_w;
-            self.cfg.save();
-            self.bar_w_drag = false;
-        }
+        let wave = self.wave.as_ref().and_then(|(p, w)| {
+            display.filter(|i| self.items[*i].path == *p).map(|_| w)
+        });
+        let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
+        let mut act = BarAction::default();
+        let h = (ui.available_height() - 4.0).max(36.0);
 
-        ui.add_space(6.0);
-
-        // ── 底部：进度条 ──
-        ui.horizontal(|ui| {
-            let time_w = 96.0;
-            let bar_w = (ui.available_width() - time_w).max(60.0);
-            let (rect, resp) = ui.allocate_exact_size(
-                egui::vec2(bar_w, 16.0),
-                egui::Sense::click_and_drag(),
-            );
-            let p = ui.painter();
-            let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
-            p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 16));
-            if frac > 0.0 {
-                let mut f = track;
-                f.set_width(track.width() * frac);
-                p.rect_filled(f, Rounding::same(2.0), accent());
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            if icon_button(ui, Icon::Stop, false, has_player) {
+                act.stop = true;
             }
-            let knob_r = if resp.hovered() || resp.dragged() {
-                6.0
-            } else {
-                4.5
-            };
-            p.circle_filled(
-                egui::pos2(track.left() + track.width() * frac, track.center().y),
-                knob_r,
-                if has_player { TEXT } else { DIM },
-            );
-            if has_player && (resp.clicked() || resp.dragged()) && rect.width() > 0.0 {
-                if let Some(pp) = resp.interact_pointer_pos() {
-                    seek = Some(
-                        ((pp.x - rect.left()) / rect.width()).clamp(0.0, 1.0) as f64 * dur,
-                    );
-                }
+            let mut v = self
+                .player
+                .as_ref()
+                .map(|p| p.volume())
+                .unwrap_or(self.player_volume);
+            if volume_bar(ui, &mut v) {
+                act.volume = Some(v);
             }
             ui.add_space(6.0);
-            ui.label(
-                RichText::new(format!(
-                    "{} / {}",
-                    fmt_duration(pos),
-                    fmt_duration(dur)
-                ))
-                .size(9.0)
-                .color(DIM),
-            );
-            // 右下角的小把手：按住左右拖 = 拉宽/收窄播放栏
-            ui.add_space(2.0);
-            let (hrect, hresp) = ui.allocate_exact_size(
-                egui::vec2(18.0, 16.0),
-                egui::Sense::drag(),
-            );
-            if hresp.hovered() || hresp.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-            }
-            if hresp.dragged() {
-                self.bar_w =
-                    (self.bar_w + hresp.drag_delta().x).clamp(BAR_W_MIN, BAR_W_MAX);
-            }
-            if hresp.drag_stopped() {
-                self.cfg.bar_width = self.bar_w;
-                self.cfg.save();
-            }
-            let p = ui.painter();
-            let hc = hrect.center();
-            // 右侧拉伸把手常亮（强调色），不藏起来
-            let hcol = if hresp.hovered() || hresp.dragged() {
-                accent()
-            } else {
-                tint(accent(), 190)
-            };
-            p.line_segment(
-                [
-                    egui::pos2(hc.x - 4.0, hc.y - 4.0),
-                    egui::pos2(hc.x - 4.0, hc.y + 4.0),
-                ],
-                Stroke::new(1.4, hcol),
-            );
-            p.line_segment(
-                [
-                    egui::pos2(hc.x + 4.0, hc.y - 4.0),
-                    egui::pos2(hc.x + 4.0, hc.y + 4.0),
-                ],
-                Stroke::new(1.4, hcol),
-            );
 
-            // 高度把手：按住上下拖 = 拉高/压矮
-            ui.add_space(2.0);
-            let (vrect, vresp) = ui.allocate_exact_size(
-                egui::vec2(14.0, 16.0),
-                egui::Sense::drag(),
-            );
-            if vresp.hovered() || vresp.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-            }
-            if vresp.dragged() {
-                self.bar_h = (self.bar_h + vresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
-            }
-            if vresp.drag_stopped() {
-                self.cfg.bar_height = self.bar_h;
-                self.cfg.save();
-            }
+            let wave_w = (ui.available_width() - 44.0).max(120.0);
+            let (wrect, wresp) =
+                ui.allocate_exact_size(egui::vec2(wave_w, h), egui::Sense::click_and_drag());
             let p = ui.painter();
-            let vc = vrect.center();
-            let vcol = tint(
-                Color32::WHITE,
-                if vresp.hovered() || vresp.dragged() { 150 } else { 70 },
-            );
-            p.line_segment(
-                [
-                    egui::pos2(vc.x - 4.0, vc.y - 4.0),
-                    egui::pos2(vc.x, vc.y - 6.0),
-                ],
-                Stroke::new(1.4, vcol),
-            );
-            p.line_segment(
-                [
-                    egui::pos2(vc.x + 4.0, vc.y - 4.0),
-                    egui::pos2(vc.x, vc.y - 6.0),
-                ],
-                Stroke::new(1.4, vcol),
-            );
-            p.line_segment(
-                [
-                    egui::pos2(vc.x - 4.0, vc.y + 4.0),
-                    egui::pos2(vc.x, vc.y + 6.0),
-                ],
-                Stroke::new(1.4, vcol),
-            );
-            p.line_segment(
-                [
-                    egui::pos2(vc.x + 4.0, vc.y + 4.0),
-                    egui::pos2(vc.x, vc.y + 6.0),
-                ],
-                Stroke::new(1.4, vcol),
-            );
+            p.rect_filled(wrect, Rounding::same(8.0), tint(Color32::WHITE, 10));
+            if let Some(chans) = wave {
+                let lanes = chans.len().max(1);
+                let lane_h = (h - 8.0) / lanes as f32;
+                for (ci, data) in chans.iter().enumerate() {
+                    let cy = wrect.top() + 4.0 + lane_h * (ci as f32 + 0.5);
+                    let half = (lane_h * 0.42).max(2.0);
+                    let n = data.len().max(1);
+                    for (i, (mn, mx)) in data.iter().enumerate() {
+                        let x = wrect.left() + wrect.width() * (i as f32 + 0.5) / n as f32;
+                        let y0 = cy - mx.clamp(-1.0, 1.0) * half;
+                        let y1 = cy - mn.clamp(-1.0, 1.0) * half;
+                        let played = x <= wrect.left() + wrect.width() * frac;
+                        let col = if played { accent() } else { tint(Color32::WHITE, 85) };
+                        p.line_segment(
+                            [egui::pos2(x, y0), egui::pos2(x, y1.max(y0 + 1.0))],
+                            Stroke::new(1.2, col),
+                        );
+                    }
+                }
+                let px = wrect.left() + wrect.width() * frac;
+                p.line_segment(
+                    [
+                        egui::pos2(px, wrect.top() + 3.0),
+                        egui::pos2(px, wrect.bottom() - 3.0),
+                    ],
+                    Stroke::new(1.4, Color32::WHITE),
+                );
+            } else {
+                p.text(
+                    wrect.center(),
+                    Align2::CENTER_CENTER,
+                    if encrypted {
+                        "加密文件：只识别，不解码也不播放"
+                    } else if has_player {
+                        "波形生成中…"
+                    } else {
+                        "双击队列里的文件就能试听"
+                    },
+                    FontId::proportional(9.5),
+                    DIM,
+                );
+            }
+            if has_player && (wresp.clicked() || wresp.dragged() || wresp.drag_stopped()) {
+                if let Some(pp) = wresp.interact_pointer_pos() {
+                    act.seek = Some(
+                        ((pp.x - wrect.left()) / wrect.width()).clamp(0.0, 1.0) as f64 * dur,
+                    );
+                }
+            }
+            if spec_button(ui) {
+                act.open_spec = true;
+            }
         });
 
-        if open_spec {
+        act
+    }
+    /// 当前播放/显示的是哪一条（按路径找；删了/移了也不会指错歌）
+    fn display_item(&self) -> Option<usize> {
+        self.player_for
+            .as_ref()
+            .and_then(|p| self.items.iter().position(|it| &it.path == p))
+            .or_else(|| (!self.items.is_empty()).then_some(self.selected))
+            .filter(|i| *i < self.items.len())
+    }
+
+    fn play_state(&self) -> (bool, f64, f64) {
+        match self.player.as_ref() {
+            Some(p) => (p.is_playing(), p.position_s(), p.duration_s().max(0.1)),
+            None => {
+                let d = self
+                    .display_item()
+                    .and_then(|i| self.items[i].info.as_ref())
+                    .map(|m| m.duration_s)
+                    .unwrap_or(0.0);
+                (false, 0.0, d.max(0.1))
+            }
+        }
+    }
+
+    /// 贴底播放栏：细条永远在，展开部分浮在上面。
+    pub(crate) fn player_bar_panel(&mut self, ctx: &egui::Context) -> bool {
+        let ptr = ctx.input(|i| i.pointer.hover_pos());
+        let hot = ptr
+            .map(|p| {
+                self.bar_rect.contains(p)
+                    || (self.bar_t > 0.06 && self.bar_expand_rect.contains(p))
+            })
+            .unwrap_or(false);
+        self.bar_hot = hot;
+        let target = if hot { 1.0 } else { 0.0 };
+        let mut animating = approach(&mut self.bar_t, target, self.dt, 14.0);
+
+        let mut act = BarAction::default();
+        let rect = egui::TopBottomPanel::bottom("player_bar")
+            .exact_height(BAR_SLIM)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(
+                egui::Frame::none()
+                    .fill(tint(BG, 208))
+                    .inner_margin(egui::Margin {
+                        left: 12.0,
+                        right: 12.0,
+                        top: 4.0,
+                        bottom: 6.0,
+                    }),
+            )
+            .show(ctx, |ui| {
+                act = self.player_bar(ui);
+            })
+            .response
+            .rect;
+        self.bar_rect = rect;
+
+        let t = self.bar_t.clamp(0.0, 1.0);
+        if t > 0.01 {
+            let eased = t * t * (3.0 - 2.0 * t);
+            let h = (BAR_FULL - BAR_SLIM) * eased;
+            let expand = egui::Rect::from_min_max(
+                egui::pos2(rect.left(), rect.top() - h),
+                egui::pos2(rect.right(), rect.top() + 1.0),
+            );
+            self.bar_expand_rect = expand;
+            egui::Area::new(egui::Id::new("bar_expand"))
+                .order(egui::Order::Middle)
+                .fixed_pos(expand.min)
+                .show(ctx, |ui| {
+                    ui.set_width(expand.width());
+                    ui.set_height(expand.height());
+                    egui::Frame::none()
+                        .fill(tint(BG, (238.0 * eased) as u8))
+                        .inner_margin(egui::Margin {
+                            left: 12.0,
+                            right: 12.0,
+                            top: 6.0,
+                            bottom: 2.0,
+                        })
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            act.merge(self.player_bar_expanded(ui));
+                        });
+                });
+            animating = true;
+        } else {
+            self.bar_expand_rect = egui::Rect::NOTHING;
+        }
+        self.apply_bar_action(act);
+        if animating {
+            ctx.request_repaint();
+        }
+        animating
+    }
+
+    /// 把播放栏这一帧攒下的动作落到播放器/界面状态上
+    fn apply_bar_action(&mut self, act: BarAction) {
+        if act.open_spec {
             self.open_spectrum();
         }
-        if open_cover {
-            if let Some(i) = display {
+        if act.open_cover {
+            if let Some(i) = self.display_item() {
                 self.cover_view = Some(i);
                 self.cover_closing = false;
                 self.cover_t = 0.0;
                 self.start_big_cover(i);
             }
         }
-        if let Some(v) = vol_change {
+        if let Some(v) = act.volume {
             self.player_volume = v;
             if let Some(p) = self.player.as_ref() {
                 p.set_volume(v);
             }
         }
-        // 右下角：上下拉伸高度（顶部留给自由拖动）
-        let bar_rect = ui.min_rect();
-        let corner = egui::Rect::from_min_size(
-            egui::pos2(bar_rect.right() - 16.0, bar_rect.bottom() - 16.0),
-            egui::vec2(16.0, 16.0),
-        );
-        let cresp = ui.interact(corner, ui.id().with("bar_h_resize"), egui::Sense::drag());
-        if cresp.hovered() || cresp.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-        }
-        if cresp.dragged() {
-            self.bar_h = (self.bar_h + cresp.drag_delta().y).clamp(BAR_H_MIN, BAR_H_MAX);
-        }
-        if cresp.drag_stopped() {
-            self.cfg.bar_height = self.bar_h;
-            self.cfg.save();
-        }
-        let hot = cresp.hovered() || cresp.dragged();
-        for i in 0..3 {
-            let off = i as f32 * 4.0;
-            ui.painter().line_segment(
-                [
-                    egui::pos2(corner.left() + 4.0 + off, corner.bottom() - 3.0),
-                    egui::pos2(corner.right() - 3.0, corner.top() + 4.0 + off),
-                ],
-                Stroke::new(1.0, tint(Color32::WHITE, if hot { 120 } else { 55 })),
-            );
-        }
-
-        if collapse_bar {
-            self.bar_collapsed = true;
-            self.cfg.bar_collapsed = true;
-            self.cfg.save();
-        }
         if let Some(p) = self.player.as_mut() {
-            if toggle {
+            if act.toggle {
                 p.toggle();
             }
-            if stop {
+            if act.stop {
                 p.stop();
             }
-            if let Some(t2) = seek {
+            if let Some(t2) = act.seek {
                 p.seek(t2);
             }
         }
     }
-
     /// 点开大图时后台重新抽一次封面（队列里那张只有 96px）
     pub(crate) fn start_big_cover(&mut self, idx: usize) {
         if self

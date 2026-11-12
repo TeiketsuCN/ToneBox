@@ -50,13 +50,26 @@ impl App {
         ui.set_width(ui.available_width());
         let mut changed = false;
 
-        ui.label(RichText::new("输出").size(11.0).color(DIM));
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
-                .size(12.0)
-                .color(accent()),
-        );
+        // 标题行 + 右侧「添加任务」：按钮不能放列底（播放栏展开会盖住底边）
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("输出").size(11.0).color(DIM));
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
+                    .size(12.0)
+                    .color(accent()),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let can = self
+                    .items
+                    .get(self.selected)
+                    .map(|i| i.info.is_some())
+                    .unwrap_or(false);
+                if add_task_pill(ui, can) {
+                    self.add_task();
+                }
+            });
+        });
         // 视频容器：先把「这个容器收什么」说一句，再看下面具体旋钮
         if fc_core::is_video(self.target) {
             out_hint(ui, fc_core::container_note(self.target.id), DIM);

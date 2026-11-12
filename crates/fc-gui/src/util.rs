@@ -476,24 +476,10 @@ pub(crate) fn row(ui: &mut egui::Ui, key: &str, value: &str) {
     ui.end_row();
 }
 
-/// 播放栏默认高度（含顶部 6px 拖拽条）。用户可以把顶部往上拖变高，
-/// 波形区域跟着长；高度记在配置里，下次启动还是这个高度。
-pub(crate) const BAR_H: f32 = 164.0;
-
-/// 播放栏宽度：可左右拉伸，最小 760 保证标题/走带/音量不重叠
-pub(crate) const BAR_W: f32 = 1100.0;
-pub(crate) const BAR_W_MIN: f32 = 760.0;
-pub(crate) const BAR_W_MAX: f32 = 1500.0;
-
-/// 能拖到的最小 / 最大高度：再矮波形就没了，再高会把队列全盖住
-pub(crate) const BAR_H_MIN: f32 = 134.0;
-pub(crate) const BAR_H_MAX: f32 = 360.0;
-
-/// 播放栏离窗口底边的距离（悬浮感）
-pub(crate) const BAR_MARGIN: f32 = 24.0;
-
-/// 播放栏以外固定占掉的高度（顶栏 6 + 封面行 64 + 间距 + 进度行 + 内边距）
-pub(crate) const BAR_CHROME: f32 = 112.0;
+/// 播放栏贴着窗口底边：默认只有一条细条（走带 + 标题 + 进度），
+/// 鼠标移上来才展开出波形和音量。两个高度写死，不做拖拽。
+pub(crate) const BAR_SLIM: f32 = 46.0;
+pub(crate) const BAR_FULL: f32 = 144.0;
 
 /// 紧凑版圆点单选：宽度跟着文字走，可以一行放几个
 pub(crate) fn radio_dot_inline(ui: &mut egui::Ui, label: &str, on: bool) -> bool {

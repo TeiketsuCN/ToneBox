@@ -192,6 +192,19 @@ impl App {
             ring_state,
             if self.notices_open { TEXT } else { MUTED },
         );
+        // 有排着队还没转的任务：右上角点一个小点（任务列没了，总得有个"有事要做"的提示）
+        let pending = self
+            .tasks
+            .iter()
+            .filter(|t| matches!(t.state, State::Pending))
+            .count();
+        if pending > 0 && !self.running {
+            ui.painter().circle_filled(
+                rect.center() + egui::vec2(7.5, -7.5),
+                2.6,
+                accent(),
+            );
+        }
         if ring_resp.clicked() {
             self.notices_open = !self.notices_open;
             if self.notices_open {

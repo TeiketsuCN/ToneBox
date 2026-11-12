@@ -135,6 +135,43 @@ pub const APP_NAME: &str = "声箱ToneBox";
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
 
+/// 这台机器该用多大缩放。
+///
+/// 原来是写死 1.2 的——开发机是 2K（1440 高）时正好，搬到 1080p 就"什么都大一号、
+/// 四栏挤到窗口外面"。现在启动时按屏幕逻辑高度挑一次：够高才用 1.2。
+static ZOOM_BITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+pub(crate) fn zoom() -> f32 {
+    let b = ZOOM_BITS.load(std::sync::atomic::Ordering::Relaxed);
+    if b == 0 {
+        BASE_ZOOM
+    } else {
+        f32::from_bits(b)
+    }
+}
+
+fn set_zoom(z: f32) {
+    ZOOM_BITS.store(f32::to_bits(z), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 屏幕逻辑高度：1080p/100% = 1080，2K/100% = 1440，1080p/150% = 720
+#[cfg(windows)]
+fn screen_logical_height() -> f32 {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetSystemMetrics(index: i32) -> i32;
+        fn GetDpiForSystem() -> u32;
+    }
+    let h = unsafe { GetSystemMetrics(1) } as f32; // SM_CYSCREEN
+    let dpi = unsafe { GetDpiForSystem() }.max(96) as f32;
+    h * 96.0 / dpi
+}
+
+#[cfg(not(windows))]
+fn screen_logical_height() -> f32 {
+    1440.0
+}
+
 // ── 布局规范 ────────────────────────────────────────────
 // 面板宽度必须是常量，内容宽度在面板内锁死。
 // 所有长文本一律显式 wrap，任何元素都不允许横向溢出把窗口边缘切掉。
@@ -142,7 +179,6 @@ pub(crate) const TITLEBAR_H: f32 = 44.0;
 pub(crate) const LEFT_W: f32 = 216.0;
 pub(crate) const RIGHT_W: f32 = 300.0;
 pub(crate) const OUT_W: f32 = 300.0;
-pub(crate) const TASK_W: f32 = 300.0;
 
 
 // ── 队列条目 ────────────────────────────────────────────
@@ -291,18 +327,13 @@ pub(crate) struct App {
     bg: bg::WallpaperBg,
     /// 当前生效的强调色（背景/底色一变就重算，然后重设一遍 egui style 里沾色的项）
     accent_now: Color32,
-    /// 播放栏当前高度（逻辑点）。顶部拖拽条改它，松手写进配置。
-    bar_h: f32,
-    /// 播放栏手动拖到的位置；None = 自动贴底
-    bar_pos: Option<(f32, f32)>,
-    /// 本帧播放栏实际画在哪（拖拽时作为基准）
-    bar_draw_pos: (f32, f32),
-    /// 播放栏宽度（左右拉伸）
-    bar_w: f32,
-    /// 播放栏是否收起
-    bar_collapsed: bool,
-    /// 是否正在拖波形右边缘改宽度
-    bar_w_drag: bool,
+    /// 播放栏展开程度 0~1：鼠标移上去展开，移开收成一条细条
+    bar_t: f32,
+    /// 这一帧鼠标是不是在播放栏里（含展开后的整块）
+    bar_hot: bool,
+    /// 细条这一帧占的矩形 / 展开块的矩形（下一帧用它判鼠标在不在里面）
+    bar_rect: egui::Rect,
+    bar_expand_rect: egui::Rect,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
     blurb_t: f32,
@@ -450,13 +481,13 @@ impl App {
             .unwrap_or_default();
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
-        cc.egui_ctx.set_zoom_factor(BASE_ZOOM);
+        cc.egui_ctx.set_zoom_factor(zoom());
         // 开局按配置里的窗口尺寸对齐一次（窗口是固定尺寸，只能靠命令改）
         {
             let (w, h) = cfg.window.size_px();
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                w / BASE_ZOOM,
-                h / BASE_ZOOM,
+                w / zoom(),
+                h / zoom(),
             )));
         }
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
@@ -515,16 +546,10 @@ impl App {
             codec_tab: codec::CodecTab::Devices,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
-            bar_h: cfg.bar_height.clamp(BAR_H_MIN, BAR_H_MAX),
-            bar_pos: if cfg.bar_x >= 0.0 && cfg.bar_y >= 0.0 {
-                Some((cfg.bar_x, cfg.bar_y))
-            } else {
-                None
-            },
-            bar_draw_pos: (0.0, 0.0),
-            bar_w: cfg.bar_width.clamp(BAR_W_MIN, BAR_W_MAX),
-            bar_collapsed: cfg.bar_collapsed,
-            bar_w_drag: false,
+            bar_t: 0.0,
+            bar_hot: false,
+            bar_rect: egui::Rect::NOTHING,
+            bar_expand_rect: egui::Rect::NOTHING,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
             blurb_t: 1.0,
@@ -618,14 +643,9 @@ impl App {
 
     /// 播放栏 + 底边距实际占掉的高度：队列/音乐库的滚动区要留这么多，
     /// 内容才不会钻到悬浮播放栏下面（栏高可拖，所以不能再用常量）。
+    /// 播放栏现在是贴底的一条独立面板：内容区直接铺到底，不用再为它留空
     pub(crate) fn bar_reserve(&self) -> f32 {
-        // 只有播放栏还在默认贴底位置时才留空；拖到别处/收起后不留，
-        // 否则列表底下会出现一条莫名其妙的空白带。
-        if self.bar_collapsed || self.bar_pos.is_some() {
-            8.0
-        } else {
-            self.bar_h + BAR_MARGIN + 10.0
-        }
+        0.0
     }
 
     fn add_files(&mut self, paths: Vec<PathBuf>) {
@@ -1196,8 +1216,8 @@ pub(crate) fn set_fullscreen(full: &mut bool, ctx: &egui::Context, size_px: (f32
     if !*full {
         let (w, h) = size_px;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-            w / BASE_ZOOM,
-            h / BASE_ZOOM,
+            w / zoom(),
+            h / zoom(),
         )));
     }
 }
@@ -1222,7 +1242,7 @@ impl eframe::App for App {
         }
         // 命中区要知道当前缩放（120% 时按钮在物理像素上更大）
         #[cfg(windows)]
-        frame::set_ui_scale(BASE_ZOOM);
+        frame::set_ui_scale(zoom());
         self.poll();
         self.poll_analysis();
 
@@ -1316,8 +1336,6 @@ impl eframe::App for App {
         // 动画快结束时（t>=0.9，设置页已经盖满）再隐起来，切换点上没有可见变化
         // 设置页是整页切换，不做滑动动画——之前那套"滑入滑出"就是闪的来源
         let main_visible = !self.settings_open;
-        let mut do_start = false;
-        let mut do_add_task = false;
 
         if main_visible {
             egui::SidePanel::left("rail").show_separator_line(false)
@@ -1335,34 +1353,10 @@ impl eframe::App for App {
                 )
                 .show(ctx, |ui| animating |= self.left_rail(ui));
 
-            // 任务列：最右边，放"加进来的转换任务"和开始按钮
-            if self.page == Page::Convert {
-                egui::SidePanel::right("tasks").show_separator_line(false)
-                    .exact_width(TASK_W)
-                    .resizable(false)
-                    .frame(
-                        egui::Frame::none()
-                            .fill(tint(BG, 120))
-                            .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
-                    )
-                    .show(ctx, |ui| {
-                        egui::TopBottomPanel::bottom("task_start")
-                            .resizable(false)
-                            .show_separator_line(false)
-                            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 8.0)))
-                            .show_inside(ui, |ui| {
-                                let can = !self.running
-                                    && self.tools.is_some()
-                                    && self.tasks.iter().any(|t| matches!(t.state, State::Pending));
-                                if start_button(ui, can, self.running, self.overall()) {
-                                    do_start = true;
-                                }
-                            });
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| animating |= self.task_list(ui));
-                    });
-            }
+            // 播放栏：贴底的一条，鼠标移上去展开波形/音量（不再悬浮、不再拖）。
+            // 必须排在右栏之前，这样它横跨「队列 + 详情 + 输出」整条底边，
+            // 右栏再从它上方分出去——否则播放栏只能缩在中间那一栏底下。
+            animating |= self.player_bar_panel(ctx);
 
             // 输出列只在"输出"页出现；"音乐库"页把整块宽度留给列表
             if self.page == Page::Convert {
@@ -1375,22 +1369,6 @@ impl eframe::App for App {
                             .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
                     )
                     .show(ctx, |ui| {
-                                                // 这一列只负责"配参数"，底部按钮把选中文件按当前参数加进任务
-                        egui::TopBottomPanel::bottom("out_add").resizable(false).show_separator_line(false)
-                            .frame(
-                                egui::Frame::none()
-                                    .inner_margin(egui::Margin::symmetric(0.0, 8.0)),
-                            )
-                            .show_inside(ui, |ui| {
-                                let can = self
-                                    .items
-                                    .get(self.selected)
-                                    .map(|i| i.info.is_some())
-                                    .unwrap_or(false);
-                                if add_task_button(ui, can) {
-                                    do_add_task = true;
-                                }
-                            });
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
@@ -1478,85 +1456,6 @@ impl eframe::App for App {
                 p.add(egui::Shape::mesh(mesh));
             }
 
-            // 悬浮播放栏：不占布局，所有页面都在、宽度一致；可以拖到任意位置。
-            // 用 Order::Middle：面板内容在 Background，封面/频谱/设置那些覆盖层在 Foreground。
-            if self.bar_collapsed {
-                // 收起后留一个小按钮，点一下再拿出来
-                let screen = ctx.screen_rect();
-                let pos = egui::pos2(LEFT_W + inset + 10.0, screen.bottom() - 44.0);
-                egui::Area::new(egui::Id::new("bar_restore"))
-                    .order(egui::Order::Middle)
-                    .fixed_pos(pos)
-                    .show(ctx, |ui| {
-                        let b = egui::Button::new(
-                            RichText::new("播放栏").size(10.0).color(accent()),
-                        )
-                        .fill(Color32::TRANSPARENT)
-                        .stroke(line(accent(), 140))
-                        .rounding(Rounding::same(8.0))
-                        .min_size(egui::vec2(92.0, 30.0));
-                        if ui.add(b).on_hover_text("把播放栏拿回来").clicked() {
-                            self.bar_collapsed = false;
-                            self.cfg.bar_collapsed = false;
-                            self.cfg.save();
-                        }
-                    });
-            } else {
-            let screen = ctx.screen_rect();
-            let bar_h = self.bar_h;
-            let bar_pad = 26.0;
-            // 三个大页共用一个宽度：切页时播放栏不跳；宽度可左右拉伸
-            let avail = (screen.width() - LEFT_W - inset * 2.0 - bar_pad * 2.0).max(240.0);
-            let bar_w = self
-                .bar_w
-                .clamp(BAR_W_MIN.min(avail), BAR_W_MAX.min(avail));
-            let default_pos = egui::pos2(
-                LEFT_W + inset + bar_pad,
-                screen.bottom() - bar_h - BAR_MARGIN - inset,
-            );
-            let (mut bx, mut by) = self
-                .bar_pos
-                .unwrap_or((default_pos.x, default_pos.y));
-            bx = bx.clamp(
-                screen.left() + 4.0,
-                (screen.right() - bar_w - 4.0).max(screen.left() + 4.0),
-            );
-            by = by.clamp(
-                TITLEBAR_H + 4.0,
-                (screen.bottom() - bar_h - 4.0).max(TITLEBAR_H + 4.0),
-            );
-            if self.bar_pos.is_some() {
-                self.bar_pos = Some((bx, by));
-            }
-            self.bar_draw_pos = (bx, by);
-            // 收窄后背景全透明，不再压一层深色
-            let bar_fill = if bar_w < BAR_W - 1.0 {
-                Color32::TRANSPARENT
-            } else {
-                tint(BG, 150)
-            };
-            egui::Area::new(egui::Id::new("player_float"))
-                .order(egui::Order::Middle)
-                .fixed_pos(egui::pos2(bx, by))
-                .show(ctx, |ui| {
-                    ui.set_width(bar_w);
-                    let frame = egui::Frame::none()
-                        .fill(bar_fill)
-                        .rounding(Rounding::same(14.0))
-                        .inner_margin(egui::Margin::symmetric(12.0, 8.0));
-                    // 不投阴影：底下那条暗带会被误认成"有东西挡着"
-                    frame.show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        self.player_bar(ui);
-                    });
-                });
-            }
-        }
-        if do_add_task {
-            self.add_task();
-        }
-        if do_start {
-            self.start_batch(ctx);
         }
 
         // 大图封面：开/关都带缩放动画（用户要的"放大变小"）
@@ -1745,6 +1644,9 @@ pub(crate) fn apply_backdrop() -> bool {
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
+    set_zoom(if screen_logical_height() >= 1150.0 { 1.2 } else { 1.0 });
 
     // 只有 GUI 模式做单实例检查；任何 --xxx 命令行模式都允许多开
     let cli_mode = args
@@ -2004,8 +1906,8 @@ fn main() -> eframe::Result<()> {
     // 启动时按配置里的窗口尺寸开窗（设置页里改了就立刻改窗口）
     let (win_w, win_h) = settings::Settings::load().window.size_px();
     let mut viewport = egui::ViewportBuilder::default()
-            .with_inner_size([1562.0 * BASE_ZOOM, 700.0 * BASE_ZOOM])
-            .with_min_inner_size([1330.0 * BASE_ZOOM, 600.0 * BASE_ZOOM])
+            .with_inner_size([win_w / zoom(), win_h / zoom()])
+            .with_min_inner_size([1120.0, 600.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_title(APP_NAME);

@@ -58,15 +58,18 @@ impl WindowSize {
         }
     }
     /// 返回 (宽, 高)，单位是物理像素。
-    /// 五列固定宽度合计 1339px；歌曲列表的每一行还要放封面+标题+徽章，
-    /// 低于 1800 就会挤在一起。
+    ///
+    /// 档位本身是**逻辑点**（1080p 上 1 点 = 1 像素），再乘当前界面缩放：
+    /// 2K 上 1.2 倍、1080p 上 1.0 倍，同一档在两种屏上都不会顶出工作区。
+    /// 调用方发 `InnerSize` 时再除回缩放（egui 会自己乘一次）。
     pub fn size_px(self) -> (f32, f32) {
-        match self {
-            WindowSize::Compact => (1800.0, 780.0),
-            WindowSize::Normal => (1874.0, 840.0),
-            WindowSize::Large => (2000.0, 900.0),
-            WindowSize::Huge => (2200.0, 1100.0),
-        }
+        let (w, h) = match self {
+            WindowSize::Compact => (1160.0, 660.0),
+            WindowSize::Normal => (1260.0, 700.0),
+            WindowSize::Large => (1380.0, 760.0),
+            WindowSize::Huge => (1580.0, 880.0),
+        };
+        (w * crate::zoom(), h * crate::zoom())
     }
     pub fn all() -> [WindowSize; 4] {
         [

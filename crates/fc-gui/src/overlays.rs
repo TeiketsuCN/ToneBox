@@ -491,7 +491,7 @@ impl App {
                                 });
                                 ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("窗口固定尺寸：小 1800×780，中 1874×840，大 2000×900，超大 2200×1100")
+                                    RichText::new("窗口固定尺寸：小 1160×660，中 1260×700，大 1380×760，超大 1580×880（随屏幕自动缩放）")
                                         .size(9.0)
                                         .color(DIM),
                                 );
@@ -655,26 +655,32 @@ impl App {
         }
     }
 
-    /// 标题栏铃铛下面拉出来的通知面板
+    /// 标题栏那个小圆点（进度环）点开的面板：活动中心。
+    ///
+    /// 原来这里是"通知"面板；「任务」列被砍掉之后，任务的列表、开始按钮、
+    /// 正在跑的进度都搬到这里——一处看全部"正在发生什么"。
+    /// 底下保留通知列表，转换完成/失败仍然记在这。
     pub(crate) fn notices_overlay(&mut self, ctx: &egui::Context) {
         if !self.notices_open {
             return;
         }
         let screen = ctx.screen_rect();
-        let w = 330.0f32;
+        let w = 372.0f32;
         let x = self
             .bell_rect
             .left()
             .clamp(screen.left() + 12.0, screen.right() - w - 12.0);
+        let max_h = (screen.height() - TITLEBAR_H - 40.0).max(240.0);
         let mut panel_rect = egui::Rect::NOTHING;
         egui::Area::new(egui::Id::new("notices_area"))
-            .fixed_pos(egui::pos2(x, screen.top() + TITLEBAR_H + 6.0))
+            // 离标题栏留 12：贴着画的话点按钮容易点进最小化
+            .fixed_pos(egui::pos2(x - 8.0, screen.top() + TITLEBAR_H + 12.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 let inner = egui::Frame::none()
                     .fill(tint(BG, 248))
                     .stroke(Stroke::new(1.0, tint(Color32::WHITE, 26)))
-                    .rounding(Rounding::same(12.0))
+                    .rounding(Rounding::same(14.0))
                     .shadow(egui::epaint::Shadow {
                         offset: egui::vec2(0.0, 6.0),
                         blur: 20.0,
@@ -684,8 +690,103 @@ impl App {
                     .inner_margin(egui::Margin::symmetric(14.0, 12.0))
                     .show(ui, |ui| {
                         ui.set_width(w - 28.0);
+                        ui.set_max_height(max_h);
+
+                        // ── 头：活动 + 开始转换 ──
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("通知").size(12.0).color(TEXT).strong());
+                            ui.label(RichText::new("活动").size(12.5).color(TEXT).strong());
+                            let pending = self
+                                .tasks
+                                .iter()
+                                .filter(|t| matches!(t.state, State::Pending))
+                                .count();
+                            if pending > 0 && !self.running {
+                                ui.label(
+                                    RichText::new(format!("{pending} 个待转换"))
+                                        .size(9.0)
+                                        .color(DIM),
+                                );
+                            }
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let can = !self.running
+                                    && self.tools.is_some()
+                                    && pending > 0;
+                                let (label, col) = if self.running {
+                                    (
+                                        format!("{:.0}%", self.overall() * 100.0),
+                                        accent(),
+                                    )
+                                } else {
+                                    ("开始转换".to_string(), if can { on_accent() } else { DIM })
+                                };
+                                let b = egui::Button::new(RichText::new(label).size(10.0).color(col))
+                                    .fill(if can {
+                                        accent()
+                                    } else {
+                                        tint(Color32::WHITE, 12)
+                                    })
+                                    .stroke(Stroke::NONE)
+                                    .rounding(Rounding::same(8.0))
+                                    .min_size(egui::vec2(76.0, 24.0));
+                                if ui
+                                    .add_enabled(can || self.running, b)
+                                    .on_hover_text("把任务列表里待转换的文件都转掉")
+                                    .clicked()
+                                    && can
+                                {
+                                    self.start_batch(ui.ctx());
+                                }
+                            });
+                        });
+                        ui.add_space(8.0);
+
+                        // ── 任务列表（原「任务」列的内容）──
+                        egui::ScrollArea::vertical()
+                            .id_salt("activity_tasks")
+                            .max_height((max_h * 0.52).max(120.0))
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                self.task_list(ui);
+                            });
+
+                        ui.add_space(10.0);
+                        self.hairline(ui);
+                        ui.add_space(8.0);
+
+                        // ── 缓存：现在手上有多少东西是算好的 ──
+                        let waves = if self.wave.is_some() { 1 } else { 0 };
+                        let analyzed = self
+                            .items
+                            .iter()
+                            .filter(|i| matches!(i.analysis, Analysis::Done(_)))
+                            .count();
+                        let covers = self.items.iter().filter(|i| i.cover.is_some()).count();
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("缓存").size(9.5).color(MUTED));
+                            ui.add_space(6.0);
+                            ui.label(
+                                RichText::new(format!(
+                                    "波形 {waves} · 分析 {analyzed} · 封面 {covers} · 库 {} 首",
+                                    self.lib_entries.len()
+                                ))
+                                .size(9.0)
+                                .color(DIM),
+                            );
+                        });
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("波形/分析/封面都是按需算的，关掉就没了")
+                                .size(8.5)
+                                .color(DIM),
+                        );
+
+                        ui.add_space(10.0);
+                        self.hairline(ui);
+                        ui.add_space(8.0);
+
+                        // ── 通知 ──
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("通知").size(10.5).color(MUTED));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if !self.notices.is_empty()
                                     && ui
@@ -702,33 +803,25 @@ impl App {
                                 }
                             });
                         });
-                        ui.add_space(6.0);
+                        ui.add_space(4.0);
                         if self.notices.is_empty() {
-                            para(
-                                ui,
-                                "还没有通知。转换完成或失败都会在这里记一条。",
-                                9.5,
-                                DIM,
-                            );
+                            para(ui, "还没有通知。转换完成或失败都会记一条。", 9.0, DIM);
                         } else {
                             egui::ScrollArea::vertical()
-                                .max_height(320.0)
+                                .id_salt("activity_notices")
+                                .max_height(180.0)
                                 .auto_shrink([false, true])
                                 .show(ui, |ui| {
                                     // 新的在上面
-                                    for (i, n) in self.notices.iter().enumerate().rev() {
+                                    for i in (0..self.notices.len()).rev() {
+                                        let (ok, title, body) = {
+                                            let n = &self.notices[i];
+                                            (n.ok, n.title.clone(), n.body.clone())
+                                        };
                                         if i + 1 < self.notices.len() {
-                                            ui.add_space(3.0);
-                                            let (r, _) = ui.allocate_exact_size(
-                                                egui::vec2(ui.available_width(), 1.0),
-                                                egui::Sense::hover(),
-                                            );
-                                            ui.painter().rect_filled(
-                                                r,
-                                                Rounding::ZERO,
-                                                tint(Color32::WHITE, 14),
-                                            );
-                                            ui.add_space(5.0);
+                                            ui.add_space(6.0);
+                                            self.hairline(ui);
+                                            ui.add_space(6.0);
                                         }
                                         ui.horizontal(|ui| {
                                             let (dot, _) = ui.allocate_exact_size(
@@ -738,16 +831,16 @@ impl App {
                                             ui.painter().circle_filled(
                                                 dot.center(),
                                                 3.0,
-                                                if n.ok { accent() } else { DANGER },
+                                                if ok { accent() } else { DANGER },
                                             );
                                             ui.vertical(|ui| {
                                                 ui.label(
-                                                    RichText::new(&n.title)
-                                                        .size(10.5)
-                                                        .color(if n.ok { accent() } else { DANGER }),
+                                                    RichText::new(title)
+                                                        .size(10.0)
+                                                        .color(if ok { accent() } else { DANGER }),
                                                 );
-                                                ui.add_space(2.0);
-                                                para(ui, &n.body, 9.0, MUTED);
+                                                ui.add_space(1.0);
+                                                para(ui, &body, 8.5, MUTED);
                                             });
                                         });
                                     }
@@ -757,7 +850,7 @@ impl App {
                 panel_rect = inner.response.rect;
             });
 
-        // Esc / 点面板外面关掉（铃铛自己不算"外面"，不然点它会把面板又开又关）
+        // Esc / 点面板外面关掉（圆点自己不算"外面"，不然点它会把面板又开又关）
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.notices_open = false;
         } else if ctx.input(|i| i.pointer.any_click()) {
@@ -767,6 +860,16 @@ impl App {
                 }
             }
         }
+    }
+
+    /// 一块 1px 的分隔线（面板里到处要用）
+    fn hairline(&self, ui: &mut egui::Ui) {
+        let (r, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), 1.0),
+            egui::Sense::hover(),
+        );
+        ui.painter()
+            .rect_filled(r, Rounding::ZERO, tint(Color32::WHITE, 16));
     }
 
 }

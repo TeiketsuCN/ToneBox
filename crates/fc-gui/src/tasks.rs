@@ -19,33 +19,26 @@ use crate::output::*;
 use crate::library::*;
 use crate::overlays::*;
 
-/// 「添加任务」按钮：和开始转换同样大小，但用次要配色
-pub(crate) fn add_task_button(ui: &mut egui::Ui, can: bool) -> bool {
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(w, 40.0),
-        if can { egui::Sense::click() } else { egui::Sense::hover() },
-    );
-    let p = ui.painter();
-    let bg = if !can {
-        tint(Color32::WHITE, 14)
-    } else if resp.hovered() {
-        blend(accent(), Color32::WHITE, 0.12)
-    } else {
+/// 标题行里的「＋ 任务」小按钮：宽度跟着文字走，不占整行
+pub(crate) fn add_task_pill(ui: &mut egui::Ui, can: bool) -> bool {
+    let b = egui::Button::new(
+        RichText::new("＋ 任务")
+            .size(9.5)
+            .color(if can { on_accent() } else { DIM }),
+    )
+    .fill(if can {
         accent()
-    };
-    p.rect_filled(rect, Rounding::same(10.0), bg);
-    p.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        "添加任务",
-        FontId::proportional(12.5),
-        if can { on_accent() } else { DIM },
-    );
-    if can && resp.hovered() {
+    } else {
+        tint(Color32::WHITE, 12)
+    })
+    .stroke(Stroke::NONE)
+    .rounding(Rounding::same(7.0))
+    .min_size(egui::vec2(58.0, 20.0));
+    let r = ui.add_enabled(can, b);
+    if can && r.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    can && resp.clicked()
+    r.on_hover_text("把选中的文件按当前参数加进任务").clicked() && can
 }
 
 impl App {
