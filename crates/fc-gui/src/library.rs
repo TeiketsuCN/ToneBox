@@ -143,6 +143,84 @@ impl App {
             .collect();
         let playing_path = self.player_for.clone();
 
+        // 选中歌曲的详情条：封面 + 标签 + 格式 + 路径，直接能播放/定位文件
+        let mut lib_play: Option<PathBuf> = None;
+        let mut lib_reveal: Option<PathBuf> = None;
+        if let Some(sel) = self.lib_selected.clone() {
+            if let Some(idx) = self.lib_entries.iter().position(|e| e.path == sel) {
+                egui::TopBottomPanel::bottom("lib_detail")
+                    .resizable(false)
+                    .show_separator_line(false)
+                    .frame(
+                        egui::Frame::none()
+                            .fill(tint(BG, 120))
+                            .inner_margin(egui::Margin::symmetric(10.0, 8.0)),
+                    )
+                    .show_inside(ui, |ui| {
+                        let e = &self.lib_entries[idx];
+                        ui.horizontal(|ui| {
+                            if let Some(t) = self.lib_covers.get(&e.path).and_then(|o| o.as_ref()) {
+                                let img = egui::Image::new(t)
+                                    .fit_to_exact_size(egui::vec2(56.0, 56.0))
+                                    .rounding(Rounding::same(7.0));
+                                ui.add(img);
+                            } else {
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(56.0, 56.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(r, Rounding::same(7.0), tint(Color32::WHITE, 10));
+                            }
+                            ui.add_space(4.0);
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new(&e.title).size(11.5).color(TEXT).strong());
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} · {} · {}",
+                                        if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
+                                        if e.album.is_empty() { "未知专辑" } else { &e.album },
+                                        if e.genre.is_empty() { "未知风格" } else { &e.genre }
+                                    ))
+                                    .size(9.0)
+                                    .color(MUTED),
+                                );
+                                let bits = e.bits.map(|b| format!(" / {b} bit")).unwrap_or_default();
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} · {} kbps · {} Hz{}",
+                                        e.codec.to_uppercase(),
+                                        e.bitrate_kbps,
+                                        e.sample_rate,
+                                        bits
+                                    ))
+                                    .size(8.5)
+                                    .color(DIM),
+                                );
+                                ui.label(
+                                    RichText::new(e.path.display().to_string())
+                                        .size(8.0)
+                                        .color(DIM),
+                                );
+                            });
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button(RichText::new("在文件夹中显示").size(9.0)).clicked() {
+                                    lib_reveal = Some(e.path.clone());
+                                }
+                                if ui.button(RichText::new("播放").size(9.0)).clicked() {
+                                    lib_play = Some(e.path.clone());
+                                }
+                            });
+                        });
+                    });
+            }
+        }
+        if let Some(p) = lib_play {
+            self.play_path(p, ctx);
+        }
+        if let Some(p) = lib_reveal {
+            reveal_in_explorer(&p);
+        }
+
         let mut clicked: Option<usize> = None;
         let mut requests: Vec<PathBuf> = Vec::new();
         egui::ScrollArea::vertical()
@@ -180,7 +258,17 @@ impl App {
                                 requests.push(e.path.clone());
                             }
                             let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
-                            if lib_row(ui, e, pl, sel, tex).clicked() {
+                            let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
+                                "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
+                                e.title,
+                                if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
+                                if e.album.is_empty() { "未知专辑" } else { &e.album },
+                                e.bitrate_kbps,
+                                e.sample_rate,
+                                e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
+                                e.path.display()
+                            ));
+                            if row.clicked() {
                                 clicked = Some(i);
                             }
                         }
@@ -224,7 +312,17 @@ impl App {
                                 requests.push(e.path.clone());
                             }
                             let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
-                            if lib_row(ui, e, pl, sel, tex).clicked() {
+                            let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
+                                "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
+                                e.title,
+                                if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
+                                if e.album.is_empty() { "未知专辑" } else { &e.album },
+                                e.bitrate_kbps,
+                                e.sample_rate,
+                                e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
+                                e.path.display()
+                            ));
+                            if row.clicked() {
                                 clicked = Some(i);
                             }
                         }
@@ -790,4 +888,11 @@ pub(crate) fn spawn_lib_cover(
         });
         let _ = tx.send((path, payload));
     });
+}
+
+/// 在资源管理器里定位文件
+pub(crate) fn reveal_in_explorer(path: &Path) {
+    let _ = std::process::Command::new("explorer.exe")
+        .arg(format!("/select,{}", path.display()))
+        .spawn();
 }
