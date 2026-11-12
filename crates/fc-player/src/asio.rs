@@ -130,9 +130,38 @@ extern "system" {
     ) -> i32;
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Msg {
+    hwnd: *mut c_void,
+    message: u32,
+    wparam: usize,
+    lparam: isize,
+    time: u32,
+    pt_x: i32,
+    pt_y: i32,
+}
+
 #[link(name = "user32")]
 extern "system" {
     fn GetDesktopWindow() -> *mut c_void;
+    fn CreateWindowExW(
+        ex: u32,
+        class: *const u16,
+        name: *const u16,
+        style: u32,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        parent: *mut c_void,
+        menu: *mut c_void,
+        inst: *mut c_void,
+        param: *mut c_void,
+    ) -> *mut c_void;
+    fn PeekMessageW(msg: *mut Msg, hwnd: *mut c_void, min: u32, max: u32, remove: u32) -> i32;
+    fn TranslateMessage(msg: *const Msg) -> i32;
+    fn DispatchMessageW(msg: *const Msg) -> isize;
 }
 
 #[link(name = "kernel32")]
@@ -214,7 +243,7 @@ fn reg_string(buf: &[u8], len: u32) -> String {
 /// 会返回 REGDB_E_CLASSNOTREG。这时退一步：直接 LoadLibrary 驱动 DLL，
 /// 调它的 DllGetClassObject 拿 IClassFactory 再 CreateInstance——不用改注册表，
 /// 也不需要管理员权限。
-unsafe fn create_object(clsid: Guid) -> Result<(*mut c_void, isize)> {
+unsafe fn create_object(clsid: Guid, dll: Option<&std::path::Path>) -> Result<(*mut c_void, isize)> {
     let mut obj: *mut c_void = std::ptr::null_mut();
     let rc = CoCreateInstance(
         &clsid,
@@ -234,6 +263,9 @@ unsafe fn create_object(clsid: Guid) -> Result<(*mut c_void, isize)> {
         dirs.push(format!("{w}\\SysWOW64"));
     }
     let mut dlls: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(p) = dll {
+        dlls.push(p.to_path_buf());
+    }
     for d in dirs {
         if let Ok(rd) = std::fs::read_dir(&d) {
             for e in rd.flatten() {
@@ -268,9 +300,26 @@ unsafe fn create_object(clsid: Guid) -> Result<(*mut c_void, isize)> {
             FreeLibrary(lib);
             continue;
         }
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] factory ok");
+        }
         let vt = *(factory as *mut *const ClassFactoryVtbl);
         let mut obj2: *mut c_void = std::ptr::null_mut();
-        let hr = ((*vt).create_instance)(factory, std::ptr::null_mut(), &clsid, &mut obj2);
+        let mut hr = ((*vt).create_instance)(factory, std::ptr::null_mut(), &clsid, &mut obj2);
+        if hr != S_OK || obj2.is_null() {
+            // 标准 COM 工厂要的是 IID_IUnknown（ASIO4ALL 这种就是），
+            // 而 ASIO SDK 里的驱动是按"CLSID 当 IID"实现的——两种都试一遍。
+            let iid_unknown = Guid {
+                d1: 0,
+                d2: 0,
+                d3: 0,
+                d4: [0xC0, 0, 0, 0, 0, 0, 0, 0x46],
+            };
+            hr = ((*vt).create_instance)(factory, std::ptr::null_mut(), &iid_unknown, &mut obj2);
+        }
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] create hr=0x{hr:08X} obj={obj2:?}");
+        }
         ((*vt).release)(factory);
         if hr == S_OK && !obj2.is_null() {
             return Ok((obj2, lib));
@@ -312,6 +361,8 @@ pub struct AsioDriver {
     pub name: String,
     pub description: String,
     pub clsid: Guid,
+    /// 便携驱动：直接指向 DLL（没在注册表登记也能用）
+    pub dll: Option<std::path::PathBuf>,
 }
 
 /// 枚举本机的 ASIO 驱动（32/64 位注册表都看一遍）
@@ -405,9 +456,45 @@ pub fn list_drivers() -> Vec<AsioDriver> {
                     name: drv_name,
                     description,
                     clsid,
+                    dll: None,
                 });
             }
             RegCloseKey(key);
+        }
+    }
+
+    // 便携驱动：把 *.dll 丢进 `%APPDATA%\FormatConverter\asio\` 或程序目录的 `asio\`，
+    // 不装驱动、不要管理员也能被认到（ASIO4ALL 的 DLL 直接就能用）。
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        dirs.push(std::path::PathBuf::from(appdata).join("FormatConverter").join("asio"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(d) = exe.parent() {
+            dirs.push(d.join("asio"));
+        }
+    }
+    for dir in dirs {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let path = e.path();
+            let fname = path.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+            if !fname.ends_with(".dll") {
+                continue;
+            }
+            if out.iter().any(|d| d.dll.as_ref() == Some(&path)) {
+                continue;
+            }
+            let shown = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| fname.clone());
+            out.push(AsioDriver {
+                name: format!("{shown}（便携）"),
+                description: format!("便携 ASIO 驱动：{}", path.display()),
+                clsid: Guid::default(),
+                dll: Some(path),
+            });
         }
     }
     out
@@ -516,16 +603,23 @@ pub fn start(
     inner: Arc<Inner>,
 ) -> Result<(Out, u32, u16, String)> {
     let drivers = list_drivers();
-    let drv = match driver_name.filter(|s| !s.is_empty()) {
-        Some(want) => drivers
-            .iter()
-            .find(|d| d.name == want || d.description == want)
-            .or_else(|| drivers.first()),
-        None => drivers.first(),
-    }
-    .ok_or_else(|| anyhow!("这台机器没装 ASIO 驱动"))?;
+    // 便携驱动不自动优先：它们的 init 有可能把宿主进程带崩（ASIO4ALL 实测会崩），
+    // 必须按名字显式选中才用。
+    let drv = drivers
+        .iter()
+        .find(|d| {
+            driver_name
+                .filter(|s| !s.is_empty())
+                .map(|w| d.name == w || w == d.description)
+                .unwrap_or(false)
+        })
+        .or_else(|| drivers.iter().find(|d| d.dll.is_none()))
+        .or_else(|| drivers.first());
+    let drv = drv.ok_or_else(|| anyhow!("这台机器没装 ASIO 驱动"))?;
 
     let clsid = drv.clsid;
+
+    let dll = drv.dll.clone();
     let label_name = if drv.description.is_empty() {
         drv.name.clone()
     } else {
@@ -536,7 +630,7 @@ pub fn start(
     let stop_thread = stop.clone();
 
     let handle = std::thread::spawn(move || {
-        if let Err(e) = open_and_run(clsid, label_name, source_rate, inner, stop_thread, &tx) {
+        if let Err(e) = open_and_run(dll, clsid, label_name, source_rate, inner, stop_thread, &tx) {
             let _ = tx.send(Err(e));
         }
     });
@@ -563,6 +657,7 @@ pub fn start(
 }
 
 fn open_and_run(
+    dll: Option<std::path::PathBuf>,
     clsid: Guid,
     label_name: String,
     source_rate: u32,
@@ -575,7 +670,7 @@ fn open_and_run(
         let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
         let need_uninit = hr == S_OK;
 
-        let (obj, lib) = match create_object(clsid) {
+        let (obj, lib) = match create_object(clsid, dll.as_deref()) {
             Ok(v) => v,
             Err(e) => {
                 if need_uninit {
@@ -588,7 +683,22 @@ fn open_and_run(
         let vt = &*vt;
 
         // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
-        let hwnd = GetDesktopWindow();
+        // 有些 ASIO 驱动要一个**属于本线程、有消息泵**的窗口（它们的回调靠这个窗口的消息）
+        let hwnd = CreateWindowExW(
+            0,
+            wide("STATIC").as_ptr(),
+            wide("ToneBox ASIO").as_ptr(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        let hwnd = if hwnd.is_null() { GetDesktopWindow() } else { hwnd };
         let init_rc = (vt.init)(obj, hwnd);
         if std::env::var("FC_ASIO_DEBUG").is_ok() {
             eprintln!("[asio] init rc={init_rc}");
@@ -761,17 +871,27 @@ fn open_and_run(
 pub fn probe() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for d in list_drivers() {
-        let status = probe_one(d.clsid);
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] probing {} (dll={:?})", d.name, d.dll);
+        }
+        let status = if d.dll.is_some() {
+            "便携驱动（免安装）：选中后播放时验证".to_string()
+        } else {
+            probe_one(d.clsid, None)
+        };
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] -> {status}");
+        }
         out.push((d.name, status));
     }
     out
 }
 
-fn probe_one(clsid: Guid) -> String {
+fn probe_one(clsid: Guid, dll: Option<std::path::PathBuf>) -> String {
     unsafe {
         let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
         let need_uninit = hr == S_OK;
-        let (obj, lib) = match create_object(clsid) {
+        let (obj, lib) = match create_object(clsid, dll.as_deref()) {
             Ok(v) => v,
             Err(e) => {
                 if need_uninit {
@@ -783,7 +903,22 @@ fn probe_one(clsid: Guid) -> String {
         let vt = *(obj as *mut *const AsioVtbl);
         let vt = &*vt;
         // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
-        let hwnd = GetDesktopWindow();
+        // 有些 ASIO 驱动要一个**属于本线程、有消息泵**的窗口（它们的回调靠这个窗口的消息）
+        let hwnd = CreateWindowExW(
+            0,
+            wide("STATIC").as_ptr(),
+            wide("ToneBox ASIO").as_ptr(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        let hwnd = if hwnd.is_null() { GetDesktopWindow() } else { hwnd };
         let init_rc = (vt.init)(obj, hwnd);
         if std::env::var("FC_ASIO_DEBUG").is_ok() {
             eprintln!("[asio] init rc={init_rc}");
@@ -798,17 +933,36 @@ fn probe_one(clsid: Guid) -> String {
             }
             return "init 失败（可能被别的程序占用）".to_string();
         }
+        let dbg = std::env::var("FC_ASIO_DEBUG").is_ok();
         let (mut ins, mut outs) = (0i32, 0i32);
+        if dbg {
+            eprintln!("[asio] probe: getChannels...");
+        }
         (vt.get_channels)(obj, &mut ins, &mut outs);
+        if dbg {
+            eprintln!("[asio] probe: channels in={ins} out={outs}");
+        }
         let rate = (vt.set_sample_rate)(obj, 48_000.0);
+        if dbg {
+            eprintln!("[asio] probe: setSampleRate={rate}");
+        }
         let label = if rate == ASIO_OK {
             format!("可用 · {outs} 输出声道")
         } else {
             format!("驱动在，但报告无硬件（setSampleRate={rate}，{outs} 声道）")
         };
+        if dbg {
+            eprintln!("[asio] probe: release obj");
+        }
         (vt.release)(obj);
+        if dbg {
+            eprintln!("[asio] probe: free lib {lib}");
+        }
         if lib != 0 {
             FreeLibrary(lib);
+        }
+        if dbg {
+            eprintln!("[asio] probe: couninit {need_uninit}");
         }
         if need_uninit {
             CoUninitialize();
@@ -861,7 +1015,7 @@ pub fn open_control_panel() -> Result<()> {
     unsafe {
         let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
         let need_uninit = hr == S_OK;
-        let (obj, lib) = create_object(drv.clsid)?;
+        let (obj, lib) = create_object(drv.clsid, drv.dll.as_deref())?;
         let vt = *(obj as *mut *const AsioVtbl);
         let vt = &*vt;
         (vt.init)(obj, std::ptr::null_mut());
