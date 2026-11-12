@@ -101,6 +101,7 @@ impl App {
                         self.devices_loaded = false;
                         self.audio_devices.clear();
                         self.devices_error = None;
+                        self.asio_status = None; // ASIO 也重新探一次
                     }
                 });
                 ui.add_space(4.0);
@@ -396,6 +397,27 @@ impl App {
             asio_ok,
         ) {
             picked = fc_player::Engine::Asio;
+        }
+        // 驱动说"没硬件"时，多半要在它自己的控制面板里选一次输出设备
+        if !asio_ok && !asio_msg.starts_with("没装") {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.add_space(26.0);
+                if tiny_text_button(ui, "打开 ASIO 控制面板") {
+                    #[cfg(windows)]
+                    match fc_player::asio::open_control_panel() {
+                        Ok(()) => {
+                            self.asio_status = None; // 面板关掉后重新探测
+                        }
+                        Err(e) => self.asio_status = Some((false, format!("控制面板：{e}"))),
+                    }
+                }
+                ui.label(
+                    RichText::new("选好输出设备后点右上角「重新检测」")
+                        .size(8.5)
+                        .color(DIM),
+                );
+            });
         }
         // Core Audio：macOS 上是真的；Windows 上是兼容层（底下 WASAPI）
         let ca_note = fc_player::core_audio::status_line();

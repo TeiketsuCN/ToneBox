@@ -130,6 +130,11 @@ extern "system" {
     ) -> i32;
 }
 
+#[link(name = "user32")]
+extern "system" {
+    fn GetDesktopWindow() -> *mut c_void;
+}
+
 #[link(name = "kernel32")]
 extern "system" {
     fn LoadLibraryW(path: *const u16) -> isize;
@@ -577,7 +582,9 @@ fn open_and_run(
         let vt = *(obj as *mut *const AsioVtbl);
         let vt = &*vt;
 
-        if (vt.init)(obj, std::ptr::null_mut()) == 0 {
+        // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
+        let hwnd = GetDesktopWindow();
+        if (vt.init)(obj, hwnd) == 0 {
             (vt.release)(obj);
             if need_uninit {
                 CoUninitialize();
@@ -766,7 +773,9 @@ fn probe_one(clsid: Guid) -> String {
         };
         let vt = *(obj as *mut *const AsioVtbl);
         let vt = &*vt;
-        if (vt.init)(obj, std::ptr::null_mut()) == 0 {
+        // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
+        let hwnd = GetDesktopWindow();
+        if (vt.init)(obj, hwnd) == 0 {
             (vt.release)(obj);
             if lib != 0 {
                 FreeLibrary(lib);
@@ -829,4 +838,31 @@ mod tests {
         assert!(parse_guid("not-a-guid").is_none());
         assert!(parse_guid("{1234}").is_none());
     }
+}
+/// 打开驱动的控制面板（很多驱动要先在里面选一次输出设备/时钟，才肯开流）。
+/// 会弹驱动自己的窗口，调用方在 UI 线程里调。
+pub fn open_control_panel() -> Result<()> {
+    let Some(drv) = list_drivers().into_iter().next() else {
+        return Err(anyhow!("这台机器没装 ASIO 驱动"));
+    };
+    unsafe {
+        let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
+        let need_uninit = hr == S_OK;
+        let (obj, lib) = create_object(drv.clsid)?;
+        let vt = *(obj as *mut *const AsioVtbl);
+        let vt = &*vt;
+        (vt.init)(obj, std::ptr::null_mut());
+        let rc = (vt.control_panel)(obj);
+        (vt.release)(obj);
+        if lib != 0 {
+            FreeLibrary(lib);
+        }
+        if need_uninit {
+            CoUninitialize();
+        }
+        if rc != ASIO_OK {
+            return Err(anyhow!("控制面板打不开（{rc}）"));
+        }
+    }
+    Ok(())
 }
