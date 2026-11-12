@@ -12,10 +12,14 @@
 //! 用有界队列做背压：解码比播放快时，解码线程会阻塞，不会撑爆内存。
 
 pub mod devices;
+pub mod coreaudio;
 #[cfg(windows)]
 mod exclusive;
 #[cfg(windows)]
 pub mod asio;
+pub use coreaudio as core_audio;
+#[cfg(windows)]
+pub mod native;
 
 use std::collections::VecDeque;
 use std::io::Read;
@@ -139,6 +143,8 @@ enum Output {
     Exclusive(exclusive::Out),
     #[cfg(windows)]
     Asio(asio::Out),
+    #[cfg(windows)]
+    Native(native::Out),
 }
 
 pub struct Player {
@@ -218,6 +224,67 @@ impl Player {
         duration_s: f64,
         opts: &PlayOptions,
     ) -> Result<Self> {
+        #[cfg(windows)]
+        if opts.engine == Engine::CoreAudio {
+            // Windows 上的 Core Audio = 兼容层：对象模型照 Core Audio 走，
+            // 底下还是 WASAPI。声音上和自研引擎同一条管线，只是标签说实话。
+            let inner = Arc::new(Inner::new(opts.source_rate.max(8_000), 2, opts.gain()));
+            match native::start(opts.device_name.as_deref(), opts.source_rate, inner.clone()) {
+                Ok((out, rate, ch, label)) => {
+                    inner.set_format(rate, ch);
+                    let mut p = Player {
+                        inner,
+                        output: Output::Native(out),
+                        ffmpeg: ffmpeg.to_path_buf(),
+                        path: path.to_path_buf(),
+                        generation: Arc::new(AtomicU64::new(0)),
+                        my_gen: 0,
+                        duration_s,
+                        paused: false,
+                        output_label: label.replace("自研引擎", "Core Audio 兼容层"),
+                    };
+                    p.spawn_decoder(0.0);
+                    return Ok(p);
+                }
+                Err(e) => {
+                    let note = format!("Core Audio 兼容层不可用（{e}）· 已退回共享");
+                    return Self::open_shared(ffmpeg, path, duration_s, opts, Some(note));
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        if opts.engine == Engine::CoreAudio {
+            // macOS：cpal 的默认 host 就是 Core Audio，这条路就是真的
+            let note = format!("Core Audio（{}）", coreaudio::platform_note());
+            return Self::open_shared(ffmpeg, path, duration_s, opts, Some(note));
+        }
+        #[cfg(windows)]
+        if opts.engine == Engine::Native {
+            // 自研引擎：自己的重采样 + 环形缓冲 + WASAPI 共享写设备
+            let inner = Arc::new(Inner::new(opts.source_rate.max(8_000), 2, opts.gain()));
+            match native::start(opts.device_name.as_deref(), opts.source_rate, inner.clone()) {
+                Ok((out, rate, ch, label)) => {
+                    inner.set_format(rate, ch);
+                    let mut p = Player {
+                        inner,
+                        output: Output::Native(out),
+                        ffmpeg: ffmpeg.to_path_buf(),
+                        path: path.to_path_buf(),
+                        generation: Arc::new(AtomicU64::new(0)),
+                        my_gen: 0,
+                        duration_s,
+                        paused: false,
+                        output_label: label,
+                    };
+                    p.spawn_decoder(0.0);
+                    return Ok(p);
+                }
+                Err(e) => {
+                    let note = format!("自研引擎不可用（{e}）· 已退回共享");
+                    return Self::open_shared(ffmpeg, path, duration_s, opts, Some(note));
+                }
+            }
+        }
         #[cfg(windows)]
         if opts.engine == Engine::Asio {
             // ASIO：s32 直通，和独占一样不做音量/ReplayGain
@@ -551,6 +618,8 @@ impl Drop for Player {
             Output::Exclusive(out) => out.stop(),
             #[cfg(windows)]
             Output::Asio(out) => out.stop(),
+            #[cfg(windows)]
+            Output::Native(out) => out.stop(),
         }
     }
 }

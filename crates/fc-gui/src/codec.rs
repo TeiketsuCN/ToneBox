@@ -397,27 +397,30 @@ impl App {
         ) {
             picked = fc_player::Engine::Asio;
         }
-        let mac = cfg!(target_os = "macos");
+        // Core Audio：macOS 上是真的；Windows 上是兼容层（底下 WASAPI）
+        let ca_note = fc_player::core_audio::status_line();
         if Self::engine_row(
             ui,
             "Apple Core Audio",
-            if mac { "可用" } else { "仅 macOS" },
-            if mac { GOOD } else { DIM },
-            "macOS 的系统音频层（Apple 私有，不开源）。Windows 上没有这个引擎；macOS 构建里走的就是它。",
+            if cfg!(target_os = "macos") { "可用" } else { "兼容层" },
+            if cfg!(target_os = "macos") { GOOD } else { WARN },
+            &ca_note,
             cur == fc_player::Engine::CoreAudio,
-            mac,
+            true,
         ) {
             picked = fc_player::Engine::CoreAudio;
         }
         if Self::engine_row(
             ui,
             "自研引擎",
-            "开发中",
-            WARN,
-            "自己的解码 → 重采样 → 环形缓冲 → 输出管线，不经过系统混音器。骨架已有，还没接进播放。",
+            "可用",
+            GOOD,
+            "自己的管线：s32 → f32 → 32 抽头窗函数 sinc 重采样 → 环形缓冲 → WASAPI 共享写设备，不经过 cpal。",
             cur == fc_player::Engine::Native,
-            false,
-        ) {}
+            true,
+        ) {
+            picked = fc_player::Engine::Native;
+        }
         if picked != cur {
             self.cfg.set_engine(picked);
             self.cfg.save();

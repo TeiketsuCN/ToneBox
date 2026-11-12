@@ -7,6 +7,19 @@
 > 这份文件让你 30 秒接上全部上下文。**不需要读任何聊天记录**，所有决定都在这份
 > 和它指向的文档里。
 >
+> **2026-11-12 播放引擎（五选一，在「引擎和设备 → 引擎」）**：
+> `Engine` 枚举在 `fc-player` 里：Shared / Exclusive / Asio / Native / CoreAudio，
+> 配置存 `engine` 字符串（老配置的 `exclusive_output` 会自动迁移）。
+> - **WASAPI 共享**：cpal 默认流（老路）。
+> - **WASAPI 独占**：`exclusive.rs`，s32 直通、按源采样率。
+> - **ASIO**：`asio.rs` 自己调 IASIO（注册表发现驱动 → CoCreateInstance；没注册就
+>   `LoadLibrary` + `DllGetClassObject` 兜底）。本机 Realtek ASIO 能创建、能报 2 声道，
+>   但 `setSampleRate` 返回 -1000（ASE_NotPresent），驱动自己拒绝开流 → 引擎页标「不可用」。
+> - **自研引擎**：`native.rs`，自己的 s32→f32 → 32 抽头窗函数 sinc 重采样 → 环形缓冲
+>   → WASAPI 共享写设备（不经过 cpal）。重采样有 3 个单测（升/降/同率）。
+> - **Core Audio**：macOS 构建走 cpal 的 coreaudio（真 Apple 实现）；Windows 上是
+>   **兼容层**（`coreaudio.rs`：ASBD 形状 → WASAPI），界面上照实写「不是 Apple 的实现」。
+>   自检：`format-converter.exe --engines`。
 > **2026-11-12 布局大改（最新，覆盖下文里“五列 / 悬浮播放栏 / 任务列”的描述）**：
 > - 布局从五列回到**四列**：侧栏 216 | 队列 | 详情 300 | 输出 300。**「任务」列已删除**。
 > - 播放栏不再悬浮、不再拖：**贴底一条 46px 细条**（封面 / 走带 / 标题 / 进度 / 时间），

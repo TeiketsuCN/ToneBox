@@ -1736,7 +1736,8 @@ fn main() -> eframe::Result<()> {
         // 自检：本机有哪些播放引擎可用
         #[cfg(windows)]
         print!("{}", fc_player::asio::describe());
-        let _ = &args;
+        println!("Core Audio：{}", fc_player::core_audio::status_line());
+        println!("自研引擎：可用（自己的重采样 + 环形缓冲 + WASAPI 共享）");
         let cfg_e = settings::Settings::load();
         println!("当前配置的引擎：{}", cfg_e.engine_enum().label());
         return Ok(());
