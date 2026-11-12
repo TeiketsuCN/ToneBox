@@ -25,7 +25,7 @@ use std::collections::VecDeque;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -50,10 +50,20 @@ struct Inner {
     gain: AtomicU32,
     /// 已播放的帧数（一帧 = 左右两个采样）
     pos_frames: AtomicU64,
+    /// 切歌时队列里还压着上一首的尾巴：用负偏移把新歌进度从 0 算起
+    pos_offset: AtomicI64,
     /// 已解码完毕
     eof: AtomicBool,
     channels: AtomicU32,
     sample_rate: AtomicU32,
+    /// 下一首（无缝续播）：路径 / 时长 / ReplayGain 线性增益
+    next: Mutex<Option<(PathBuf, f64, f32)>>,
+    /// 已经切到第几首（0 = 打开时的第一首）
+    track_no: AtomicU64,
+    /// 当前这首的总时长（f64 位模式）
+    cur_duration: AtomicU64,
+    /// 当前这首的路径
+    cur_path: Mutex<PathBuf>,
 }
 
 impl Inner {
@@ -64,9 +74,14 @@ impl Inner {
             volume: AtomicU32::new(0.75f32.to_bits()),
             gain: AtomicU32::new(gain.to_bits()),
             pos_frames: AtomicU64::new(0),
+            pos_offset: AtomicI64::new(0),
             eof: AtomicBool::new(false),
             channels: AtomicU32::new(channels as u32),
             sample_rate: AtomicU32::new(sample_rate),
+            next: Mutex::new(None),
+            track_no: AtomicU64::new(0),
+            cur_duration: AtomicU64::new(0.0f64.to_bits()),
+            cur_path: Mutex::new(PathBuf::new()),
         }
     }
     fn set_format(&self, sample_rate: u32, channels: u16) {
@@ -80,10 +95,23 @@ impl Inner {
         f32::from_bits(self.gain.load(Ordering::Relaxed))
     }
     fn position_s(&self) -> f64 {
-        self.pos_frames.load(Ordering::Relaxed) as f64
-            / self.sample_rate.load(Ordering::Relaxed).max(1) as f64
+        let f = self.pos_frames.load(Ordering::Relaxed) as i64
+            + self.pos_offset.load(Ordering::Relaxed);
+        f.max(0) as f64 / self.sample_rate.load(Ordering::Relaxed).max(1) as f64
+    }
+    fn set_track(&self, path: &Path, duration_s: f64, gain: f32) {
+        *self.cur_path.lock().unwrap() = path.to_path_buf();
+        self.cur_duration.store(duration_s.to_bits(), Ordering::SeqCst);
+        self.gain.store(gain.to_bits(), Ordering::SeqCst);
+    }
+    fn current_duration(&self) -> f64 {
+        f64::from_bits(self.cur_duration.load(Ordering::Relaxed))
+    }
+    fn current_path(&self) -> PathBuf {
+        self.cur_path.lock().map(|p| p.clone()).unwrap_or_default()
     }
 }
+
 
 /// 打开播放器时的选项（设备 / 采样率跟随 / ReplayGain）。
 #[derive(Clone, Debug, Default)]
@@ -448,7 +476,8 @@ impl Player {
         let inner = self.inner.clone();
         let gen_shared = self.generation.clone();
         let ffmpeg = self.ffmpeg.clone();
-        let path = self.path.clone();
+        let mut path = self.path.clone();
+        let duration_s = self.duration_s;
         let ch = inner.channels.load(Ordering::Relaxed).to_string();
         let sr = inner.sample_rate.load(Ordering::Relaxed).to_string();
 
@@ -461,57 +490,120 @@ impl Player {
             (start_s * inner.sample_rate.load(Ordering::Relaxed) as f64) as u64,
             Ordering::SeqCst,
         );
+        inner.pos_offset.store(0, Ordering::SeqCst);
+        inner.set_track(&path, duration_s, inner.gain());
 
         std::thread::spawn(move || {
-            let mut cmd = Command::new(&ffmpeg);
-            // -ss 放在 -i 前：快速定位，够用
-            cmd.args(["-v", "error", "-nostdin"])
-                .arg("-ss")
-                .arg(format!("{start_s:.3}"))
-                .arg("-i")
-                .arg(&path)
-                .args(["-map", "0:a:0", "-ac", &ch, "-ar", &sr])
-                .args(["-f", "s32le", "-"])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null());
-            #[cfg(windows)]
-            cmd.creation_flags(CREATE_NO_WINDOW);
-
-            let Ok(mut child) = cmd.spawn() else { return };
-            let Some(mut out) = child.stdout.take() else {
-                return;
-            };
-
-            let mut raw = [0u8; 16384];
+            let mut cur_path = path.clone();
+            let mut cur_start = start_s;
+            let mut first = true;
             loop {
                 if gen_shared.load(Ordering::SeqCst) != my_gen {
                     break;
                 }
-                match out.read(&mut raw) {
-                    Ok(0) => {
-                        inner.eof.store(true, Ordering::SeqCst);
-                        break;
-                    }
-                    Ok(n) => {
-                        let n = n - (n % 4);
-                        let mut q = inner.buf.lock().unwrap();
-                        // 直接压 s32le 原始字节：独占输出要原样写给声卡
-                        q.extend(&raw[..n]);
-                        // 背压：满了就放掉锁睡一会儿，绝不阻塞声卡回调
-                        while q.len() > MAX_QUEUE_BYTES && gen_shared.load(Ordering::SeqCst) == my_gen {
-                            drop(q);
-                            std::thread::sleep(Duration::from_millis(8));
-                            q = inner.buf.lock().unwrap();
+                // 上一首结束：有下一首就直接接着解码，输出流全程不停
+                if !first {
+                    let next = inner.next.lock().unwrap().take();
+                    match next {
+                        Some((p, d, g)) => {
+                            cur_path = p;
+                            cur_start = 0.0;
+                            inner.set_track(&cur_path, d, g);
+                            // 队列里还剩上一首的尾巴：进度从 0 算，先垫一个负偏移
+                            let bpf = inner.channels.load(Ordering::Relaxed).max(1) * 4;
+                            let tail_frames = inner
+                                .buf
+                                .lock()
+                                .map(|q| q.len() as i64 / bpf as i64)
+                                .unwrap_or(0);
+                            inner.pos_offset.store(-tail_frames, Ordering::SeqCst);
+                            inner.pos_frames.store(0, Ordering::SeqCst);
+                            inner.track_no.fetch_add(1, Ordering::SeqCst);
+                            inner.eof.store(false, Ordering::SeqCst);
+                        }
+                        None => {
+                            inner.eof.store(true, Ordering::SeqCst);
+                            break;
                         }
                     }
-                    Err(_) => break,
+                }
+                first = false;
+
+                let mut cmd = Command::new(&ffmpeg);
+                cmd.args(["-v", "error", "-nostdin"])
+                    .arg("-ss")
+                    .arg(format!("{cur_start:.3}"))
+                    .arg("-i")
+                    .arg(&cur_path)
+                    .args(["-map", "0:a:0", "-ac", &ch, "-ar", &sr])
+                    .args(["-f", "s32le", "-"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null());
+                #[cfg(windows)]
+                cmd.creation_flags(CREATE_NO_WINDOW);
+
+                let Ok(mut child) = cmd.spawn() else {
+                    inner.eof.store(true, Ordering::SeqCst);
+                    break;
+                };
+                let Some(mut out) = child.stdout.take() else {
+                    inner.eof.store(true, Ordering::SeqCst);
+                    break;
+                };
+
+                let mut raw = [0u8; 16384];
+                loop {
+                    if gen_shared.load(Ordering::SeqCst) != my_gen {
+                        break;
+                    }
+                    match out.read(&mut raw) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let n = n - (n % 4);
+                            let mut q = inner.buf.lock().unwrap();
+                            q.extend(&raw[..n]);
+                            // 背压：满了就放掉锁睡一会儿，绝不阻塞声卡回调
+                            while q.len() > MAX_QUEUE_BYTES
+                                && gen_shared.load(Ordering::SeqCst) == my_gen
+                            {
+                                drop(q);
+                                std::thread::sleep(Duration::from_millis(8));
+                                q = inner.buf.lock().unwrap();
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+                if gen_shared.load(Ordering::SeqCst) != my_gen {
+                    break;
                 }
             }
-            let _ = child.kill();
-            let _ = child.wait();
         });
     }
 
+    /// 预排下一首：当前这首 EOF 时，解码线程会直接接着写同一个队列，
+    /// 输出流不重启，所以同设备下是无缝的。
+    pub fn set_next(&self, path: &Path, duration_s: f64, gain_db: Option<f32>) {
+        let gain = match gain_db {
+            Some(db) if db.is_finite() => 10f32.powf(db / 20.0).clamp(0.05, 8.0),
+            _ => 1.0,
+        };
+        *self.inner.next.lock().unwrap() = Some((path.to_path_buf(), duration_s, gain));
+    }
+
+    pub fn track_no(&self) -> u64 {
+        self.inner.track_no.load(Ordering::Relaxed)
+    }
+
+    pub fn current_path(&self) -> PathBuf {
+        self.inner.current_path()
+    }
+
+    pub fn current_duration(&self) -> f64 {
+        self.inner.current_duration()
+    }
     pub fn play(&mut self) {
         if self.paused {
             self.paused = false;
@@ -527,6 +619,7 @@ impl Player {
     /// 停止并归零：下次按播放从头开始
     pub fn stop(&mut self) {
         self.pause();
+        *self.inner.next.lock().unwrap() = None;
         self.spawn_decoder(0.0);
     }
 
@@ -566,7 +659,7 @@ impl Player {
     }
 
     pub fn duration_s(&self) -> f64 {
-        self.duration_s
+        self.inner.current_duration()
     }
 
     /// 当前输出的一句话描述（给"编解码"页/播放栏看）

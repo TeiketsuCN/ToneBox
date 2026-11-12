@@ -23,6 +23,8 @@ pub(crate) enum Icon {
     Play,
     Pause,
     Stop,
+    Prev,
+    Next,
 }
 
 /// 播放栏这一帧想做点的事：播放/暂停、停止、跳转、音量、开频谱、看大图。
@@ -35,6 +37,8 @@ pub(crate) struct BarAction {
     pub volume: Option<f32>,
     pub open_spec: bool,
     pub open_cover: bool,
+    pub prev: bool,
+    pub next: bool,
 }
 
 impl BarAction {
@@ -44,6 +48,8 @@ impl BarAction {
         self.volume = o.volume.or(self.volume);
         self.open_spec |= o.open_spec;
         self.open_cover |= o.open_cover;
+        self.prev |= o.prev;
+        self.next |= o.next;
         if o.seek.is_some() {
             self.seek = o.seek;
         }
@@ -80,6 +86,9 @@ impl App {
             if resp.clicked() && has_cover {
                 act.open_cover = true;
             }
+            if icon_button(ui, Icon::Prev, false, has_player) {
+                act.prev = true;
+            }
             if icon_button(
                 ui,
                 if playing { Icon::Pause } else { Icon::Play },
@@ -87,6 +96,9 @@ impl App {
                 has_player,
             ) {
                 act.toggle = true;
+            }
+            if icon_button(ui, Icon::Next, false, has_player) {
+                act.next = true;
             }
             let right_w = 430.0;
             let mid_w = (ui.available_width() - right_w - 8.0).max(90.0);
@@ -361,6 +373,18 @@ impl App {
                 p.set_volume(v);
             }
         }
+        if act.next || act.prev {
+            let target = if act.next {
+                self.play_idx + 1
+            } else {
+                self.play_idx.saturating_sub(1)
+            };
+            if let Some(path) = self.playlist.get(target).cloned() {
+                if let Some(idx) = self.items.iter().position(|i| i.path == path) {
+                    self.start_play(idx);
+                }
+            }
+        }
         if let Some(p) = self.player.as_mut() {
             if act.toggle {
                 p.toggle();
@@ -513,19 +537,18 @@ pub(crate) fn bar_cover(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, si
         egui::Sense::hover()
     };
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), sense);
-    let p = ui.painter();
-    p.rect_filled(rect, Rounding::same(9.0), tint(Color32::WHITE, 10));
+    ui.painter()
+        .rect_filled(rect, Rounding::same(9.0), tint(Color32::WHITE, 10));
     match tex {
         Some(t) => {
-            p.image(
-                t.id(),
-                rect,
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
+            // 用 Image 控件画，才能把封面裁成圆角（和悬停描边一致）
+            let img = egui::Image::new(t)
+                .fit_to_exact_size(egui::vec2(size, size))
+                .rounding(Rounding::same(9.0));
+            ui.put(rect, img);
         }
         None => {
-            p.rect_filled(
+            ui.painter().rect_filled(
                 egui::Rect::from_center_size(rect.center(), egui::vec2(16.0, 16.0)),
                 Rounding::same(3.0),
                 tint(Color32::WHITE, 18),
@@ -533,7 +556,7 @@ pub(crate) fn bar_cover(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, si
         }
     }
     if resp.hovered() && tex.is_some() {
-        p.rect_stroke(
+        ui.painter().rect_stroke(
             rect,
             Rounding::same(9.0),
             Stroke::new(1.0, tint(Color32::WHITE, 80)),
@@ -650,6 +673,38 @@ pub(crate) fn icon_button(ui: &mut egui::Ui, icon: Icon, hot: bool, enabled: boo
             p.rect_filled(
                 egui::Rect::from_center_size(c, egui::vec2(11.0, 11.0)),
                 Rounding::same(2.0),
+                col,
+            );
+        }
+        Icon::Prev => {
+            p.add(egui::Shape::convex_polygon(
+                vec![
+                    c + egui::vec2(4.0, -6.0),
+                    c + egui::vec2(4.0, 6.0),
+                    c + egui::vec2(-5.0, 0.0),
+                ],
+                col,
+                Stroke::NONE,
+            ));
+            p.rect_filled(
+                egui::Rect::from_min_size(c + egui::vec2(-8.0, -6.0), egui::vec2(2.0, 12.0)),
+                Rounding::same(1.0),
+                col,
+            );
+        }
+        Icon::Next => {
+            p.add(egui::Shape::convex_polygon(
+                vec![
+                    c + egui::vec2(-4.0, -6.0),
+                    c + egui::vec2(-4.0, 6.0),
+                    c + egui::vec2(5.0, 0.0),
+                ],
+                col,
+                Stroke::NONE,
+            ));
+            p.rect_filled(
+                egui::Rect::from_min_size(c + egui::vec2(6.0, -6.0), egui::vec2(2.0, 12.0)),
+                Rounding::same(1.0),
                 col,
             );
         }

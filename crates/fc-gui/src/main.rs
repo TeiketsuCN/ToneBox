@@ -301,6 +301,11 @@ pub(crate) struct App {
     player: Option<fc_player::Player>,
     /// 正在播放/显示的文件（用路径记，删了/移动了也不会指错歌）
     player_for: Option<PathBuf>,
+    /// 连续播放列表（路径）与当前下标；解码线程会自动接下一首
+    playlist: Vec<PathBuf>,
+    play_idx: usize,
+    /// 已经看到播放器切到第几首，用来同步界面
+    play_track_seen: u64,
     play_error: Option<String>,
     /// 播放音量（没有播放器时也记住，下次 open 直接套上）
     player_volume: f32,
@@ -534,6 +539,9 @@ impl App {
             backdrop_done: false,
             player: None,
             player_for: None,
+            playlist: Vec::new(),
+            play_idx: 0,
+            play_track_seen: 0,
             play_error: None,
             player_volume: 0.75,
             fullscreen: false,
@@ -974,6 +982,17 @@ impl App {
     }
 
     fn start_play(&mut self, idx: usize) {
+        // 连续播放列表：当前队列里所有能播的音频（视频取第一条音轨）
+        let list: Vec<PathBuf> = self
+            .items
+            .iter()
+            .filter(|i| i.info.is_some() && i.encrypted.is_none())
+            .map(|i| i.path.clone())
+            .collect();
+        if let Some(pos) = list.iter().position(|p| p == &self.items[idx].path) {
+            self.playlist = list;
+            self.play_idx = pos;
+        }
         // 加密文件只识别：不播放、不解码
         if let Some(it) = self.items.get(idx) {
             if it.encrypted.is_some() {
@@ -1015,14 +1034,40 @@ impl App {
             Ok(p) => {
                 // 接着上次的音量，不要每次开新文件都跳回默认
                 p.set_volume(self.player_volume);
+                self.play_track_seen = p.track_no();
                 self.player = Some(p);
                 self.player_for = Some(self.items[idx].path.clone());
+                self.arm_next();
             }
             Err(e) => {
                 self.play_error = Some(format!("{e:#}"));
                 self.player_for = Some(self.items[idx].path.clone());
             }
         }
+    }
+
+    /// 把列表里的下一首预排给解码线程：当前首 EOF 时无缝接上
+    fn arm_next(&mut self) {
+        let Some(next_path) = self.playlist.get(self.play_idx + 1).cloned() else {
+            return;
+        };
+        let Some(p) = self.player.as_ref() else { return };
+        let (dur, gain) = self
+            .items
+            .iter()
+            .find(|i| i.path == next_path)
+            .map(|i| {
+                (
+                    i.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0),
+                    if self.cfg.replaygain {
+                        i.tags.replaygain_db
+                    } else {
+                        None
+                    },
+                )
+            })
+            .unwrap_or((0.0, None));
+        p.set_next(&next_path, dur, gain);
     }
 
     fn poll_media(&mut self, ctx: &egui::Context) {
@@ -1283,6 +1328,25 @@ impl eframe::App for App {
             self.open_spectrum();
         }
 
+        // 解码线程已经无缝切到下一首：同步界面、波形和再下一首
+        if let Some((tn, cp)) = self
+            .player
+            .as_ref()
+            .map(|p| (p.track_no(), p.current_path()))
+        {
+            if tn != self.play_track_seen {
+                self.play_track_seen = tn;
+                self.player_for = Some(cp.clone());
+                if let Some(i) = self.items.iter().position(|it| it.path == cp) {
+                    self.selected = i;
+                }
+                if let Some(pi) = self.playlist.iter().position(|x| x == &cp) {
+                    self.play_idx = pi;
+                }
+                self.request_wave(&cp, ctx);
+                self.arm_next();
+            }
+        }
         if let Some(p) = self.player.as_mut() {
             if p.finished() {
                 p.pause();
