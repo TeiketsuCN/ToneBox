@@ -882,7 +882,7 @@ pub(crate) fn spawn_lib_cover(
     std::thread::spawn(move || {
         let payload = fc_core::extract_cover(&ffmpeg, &path).and_then(|bytes| {
             let img = image::load_from_memory(&bytes).ok()?;
-            let small = img.resize_to_fill(40, 40, image::imageops::FilterType::Triangle);
+            let small = img.resize_to_fill(160, 160, image::imageops::FilterType::CatmullRom);
             let rgba = small.to_rgba8();
             Some((rgba.as_raw().to_vec(), rgba.width(), rgba.height()))
         });

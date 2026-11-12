@@ -1623,7 +1623,7 @@ pub(crate) fn spawn_media_load(
         let tags = fc_core::read_tags(&ffprobe, &p);
         let to_tex = |bytes: Vec<u8>| -> Option<(Vec<u8>, u32, u32)> {
             let img = image::load_from_memory(&bytes).ok()?;
-            let small = img.resize_exact(128, 128, image::imageops::FilterType::Triangle);
+            let small = img.resize_exact(256, 256, image::imageops::FilterType::CatmullRom);
             let rgba = small.to_rgba8();
             Some((rgba.as_raw().clone(), rgba.width(), rgba.height()))
         };
