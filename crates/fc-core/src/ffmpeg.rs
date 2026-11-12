@@ -85,6 +85,8 @@ struct Stream {
     codec_name: Option<String>,
     /// MP4 sample entry（Audio Vivid 的 av3a 在 ffprobe 里 codec_name 是空的）
     codec_tag_string: Option<String>,
+    /// 编码 profile（E-AC-3/TrueHD 的 Atmos 标记会出现在这里）
+    profile: Option<String>,
     sample_rate: Option<String>,
     channels: Option<u32>,
     bit_rate: Option<String>,
@@ -133,6 +135,8 @@ impl AudioTrackInfo {
         let mut s = match self.codec.as_str() {
             "ac4" => "杜比全景声 AC-4".to_string(),
             "av3a" => "菁彩声 Audio Vivid".to_string(),
+            "eac3_atmos" => "杜比全景声 E-AC-3".to_string(),
+            "truehd_atmos" => "杜比全景声 TrueHD".to_string(),
             other => other.to_uppercase(),
         };
         if self.channels > 0 {
@@ -226,6 +230,7 @@ impl MediaInfo {
                 // AC-4 / Audio Vivid 都是有损空间音频，不能当 Hi-Res 无损
                 | "ac4"
                 | "av3a"
+                | "eac3_atmos"
         )
     }
 
@@ -247,6 +252,8 @@ impl MediaInfo {
             "dsd_lsbf" | "dsd_msbf" | "dsd_lsbf_planar" | "dsd_msbf_planar" => "DSD",
             "ac4" => "杜比全景声 AC-4",
             "av3a" => "菁彩声 Audio Vivid",
+            "eac3_atmos" => "杜比全景声 E-AC-3",
+            "truehd_atmos" => "杜比全景声 TrueHD",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",
@@ -258,6 +265,14 @@ impl MediaInfo {
     pub fn needs_external_decoder(&self) -> bool {
         matches!(self.codec.as_str(), "ac4" | "av3a")
     }
+
+    /// 不管能不能解，先认成空间音频：Atmos（AC-4 / E-AC-3 JOC / TrueHD）或菁彩声。
+    pub fn is_spatial(&self) -> bool {
+        matches!(
+            self.codec.as_str(),
+            "ac4" | "av3a" | "eac3_atmos" | "truehd_atmos"
+        )
+    }
 }
 
 fn parse_u64(s: &Option<String>) -> u64 {
@@ -266,6 +281,21 @@ fn parse_u64(s: &Option<String>) -> u64 {
 
 fn parse_f64(s: &Option<String>) -> f64 {
     s.as_deref().and_then(|v| v.parse().ok()).unwrap_or(0.0)
+}
+
+/// 把“承载 Atmos 的普通编码”标出来：E-AC-3 JOC / TrueHD Atmos。
+/// AC-3 本身装不了 Atmos，只有 profile 明确带 Atmos/JOC 才认。
+fn normalize_codec(codec: &str, profile: Option<&str>) -> String {
+    let p = profile.unwrap_or("").to_ascii_lowercase();
+    let atmos = p.contains("atmos") || p.contains("joc");
+    if atmos {
+        match codec {
+            "eac3" | "ac3" => return "eac3_atmos".to_string(),
+            "truehd" => return "truehd_atmos".to_string(),
+            _ => {}
+        }
+    }
+    codec.to_string()
 }
 
 pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
@@ -359,16 +389,17 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
                     .and_then(|m| m.get(k).cloned())
                     .filter(|v| !v.trim().is_empty())
             };
+            let raw = s
+                .codec_name
+                .clone()
+                .filter(|c| !c.is_empty())
+                .or_else(|| match s.codec_tag_string.as_deref() {
+                    Some("av3a") => Some("av3a".to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
             AudioTrackInfo {
-                codec: s
-                    .codec_name
-                    .clone()
-                    .filter(|c| !c.is_empty())
-                    .or_else(|| match s.codec_tag_string.as_deref() {
-                        Some("av3a") => Some("av3a".to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default(),
+                codec: normalize_codec(&raw, s.profile.as_deref()),
                 channels: s.channels.unwrap_or(0),
                 bitrate_kbps: parse_u64(&s.bit_rate) / 1000,
                 language: tag("language"),
@@ -403,13 +434,15 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
     Ok(MediaInfo {
         codec: audio
             .and_then(|s| {
-                s.codec_name
+                let raw = s
+                    .codec_name
                     .clone()
                     .filter(|c| !c.is_empty())
                     .or_else(|| match s.codec_tag_string.as_deref() {
                         Some("av3a") => Some("av3a".to_string()),
                         _ => None,
-                    })
+                    })?;
+                Some(normalize_codec(&raw, s.profile.as_deref()))
             })
             .unwrap_or_default(),
         container: fmt.format_name.clone().unwrap_or_default(),

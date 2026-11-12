@@ -23,6 +23,10 @@ use crate::overlays::*;
 pub(crate) enum Quality {
     /// DSD 的采样率档位（64 / 128 / 256 / 512 …），0 = 认不出来
     Dsd(u32),
+    /// 杜比全景声：特殊动画徽章，不按码率写“有损 xxxk”
+    Atmos,
+    /// 菁彩声 Audio Vivid：特殊动画徽章
+    Vivid,
     HiRes,
     Cd,
     Hq,
@@ -37,6 +41,7 @@ pub(crate) fn label_is_lossy(label: &str) -> bool {
         label,
         "MP3" | "AAC" | "Vorbis" | "Opus" | "WMA" | "AC-3" | "E-AC-3" | "MP2" | "ATRAC1"
             | "ATRAC3" | "ATRAC3+" | "Musepack" | "Speex"
+            | "杜比全景声 AC-4" | "杜比全景声 E-AC-3" | "杜比全景声 TrueHD" | "菁彩声 Audio Vivid"
     )
 }
 
@@ -69,6 +74,12 @@ pub(crate) fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
     if m.codec.is_empty() || m.sample_rate == 0 {
         return None;
     }
+    if m.codec == "av3a" {
+        return Some(Quality::Vivid);
+    }
+    if matches!(m.codec.as_str(), "ac4" | "eac3_atmos" | "truehd_atmos") {
+        return Some(Quality::Atmos);
+    }
     if m.codec.starts_with("dsd") {
         return Some(Quality::Dsd(fc_core::dsd_tier(
             &m.codec,
@@ -89,6 +100,8 @@ pub(crate) fn quality_label(q: Quality, kbps: u64) -> String {
                 "DSD".to_string()
             }
         }
+        Quality::Atmos => "杜比全景声".to_string(),
+        Quality::Vivid => "菁彩声".to_string(),
         Quality::HiRes => "Hi-Res 无损".to_string(),
         Quality::Cd => "CD 无损".to_string(),
         Quality::Hq | Quality::Std | Quality::Lq => {
@@ -112,6 +125,8 @@ pub(crate) fn quality_width(ctx: &egui::Context, q: Quality, kbps: u64) -> f32 {
     match q {
         // DSD 左边有一段码流点串，CD 左边有个小光盘，都要额外留位
         Quality::Dsd(_) => 41.0 + w,
+        Quality::Atmos => 36.0 + w,
+        Quality::Vivid => 34.0 + w,
         Quality::Cd => 25.0 + w,
         _ => (w + 14.0).max(30.0),
     }
@@ -188,6 +203,60 @@ pub(crate) fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbp
     let label = quality_label(q, kbps);
     let label = label.as_str();
     match q {
+        Quality::Atmos => {
+            // 杜比全景声：深蓝底 + 环绕轨道 + 绕行光点，不写码率
+            let blue = Color32::from_rgb(128, 186, 255);
+            let bg = Color32::from_rgb(15, 24, 46);
+            p.rect_filled(rect, r, bg);
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(blue, 150)));
+            let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+            p.circle_stroke(c, 5.4, Stroke::new(1.0, tint(blue, 110)));
+            p.circle_stroke(c, 3.0, Stroke::new(0.8, tint(blue, 70)));
+            let ang = t as f32 * 2.1;
+            p.circle_filled(
+                c + egui::vec2(ang.cos() * 5.4, ang.sin() * 5.4),
+                1.5,
+                blue,
+            );
+            p.circle_filled(
+                c + egui::vec2((ang + 2.4).cos() * 3.0, (ang + 2.4).sin() * 3.0),
+                1.0,
+                tint(blue, 190),
+            );
+            p.text(
+                egui::pos2(rect.left() + 20.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                blue,
+            );
+            true
+        }
+        Quality::Vivid => {
+            // 菁彩声：墨绿底 + 呼吸同心环 + 绕行点
+            let mint = Color32::from_rgb(126, 236, 204);
+            let bg = Color32::from_rgb(10, 35, 32);
+            p.rect_filled(rect, r, bg);
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(mint, 150)));
+            let c = egui::pos2(rect.left() + 10.0, rect.center().y);
+            let pulse = 0.5 + 0.5 * (t * 2.0).sin() as f32;
+            p.circle_stroke(c, 5.6, Stroke::new(1.0, tint(mint, (90.0 + 80.0 * pulse) as u8)));
+            p.circle_stroke(c, 2.8, Stroke::new(0.8, tint(mint, 80)));
+            let ang = -t as f32 * 2.6;
+            p.circle_filled(
+                c + egui::vec2(ang.cos() * 5.6, ang.sin() * 5.6),
+                1.5,
+                mint,
+            );
+            p.text(
+                egui::pos2(rect.left() + 20.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                mint,
+            );
+            true
+        }
         Quality::HiRes => {
             // 金属金：细切的纵向渐变 + 上沿高光/下沿暗边做倒角 + 慢扫光
             let pulse = 0.5 + 0.5 * (t * 1.7).sin() as f32;

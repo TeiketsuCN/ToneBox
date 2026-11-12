@@ -721,7 +721,11 @@ pub(crate) fn lib_row(
     }
 
     // 右边的音质标识（上方）+ 时长（下方）
-    let q = if e.codec == "DSD" {
+    let q = if e.codec.starts_with("杜比全景声") {
+        Some(Quality::Atmos)
+    } else if e.codec.starts_with("菁彩声") {
+        Some(Quality::Vivid)
+    } else if e.codec == "DSD" {
         Some(Quality::Dsd(fc_core::dsd_tier(
             &e.codec,
             e.sample_rate,
