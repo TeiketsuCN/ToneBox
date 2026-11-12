@@ -65,6 +65,10 @@ struct Inner {
     cur_duration: AtomicU64,
     /// 当前这首的路径
     cur_path: Mutex<PathBuf>,
+    /// 当前是不是 DoP（DSD over PCM）输出
+    dop: AtomicBool,
+    /// DSD 源是否 LSB-first（DSF）
+    dop_lsb: AtomicBool,
 }
 
 impl Inner {
@@ -83,6 +87,8 @@ impl Inner {
             track_no: AtomicU64::new(0),
             cur_duration: AtomicU64::new(0.0f64.to_bits()),
             cur_path: Mutex::new(PathBuf::new()),
+            dop: AtomicBool::new(false),
+            dop_lsb: AtomicBool::new(false),
         }
     }
     fn set_format(&self, sample_rate: u32, channels: u16) {
@@ -125,6 +131,10 @@ pub struct PlayOptions {
     pub replaygain_db: Option<f32>,
     /// 用哪套播放引擎
     pub engine: Engine,
+    /// DSD over PCM（DoP）：只走独占，队列里是已经打好的 DoP 帧
+    pub dop: bool,
+    /// 源 DSD 是否 LSB-first（DSF）；DFF 是 MSB-first
+    pub dop_lsb_first: bool,
 }
 
 /// 播放引擎。真正实现了的只有 Shared / Exclusive / Asio；
@@ -253,6 +263,41 @@ impl Player {
         duration_s: f64,
         opts: &PlayOptions,
     ) -> Result<Self> {
+        // DSD DoP：必须走独占，按 DoP 采样率（176.4/352.8/705.6k）开流
+        if opts.dop {
+            #[cfg(windows)]
+            {
+                let rate = opts.source_rate.max(176_400);
+                let inner = Arc::new(Inner::new(rate, 2, 1.0));
+                inner.dop.store(true, Ordering::SeqCst);
+                inner.dop_lsb.store(opts.dop_lsb_first, Ordering::SeqCst);
+                match exclusive::start(opts.device_name.as_deref(), rate, inner.clone()) {
+                    Ok((out, out_rate, ch, label)) => {
+                        inner.set_format(out_rate, ch);
+                        let mut p = Player {
+                            inner,
+                            output: Output::Exclusive(out),
+                            ffmpeg: ffmpeg.to_path_buf(),
+                            path: path.to_path_buf(),
+                            generation: Arc::new(AtomicU64::new(0)),
+                            my_gen: 0,
+                            duration_s,
+                            paused: false,
+                            output_label: format!("{label} · DoP"),
+                        };
+                        p.spawn_dop_decoder(0.0);
+                        return Ok(p);
+                    }
+                    Err(e) => {
+                        return Err(anyhow!("DSD DoP 需要独占输出：{e:#}"));
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                return Err(anyhow!("DSD DoP 只在 Windows WASAPI 独占输出上支持"));
+            }
+        }
         #[cfg(windows)]
         if opts.engine == Engine::CoreAudio {
             // Windows 上的 Core Audio = 兼容层：对象模型照 Core Audio 走，
@@ -584,9 +629,87 @@ impl Player {
         });
     }
 
+    /// DoP 解码：FFmpeg 只拆 DSD 包（-c:a copy -f data），这里自己按 DoP 打包。
+    fn spawn_dop_decoder(&mut self, start_s: f64) {
+        self.my_gen += 1;
+        let my_gen = self.my_gen;
+        self.generation.store(my_gen, Ordering::SeqCst);
+
+        let inner = self.inner.clone();
+        let gen_shared = self.generation.clone();
+        let ffmpeg = self.ffmpeg.clone();
+        let path = self.path.clone();
+        let duration_s = self.duration_s;
+        let lsb = inner.dop_lsb.load(Ordering::Relaxed);
+
+        inner.eof.store(false, Ordering::SeqCst);
+        inner.buf.lock().unwrap().clear();
+        let rate = inner.sample_rate.load(Ordering::Relaxed).max(1);
+        inner.pos_frames.store((start_s * rate as f64) as u64, Ordering::SeqCst);
+        inner.pos_offset.store(0, Ordering::SeqCst);
+        inner.set_track(&path, duration_s, 1.0);
+
+        std::thread::spawn(move || {
+            let mut cmd = Command::new(&ffmpeg);
+            cmd.args(["-v", "error", "-nostdin", "-i"])
+                .arg(&path)
+                .args(["-map", "0:a:0", "-c:a", "copy", "-f", "data", "-"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null());
+            #[cfg(windows)]
+            cmd.creation_flags(CREATE_NO_WINDOW);
+
+            let Ok(mut child) = cmd.spawn() else {
+                inner.eof.store(true, Ordering::SeqCst);
+                return;
+            };
+            let Some(mut out) = child.stdout.take() else {
+                inner.eof.store(true, Ordering::SeqCst);
+                return;
+            };
+
+            let mut buf: Vec<u8> = Vec::with_capacity(16384);
+            let mut marker = false;
+            let mut raw = [0u8; 16384];
+            loop {
+                if gen_shared.load(Ordering::SeqCst) != my_gen {
+                    break;
+                }
+                match out.read(&mut raw) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&raw[..n]);
+                        // DSF/DFF 一个包 8192 字节（左右各 4096），凑满再打
+                        while buf.len() >= 8192 {
+                            let pkt: Vec<u8> = buf.drain(..8192).collect();
+                            let mut frames = Vec::with_capacity(2048 * 8);
+                            crate::dop::pack_stereo_packet(&pkt, lsb, &mut marker, &mut frames);
+                            let mut q = inner.buf.lock().unwrap();
+                            q.extend(frames.iter().copied());
+                            while q.len() > MAX_QUEUE_BYTES
+                                && gen_shared.load(Ordering::SeqCst) == my_gen
+                            {
+                                drop(q);
+                                std::thread::sleep(Duration::from_millis(8));
+                                q = inner.buf.lock().unwrap();
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            inner.eof.store(true, Ordering::SeqCst);
+        });
+    }
+
     /// 预排下一首：当前这首 EOF 时，解码线程会直接接着写同一个队列，
     /// 输出流不重启，所以同设备下是无缝的。
     pub fn set_next(&self, path: &Path, duration_s: f64, gain_db: Option<f32>) {
+        if self.inner.dop.load(Ordering::Relaxed) {
+            return;
+        }
         let gain = match gain_db {
             Some(db) if db.is_finite() => 10f32.powf(db / 20.0).clamp(0.05, 8.0),
             _ => 1.0,

@@ -1016,21 +1016,42 @@ impl App {
             return;
         };
         // 输出设备 / 采样率跟随 / ReplayGain 都从设置里带过去
-        let opts = fc_player::PlayOptions {
+        let dsd = info.codec.starts_with("dsd");
+        let tier = fc_core::dsd_tier(&info.codec, info.sample_rate, info.bitrate_kbps);
+        let dop_rate = fc_player::dop::dop_rate_for_tier(tier);
+        let mut opts = fc_player::PlayOptions {
             device_name: if self.cfg.audio_out_device.is_empty() {
                 None
             } else {
                 Some(self.cfg.audio_out_device.clone())
             },
-            source_rate: info.sample_rate,
+            source_rate: dop_rate.unwrap_or(info.sample_rate),
             replaygain_db: if self.cfg.replaygain {
                 it.tags.replaygain_db
             } else {
                 None
             },
-            engine: self.cfg.engine_enum(),
+            engine: if dsd && dop_rate.is_some() {
+                fc_player::Engine::Exclusive
+            } else {
+                self.cfg.engine_enum()
+            },
+            dop: dsd && dop_rate.is_some(),
+            dop_lsb_first: info.codec.contains("lsbf"),
         };
-        match fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts) {
+        let mut opening =
+            fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts);
+        // DoP 失败（设备没 176.4k / 独占被占）：明确回退 PCM，不假装在播 DSD
+        if opening.is_err() && opts.dop {
+            let why = opening.err().map(|e| format!("{e:#}")).unwrap_or_default();
+            opts.dop = false;
+            opts.source_rate = 0;
+            opts.engine = self.cfg.engine_enum();
+            self.play_error = Some(format!("DSD DoP 不可用（{why}）· 已回退 PCM"));
+            opening =
+                fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts);
+        }
+        match opening {
             Ok(p) => {
                 // 接着上次的音量，不要每次开新文件都跳回默认
                 p.set_volume(self.player_volume);
@@ -1932,19 +1953,27 @@ fn main() -> eframe::Result<()> {
         );
         let cfg = settings::Settings::load();
         let tags = fc_core::read_tags(&tools.ffprobe, Path::new(input));
+        let tier = fc_core::dsd_tier(&info.codec, info.sample_rate, info.bitrate_kbps);
+        let dop_rate = fc_player::dop::dop_rate_for_tier(tier);
         let popts = fc_player::PlayOptions {
             device_name: if cfg.audio_out_device.is_empty() {
                 None
             } else {
                 Some(cfg.audio_out_device.clone())
             },
-            source_rate: info.sample_rate,
+            source_rate: dop_rate.unwrap_or(info.sample_rate),
             replaygain_db: if cfg.replaygain {
                 tags.replaygain_db
             } else {
                 None
             },
-            engine: cfg.engine_enum(),
+            engine: if dop_rate.is_some() {
+                fc_player::Engine::Exclusive
+            } else {
+                cfg.engine_enum()
+            },
+            dop: dop_rate.is_some(),
+            dop_lsb_first: info.codec.contains("lsbf"),
         };
         let mut pl = match fc_player::Player::open_with(
             &tools.ffmpeg,
