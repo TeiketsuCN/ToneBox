@@ -178,6 +178,7 @@ extern "system" {
 }
 
 const HKEY_LOCAL_MACHINE: isize = 0x8000_0002u32 as isize;
+const HKEY_CURRENT_USER: isize = 0x8000_0001u32 as isize;
 const KEY_READ: u32 = 0x2_0019;
 const KEY_ENUMERATE_SUB_KEYS: u32 = 0x8;
 const ERROR_SUCCESS: i32 = 0;
@@ -317,7 +318,11 @@ pub struct AsioDriver {
 pub fn list_drivers() -> Vec<AsioDriver> {
     let mut out: Vec<AsioDriver> = Vec::new();
     unsafe {
-        for root in ["SOFTWARE\\ASIO", "SOFTWARE\\WOW6432Node\\ASIO"] {
+        for (hive, root) in [
+            (HKEY_CURRENT_USER, "SOFTWARE\\ASIO"),
+            (HKEY_LOCAL_MACHINE, "SOFTWARE\\ASIO"),
+            (HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\ASIO"),
+        ] {
             let mut key: isize = 0;
             if RegOpenKeyExW(
                 HKEY_LOCAL_MACHINE,
@@ -584,7 +589,11 @@ fn open_and_run(
 
         // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
         let hwnd = GetDesktopWindow();
-        if (vt.init)(obj, hwnd) == 0 {
+        let init_rc = (vt.init)(obj, hwnd);
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] init rc={init_rc}");
+        }
+        if init_rc == 0 {
             (vt.release)(obj);
             if need_uninit {
                 CoUninitialize();
@@ -775,7 +784,11 @@ fn probe_one(clsid: Guid) -> String {
         let vt = &*vt;
         // 有些驱动（比如 Realtek）要一个真窗口当消息泵父窗口，给桌面窗口最省事
         let hwnd = GetDesktopWindow();
-        if (vt.init)(obj, hwnd) == 0 {
+        let init_rc = (vt.init)(obj, hwnd);
+        if std::env::var("FC_ASIO_DEBUG").is_ok() {
+            eprintln!("[asio] init rc={init_rc}");
+        }
+        if init_rc == 0 {
             (vt.release)(obj);
             if lib != 0 {
                 FreeLibrary(lib);
