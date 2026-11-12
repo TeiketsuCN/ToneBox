@@ -48,7 +48,7 @@ pub(crate) fn label_is_lossy(label: &str) -> bool {
         "MP3" | "AAC" | "Vorbis" | "Opus" | "WMA" | "AC-3" | "E-AC-3" | "MP2" | "ATRAC1"
             | "ATRAC3" | "ATRAC3+" | "Musepack" | "Speex"
             | "杜比全景声 AC-4" | "杜比全景声 E-AC-3" | "杜比全景声 TrueHD" | "菁彩声 Audio Vivid"
-            | "杜比 AC-3" | "杜比 E-AC-3" | "DTS" | "AMR-NB" | "AMR-WB"
+            | "杜比 AC-3" | "杜比 E-AC-3" | "DTS" | "AMR-NB" | "AMR-WB" | "amr_nb" | "amr_wb"
     )
 }
 
@@ -59,6 +59,10 @@ pub(crate) fn quality_from(lossy: bool, sr: u32, bits: Option<u32>, kbps: u64) -
     }
     if !lossy {
         let bits = bits.unwrap_or(16);
+        // CD 是 44.1 kHz / 16 bit；8 kHz 的 AMR、低采样 PCM 不能算 CD
+        if sr < 44100 || bits < 16 {
+            return None;
+        }
         return Some(if sr > 44100 || bits > 16 {
             Quality::HiRes
         } else {

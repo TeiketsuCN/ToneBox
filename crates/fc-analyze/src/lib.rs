@@ -244,6 +244,17 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
             ));
         }
         ("无损/CD".to_string(), c.min(0.97))
+    } else if info.sample_rate < 44100 {
+        caveats.push(format!(
+            "源采样率只有 {} Hz，带宽上限 {:.1} kHz；不可能靠频谱判成 CD/无损。",
+            info.sample_rate,
+            info.sample_rate as f64 / 2000.0
+        ));
+        notes.push(ConfidenceNote::minus(
+            80.0,
+            "低采样率源，截止法没有 CD 档可判",
+        ));
+        ("低采样率".to_string(), 0.90)
     } else if family == Family::Opus {
         caveats.push(
             "Opus 在低码率也保留全带宽（噪声整形/带宽扩展），频谱截止无法反推码率，需换判据（谱平坦度/噪声底电平）。"

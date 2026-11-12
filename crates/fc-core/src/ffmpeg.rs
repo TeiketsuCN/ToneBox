@@ -156,6 +156,9 @@ impl AudioTrackInfo {
             "ac3" => "杜比 AC-3".to_string(),
             "eac3" => "杜比 E-AC-3".to_string(),
             "truehd" => "杜比 TrueHD".to_string(),
+            "dts" => "DTS".to_string(),
+            "amr_nb" => "AMR-NB".to_string(),
+            "amr_wb" => "AMR-WB".to_string(),
             other => other.to_uppercase(),
         };
         if self.channels > 0 {
@@ -250,6 +253,9 @@ impl MediaInfo {
                 | "ac4"
                 | "av3a"
                 | "eac3_atmos"
+                | "dts"
+                | "amr_nb"
+                | "amr_wb"
         )
     }
 
@@ -276,6 +282,9 @@ impl MediaInfo {
             "ac3" => "杜比 AC-3",
             "eac3" => "杜比 E-AC-3",
             "truehd" => "杜比 TrueHD",
+            "dts" => "DTS",
+            "amr_nb" => "AMR-NB",
+            "amr_wb" => "AMR-WB",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",
