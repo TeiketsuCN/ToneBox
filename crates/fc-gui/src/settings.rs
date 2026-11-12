@@ -156,7 +156,7 @@ pub struct Profile {
     #[serde(default)]
     pub meta_cover: String,
     #[serde(default)]
-    pub gen_lyrics: bool,
+    pub lyric_mode: LyricMode,
     /// 这套配置里用户自设的预设
     #[serde(default)]
     pub presets: Vec<UserPreset>,
@@ -176,7 +176,7 @@ impl Profile {
             meta_artist: s.meta_artist.clone(),
             meta_album: s.meta_album.clone(),
             meta_cover: s.meta_cover.clone(),
-            gen_lyrics: s.gen_lyrics,
+            lyric_mode: s.lyric_mode,
             presets: s.presets.clone(),
         }
     }
@@ -208,6 +208,15 @@ pub struct CachedTrack {
     /// 有损压缩过（DSD/FLAC 之类为 false）
     #[serde(default)]
     pub lossy: bool,
+}
+
+/// 歌词 sidecar：不生成 / 同名空白 .lyc / 同名空白 .txt
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+pub enum LyricMode {
+    #[default]
+    None,
+    Lyc,
+    Txt,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -267,9 +276,9 @@ pub struct Settings {
     /// 封面图路径（空 = 沿用源文件内嵌封面）
     #[serde(default)]
     pub meta_cover: String,
-    /// 转换完成后在旁边生成一个空的 .lrc 歌词文件（不生成 .lyc/.txt）
+    /// 转换完成后在旁边生成同名空白歌词：不生成 / .lyc / .txt
     #[serde(default)]
-    pub gen_lyrics: bool,
+    pub lyric_mode: LyricMode,
     /// 响度归一化目标（LUFS）；None = 不动。存在配置里，切配置会跟着走。
     #[serde(default)]
     pub loudness: Option<f32>,
@@ -324,7 +333,7 @@ impl Default for Settings {
             meta_artist: String::new(),
             meta_album: String::new(),
             meta_cover: String::new(),
-            gen_lyrics: false,
+            lyric_mode: LyricMode::None,
             loudness: None,
             write_tags: false,
             window: WindowSize::Large,
@@ -417,7 +426,7 @@ impl Settings {
         p.meta_artist = self.meta_artist.clone();
         p.meta_album = self.meta_album.clone();
         p.meta_cover = self.meta_cover.clone();
-        p.gen_lyrics = self.gen_lyrics;
+        p.lyric_mode = self.lyric_mode;
         p.presets = self.presets.clone();
     }
 

@@ -536,25 +536,34 @@ impl App {
         }
         ui.add_space(2.0);
 
-        if self.meta_open {
-            let mut gen_lyrics = self.cfg.gen_lyrics;
-            if ui
-                .checkbox(
-                    &mut gen_lyrics,
-                    RichText::new("生成空歌词文件（.lrc）").size(9.5).color(MUTED),
-                )
-                .changed()
-            {
-                self.cfg.gen_lyrics = gen_lyrics;
+        // 歌词 sidecar：和「元数据」同级，始终露出，不藏在展开区里；默认不生成
+        ui.add_space(8.0);
+        ui.label(RichText::new("歌词文件").size(9.5).color(MUTED));
+        ui.horizontal(|ui| {
+            if radio_dot_inline(ui, "不生成", self.cfg.lyric_mode == crate::settings::LyricMode::None) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::None;
                 changed = true;
             }
-            para(
-                ui,
-                "只在输出文件旁生成同名 .lrc，不生成 .lyc / .txt；已有同名 .lrc 不覆盖。",
-                8.5,
-                DIM,
-            );
-            ui.add_space(4.0);
+            ui.add_space(8.0);
+            if radio_dot_inline(ui, "同名空白 .lyc", self.cfg.lyric_mode == crate::settings::LyricMode::Lyc) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::Lyc;
+                changed = true;
+            }
+            ui.add_space(8.0);
+            if radio_dot_inline(ui, "同名空白 .txt", self.cfg.lyric_mode == crate::settings::LyricMode::Txt) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::Txt;
+                changed = true;
+            }
+        });
+        para(
+            ui,
+            "在输出文件旁生成同名空文件；已有同名不覆盖。",
+            8.5,
+            DIM,
+        );
+        ui.add_space(4.0);
+
+        if self.meta_open {
             ui.horizontal(|ui| {
                 if radio_dot_inline(ui, "自动", !self.cfg.write_tags) {
                     self.cfg.write_tags = false;

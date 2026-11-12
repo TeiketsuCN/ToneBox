@@ -853,7 +853,7 @@ impl App {
 
         let (tx, rx) = channel();
         self.rx = Some(rx);
-        let gen_lyrics = self.cfg.gen_lyrics;
+        let lyric_mode = self.cfg.lyric_mode;
         let ctx2 = ctx.clone();
 
         std::thread::spawn(move || {
@@ -932,11 +932,16 @@ impl App {
                 };
                 match res {
                     Ok(size) => {
-                        // 空歌词 sidecar：只写 .lrc，不写 .lyc/.txt；已有就不覆盖
-                        if gen_lyrics {
-                            let lrc = out.with_extension("lrc");
-                            if !lrc.exists() {
-                                let _ = std::fs::write(&lrc, b"");
+                        // 空歌词 sidecar：同名 .lyc / .txt，已有就不覆盖
+                        let lyric_ext = match lyric_mode {
+                            crate::settings::LyricMode::Lyc => Some("lyc"),
+                            crate::settings::LyricMode::Txt => Some("txt"),
+                            crate::settings::LyricMode::None => None,
+                        };
+                        if let Some(ext) = lyric_ext {
+                            let lyric = out.with_extension(ext);
+                            if !lyric.exists() {
+                                let _ = std::fs::write(&lyric, b"");
                             }
                         }
                         let _ = tx.send(Msg::Done(idx, out, size));
