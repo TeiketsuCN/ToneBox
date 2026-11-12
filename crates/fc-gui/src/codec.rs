@@ -287,11 +287,7 @@ impl App {
             self.cfg.replaygain = rg;
             self.cfg.save();
         }
-        let mut ex = self.cfg.exclusive_output;
-        if transparent_toggle(ui, &mut ex, "独占输出（WASAPI 直通，绕过系统混音）") {
-            self.cfg.exclusive_output = ex;
-            self.cfg.save();
-        }
+
 
         // ReplayGain 是啥：用大白话讲清楚，不堆术语
         ui.add_space(6.0);
@@ -339,8 +335,68 @@ impl App {
             });
         }
 
+        // ── 播放引擎：可选的两个是真能用的，其余标清楚为什么不能用 ──
         ui.add_space(14.0);
-        ui.label(RichText::new("引擎").size(10.0).color(DIM));
+        ui.label(RichText::new("播放引擎").size(10.0).color(DIM));
+        ui.add_space(4.0);
+        let mut ex = self.cfg.exclusive_output;
+        if Self::engine_row(
+            ui,
+            "WASAPI 共享",
+            "可用",
+            GOOD,
+            "走 Windows 混音器，最省事；采样率由系统混音格式决定，音量和 ReplayGain 都生效。",
+            !ex,
+            true,
+        ) {
+            ex = false;
+        }
+        if Self::engine_row(
+            ui,
+            "WASAPI 独占",
+            "可用",
+            GOOD,
+            "直通声卡：按源采样率、32-bit 整数原样写；音量和 ReplayGain 不介入。",
+            ex,
+            true,
+        ) {
+            ex = true;
+        }
+        if Self::engine_row(
+            ui,
+            "ASIO",
+            "未实现",
+            DIM,
+            "要 ASIO SDK + 各家声卡驱动，还要单独一条输出链路和缓冲管理；现在没有。",
+            false,
+            false,
+        ) {}
+        if Self::engine_row(
+            ui,
+            "Apple Core Audio",
+            "仅 macOS",
+            DIM,
+            "macOS 的系统音频层；Windows 上没有这个东西，装不了也用不上。",
+            false,
+            false,
+        ) {}
+        if Self::engine_row(
+            ui,
+            "自研引擎",
+            "规划中",
+            DIM,
+            "目标是自己做重采样和时钟同步、绕开系统混音器；目前还没有可用的实现。",
+            false,
+            false,
+        ) {}
+        if ex != self.cfg.exclusive_output {
+            self.cfg.exclusive_output = ex;
+            self.cfg.save();
+            pose_hint(ui, "引擎切换在下次播放时生效（正在播的那首不会中途换）。");
+        }
+
+        ui.add_space(14.0);
+        ui.label(RichText::new("引擎信息").size(10.0).color(DIM));
         ui.add_space(6.0);
         egui::Grid::new("codec_engine")
             .num_columns(2)
@@ -376,11 +432,83 @@ impl App {
                 row(ui, "数据直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
                 row(ui, "连续播放", "未做：要先有队列连播（现在是单文件试听）");
                 row(ui, "DSD", "解成 PCM 播放；DoP/原生 DSD 未做");
-                row(ui, "ASIO", "未支持（需要 ASIO SDK 和驱动）");
             });
     }
 
-    /// 一行设备：大图标 + 名称 + 类型/角标 + 格式；输出设备可点选。
+    /// 一行播放引擎：左边圆点（当前选中的实心）+ 名称 + 状态标签 + 一句说明。
+/// 不可用的引擎也列出来，说清楚"为什么现在不能用"——比藏起来诚实。
+fn engine_row(
+    ui: &mut egui::Ui,
+    name: &str,
+    status: &str,
+    status_col: Color32,
+    desc: &str,
+    active: bool,
+    enabled: bool,
+) -> bool {
+    let w = ui.available_width().min(780.0);
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(w, 48.0),
+        if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+    );
+    let p = ui.painter();
+    let hot = resp.hovered() && enabled;
+    if active || hot {
+        p.rect_filled(
+            rect,
+            Rounding::same(10.0),
+            tint(Color32::WHITE, if active { 10 } else { 5 }),
+        );
+    }
+    let cy = rect.top() + 16.0;
+    let dot = egui::pos2(rect.left() + 12.0, cy);
+    if active {
+        p.circle_stroke(dot, 6.0, Stroke::new(1.5, accent()));
+        p.circle_filled(dot, 3.4, accent());
+    } else {
+        p.circle_stroke(
+            dot,
+            6.0,
+            Stroke::new(
+                1.2,
+                if enabled { tint(TEXT, 110) } else { tint(TEXT, 45) },
+            ),
+        );
+    }
+
+    let name_col = if enabled || active { TEXT } else { DIM };
+    p.text(
+        egui::pos2(rect.left() + 26.0, cy),
+        Align2::LEFT_CENTER,
+        name,
+        FontId::proportional(11.5),
+        name_col,
+    );
+
+    // 状态标签靠右
+    let sf = FontId::proportional(8.5);
+    let sw = p.layout_no_wrap(status.to_string(), sf.clone(), status_col).size().x;
+    let chip = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 10.0 - sw - 6.0, cy),
+        egui::vec2(sw + 12.0, 15.0),
+    );
+    p.rect_filled(chip, Rounding::same(7.0), tint(status_col, 30));
+    p.text(chip.center(), Align2::CENTER_CENTER, status, sf, status_col);
+
+    p.text(
+        egui::pos2(rect.left() + 26.0, rect.top() + 33.0),
+        Align2::LEFT_CENTER,
+        desc,
+        FontId::proportional(9.0),
+        DIM,
+    );
+
+    if hot {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    enabled && resp.clicked()
+}
+/// 一行设备：大图标 + 名称 + 类型/角标 + 格式；输出设备可点选。
     /// 行背景保持透明（圆点选项不做底色），只有图标和圆点着色。
     fn device_row(
         &self,
