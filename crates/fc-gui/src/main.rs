@@ -351,6 +351,14 @@ pub(crate) struct App {
     sys: sysstat::Sampler,
     /// ASIO 驱动的探测结果（打开过一次就缓存，别每次画界面都开驱动）
     asio_status: Option<(bool, String)>,
+    /// ASIO 探测在后台子进程里跑；顺便在顶部显示“正在运行”
+    asio_probing: bool,
+    asio_probe_rx: Option<std::sync::mpsc::Receiver<(Vec<(String, String)>, Option<String>)>>,
+    /// 音频设备枚举也放后台，避免点进引擎页时界面卡住
+    devices_loading: bool,
+    devices_rx: Option<std::sync::mpsc::Receiver<Result<Vec<fc_player::devices::AudioDevice>, String>>>,
+    /// 顶部“正在运行…”提示
+    activity: Option<String>,
     bar_expand_rect: egui::Rect,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
@@ -579,6 +587,11 @@ impl App {
             bar_rect: egui::Rect::NOTHING,
             sys: sysstat::Sampler::new(),
             asio_status: None,
+            asio_probing: false,
+            asio_probe_rx: None,
+            devices_loading: false,
+            devices_rx: None,
+            activity: None,
             bar_expand_rect: egui::Rect::NOTHING,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
@@ -1470,6 +1483,32 @@ impl eframe::App for App {
                     }),
             )
             .show(ctx, |ui| self.titlebar(ui));
+
+        // 顶部“正在运行…”小条：后台枚举/探测时给个明确反馈
+        if let Some(msg) = self.activity.clone() {
+            egui::Area::new(egui::Id::new("activity_banner"))
+                .anchor(
+                    egui::Align2::CENTER_TOP,
+                    egui::vec2(0.0, TITLEBAR_H + 10.0 + inset),
+                )
+                .order(egui::Order::Foreground)
+                .interactable(false)
+                .show(ctx, |ui| {
+                    egui::Frame::none()
+                        .fill(Color32::from_rgba_unmultiplied(8, 14, 24, 225))
+                        .rounding(Rounding::same(9.0))
+                        .inner_margin(egui::Margin::symmetric(12.0, 6.0))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add(egui::Spinner::new().size(12.0).color(accent()));
+                                ui.label(
+                                    RichText::new(&msg).size(9.5).color(TEXT),
+                                );
+                            });
+                        });
+                });
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
 
         // 设置页打开时把主界面藏起来：设置页是半透明玻璃，
         // 底下只该透出壁纸，不能透出队列和格式列表（会很脏）。

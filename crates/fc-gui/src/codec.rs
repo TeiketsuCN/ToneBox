@@ -74,15 +74,34 @@ fn device_color(d: &fc_player::devices::AudioDevice) -> Color32 {
 impl App {
     /// 「引擎和设备」总入口。
     pub(crate) fn codec_view(&mut self, ui: &mut egui::Ui) {
-        if !self.devices_loaded {
+        // 设备枚举放后台：点进引擎页时先显示“正在检测”，不卡界面
+        let mut devices_done = None;
+        if let Some(rx) = &self.devices_rx {
+            if let Ok(res) = rx.try_recv() {
+                devices_done = Some(res);
+            }
+        }
+        if let Some(res) = devices_done {
+            self.devices_rx = None;
+            self.devices_loading = false;
             self.devices_loaded = true;
-            match fc_player::devices::list() {
+            self.activity = None;
+            match res {
                 Ok(v) => {
                     self.audio_devices = v;
                     self.devices_error = None;
                 }
-                Err(e) => self.devices_error = Some(format!("{e:#}")),
+                Err(e) => self.devices_error = Some(e),
             }
+        }
+        if !self.devices_loaded && !self.devices_loading {
+            self.devices_loading = true;
+            self.activity = Some("正在检测音频设备…".to_string());
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(fc_player::devices::list().map_err(|e| format!("{e:#}")));
+            });
+            self.devices_rx = Some(rx);
         }
 
         // 这个页有 USB 呼吸光/蓝牙冲刺动效：不靠鼠标事件也要持续跑
@@ -494,10 +513,11 @@ impl App {
         }
         // ASIO：驱动从注册表发现，实际能不能用要真的打开一次才知道
         // （这台机器的 Realtek ASIO 在板载输出没接时一直报 NotPresent）
-        if self.asio_status.is_none() {
-            #[cfg(windows)]
-            {
-                let (list, err) = probe_asio_isolated();
+        if let Some(rx) = &self.asio_probe_rx {
+            if let Ok((list, err)) = rx.try_recv() {
+                self.asio_probe_rx = None;
+                self.asio_probing = false;
+                self.activity = None;
                 let msg = if let Some(err) = err {
                     err
                 } else if list.is_empty() {
@@ -511,16 +531,38 @@ impl App {
                 let ok = !list.is_empty() && list.iter().all(|(_, s)| s.starts_with("可用"));
                 self.asio_status = Some((ok, msg));
             }
+        }
+        if self.asio_status.is_none() && !self.asio_probing {
+            #[cfg(windows)]
+            {
+                self.asio_probing = true;
+                self.activity = Some("正在检测 ASIO 驱动…".to_string());
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(probe_asio_isolated());
+                });
+                self.asio_probe_rx = Some(rx);
+            }
             #[cfg(not(windows))]
             {
                 self.asio_status = Some((false, "只有 Windows 有 ASIO".to_string()));
             }
         }
-        let (asio_ok, asio_msg) = self.asio_status.clone().unwrap_or((false, String::new()));
+        let (asio_ok, asio_msg) = if self.asio_probing {
+            (false, "正在检测 ASIO 驱动…".to_string())
+        } else {
+            self.asio_status.clone().unwrap_or((false, String::new()))
+        };
         if Self::engine_row(
             ui,
             "ASIO",
-            if asio_ok { "可用" } else { "不可用" },
+            if self.asio_probing {
+                "检测中"
+            } else if asio_ok {
+                "可用"
+            } else {
+                "不可用"
+            },
             if asio_ok { GOOD } else { WARN },
             &asio_msg,
             cur == fc_player::Engine::Asio,
