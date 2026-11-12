@@ -1,10 +1,14 @@
 ﻿param(
-  [string]$Out = "D:\FormatConverter\out\shot.png",
+  [string]$Out = "",
   [string]$Proc = "format-converter",
   [int]$Pad = 0
 )
+# 脚本在 tools\ 下，项目根目录 = 上一级；换目录、换盘符都不用改
+$root = Split-Path -Parent $PSScriptRoot
+if ($Out -eq "") { $Out = Join-Path $root "out\shot.png" }
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Out) | Out-Null
 Add-Type -AssemblyName System.Drawing
-Add-Type -Path "D:\FormatConverter\tools\shot.cs"
+Add-Type -Path (Join-Path $PSScriptRoot "shot.cs")
 
 $p = Get-Process -Name $Proc -ErrorAction SilentlyContinue |
      Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1

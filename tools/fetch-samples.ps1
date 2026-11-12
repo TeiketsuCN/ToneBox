@@ -1,8 +1,8 @@
-# 从 FFmpeg 官方公开样本库拉取 ATRAC 位流（测试用途）
+﻿# 从 FFmpeg 官方公开样本库拉取 ATRAC 位流（测试用途）
 # 用 Invoke-WebRequest（本机 curl 无法完成 TLS 握手），每个文件最多重试 5 次
 $ErrorActionPreference = 'Continue'
 $base = 'https://samples.ffmpeg.org'
-$dst  = 'D:\FormatConverter\samples\atrac'
+$dst  = Join-Path (Split-Path -Parent $PSScriptRoot) 'samples\atrac'
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
 $map = @(
