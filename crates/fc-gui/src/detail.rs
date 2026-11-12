@@ -117,7 +117,10 @@ impl App {
                 ui.add_space(5.0);
                 para(
                     ui,
-                    "空间音频：内置 ffmpeg 没有这个解码器，不能试听/转码；请保留原文件。",
+                    &format!(
+                        "{}（有损空间音频）：内置 ffmpeg 没有这个解码器，不能试听/转码；请保留原文件。",
+                        m.codec_label()
+                    ),
                     8.5,
                     DANGER,
                 );

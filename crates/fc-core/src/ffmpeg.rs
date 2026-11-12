@@ -130,7 +130,11 @@ pub struct AudioTrackInfo {
 impl AudioTrackInfo {
     /// 显示用的短标签："AAC · 2ch · eng"
     pub fn label(&self) -> String {
-        let mut s = self.codec.to_uppercase();
+        let mut s = match self.codec.as_str() {
+            "ac4" => "杜比全景声 AC-4".to_string(),
+            "av3a" => "菁彩声 Audio Vivid".to_string(),
+            other => other.to_uppercase(),
+        };
         if self.channels > 0 {
             s.push_str(&format!(" · {}ch", self.channels));
         }
@@ -219,6 +223,9 @@ impl MediaInfo {
                 | "cook"
                 | "musepack7"
                 | "mpc8"
+                // AC-4 / Audio Vivid 都是有损空间音频，不能当 Hi-Res 无损
+                | "ac4"
+                | "av3a"
         )
     }
 
@@ -238,8 +245,8 @@ impl MediaInfo {
             "atrac3al" => "ATRAC3 AL",
             "atrac3plusal" => "ATRAC3+ AL",
             "dsd_lsbf" | "dsd_msbf" | "dsd_lsbf_planar" | "dsd_msbf_planar" => "DSD",
-            "ac4" => "AC-4",
-            "av3a" => "Audio Vivid",
+            "ac4" => "杜比全景声 AC-4",
+            "av3a" => "菁彩声 Audio Vivid",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",
@@ -247,7 +254,7 @@ impl MediaInfo {
         }
     }
 
-    /// 内置 ffmpeg 没有解码器的空间音频：AC-4（杜比全景声）和 Audio Vivid（菁彩声）。
+    /// 内置 ffmpeg 没有解码器的有损空间音频：杜比全景声 AC-4、菁彩声 Audio Vivid。
     pub fn needs_external_decoder(&self) -> bool {
         matches!(self.codec.as_str(), "ac4" | "av3a")
     }
