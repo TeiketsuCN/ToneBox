@@ -124,4 +124,17 @@ pub static LOSSLESS: &[FormatSpec] = &[
         args: &["-c:a", "pcm_s24le", "-f", "s24le"],
         size_ratio: 1.0,
     },
+    FormatSpec {
+        id: "truehd",
+        name: "TrueHD",
+        ext: "thd",
+        kind: Kind::Lossless,
+        group: Group::Lossless,
+        patent: Patent::Active,
+        can_encode: true,
+        primary: false,
+        blurb: "杜比的无损音频（蓝光常用）。\n用 ffmpeg 的 truehd 编码器输出 .thd；\n不携带 Atmos 对象元数据，只是无损声道。",
+        args: &["-c:a", "truehd", "-strict", "-2"],
+        size_ratio: 0.5,
+    },
 ];

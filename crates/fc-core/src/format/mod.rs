@@ -994,7 +994,7 @@ impl ChannelMode {
 
 /// 这个格式支不支持改声道（不支持就别给旋钮）
 pub fn channels_for(spec: &FormatSpec) -> bool {
-    matches!(spec.id, "flac" | "alac" | "aac" | "ac3" | "eac3" | "opus" | "vorbis")
+    matches!(spec.id, "flac" | "alac" | "aac" | "ac3" | "eac3" | "dts" | "truehd" | "opus" | "vorbis")
 }
 
 /// 实际输出声道数：`None` = 不传 `-ac`，跟着源走
@@ -1172,7 +1172,8 @@ pub fn rate_choices(id: &str) -> &'static [u32] {
         "mp3" | "mp2" => &[32000, 44100, 48000],
         "aac" => &[44100, 48000, 96000],
         "vorbis" => &[44100, 48000, 96000],
-        "ac3" | "eac3" => &[44100, 48000],
+        "ac3" | "eac3" | "dts" => &[44100, 48000],
+        "truehd" => &[48000, 96000, 192000],
         "wma" => &[44100, 48000],
         _ => &[],
     }
@@ -1210,7 +1211,7 @@ pub fn output_rate(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
     }
     match o.sample_rate {
         Some(r) => Some(snap_rate(spec.id, r)),
-        None if matches!(spec.id, "ac3" | "eac3") => Some(48000),
+        None if matches!(spec.id, "ac3" | "eac3" | "dts" | "truehd") => Some(48000),
         None => None,
     }
 }
@@ -1219,7 +1220,7 @@ pub fn output_rate(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
 pub fn rate_note(spec: &FormatSpec) -> &'static str {
     match spec.id {
         // Dolby 没有「自动」这个选项：它的默认值就是 48k，界面直接高亮 48k
-        "ac3" | "eac3" => "默认 48 kHz（DVD/蓝光规范）；44.1k 能编，但不是标准做法。",
+        "ac3" | "eac3" | "dts" | "truehd" => "默认 48 kHz（DVD/蓝光规范）；44.1k 能编，但不是标准做法。",
         _ => "自动 = 保持源采样率。升采样不会增加信息，只会让文件变大。",
     }
 }
