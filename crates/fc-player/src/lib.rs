@@ -14,6 +14,8 @@
 pub mod devices;
 #[cfg(windows)]
 mod exclusive;
+#[cfg(windows)]
+pub mod asio;
 
 use std::collections::VecDeque;
 use std::io::Read;
@@ -88,8 +90,37 @@ pub struct PlayOptions {
     pub source_rate: u32,
     /// ReplayGain 曲目增益（dB）
     pub replaygain_db: Option<f32>,
-    /// 独占输出（还没接）
-    pub exclusive: bool,
+    /// 用哪套播放引擎
+    pub engine: Engine,
+}
+
+/// 播放引擎。真正实现了的只有 Shared / Exclusive / Asio；
+/// Native（自研）和 CoreAudio（兼容层）在各自的轮次里接进来。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Engine {
+    /// WASAPI 共享（cpal）
+    #[default]
+    Shared,
+    /// WASAPI 独占直通
+    Exclusive,
+    /// ASIO（自己调 IASIO）
+    Asio,
+    /// 自研引擎
+    Native,
+    /// Core Audio（macOS 真实现 / Windows 兼容层）
+    CoreAudio,
+}
+
+impl Engine {
+    pub fn label(self) -> &'static str {
+        match self {
+            Engine::Shared => "WASAPI 共享",
+            Engine::Exclusive => "WASAPI 独占",
+            Engine::Asio => "ASIO",
+            Engine::Native => "自研引擎",
+            Engine::CoreAudio => "Core Audio",
+        }
+    }
 }
 
 impl PlayOptions {
@@ -106,6 +137,8 @@ enum Output {
     Shared(cpal::Stream),
     #[cfg(windows)]
     Exclusive(exclusive::Out),
+    #[cfg(windows)]
+    Asio(asio::Out),
 }
 
 pub struct Player {
@@ -186,7 +219,35 @@ impl Player {
         opts: &PlayOptions,
     ) -> Result<Self> {
         #[cfg(windows)]
-        if opts.exclusive {
+        if opts.engine == Engine::Asio {
+            // ASIO：s32 直通，和独占一样不做音量/ReplayGain
+            let inner = Arc::new(Inner::new(opts.source_rate.max(44_100), 2, 1.0));
+            match asio::start(opts.device_name.as_deref(), opts.source_rate, inner.clone()) {
+                Ok((out, rate, ch, label)) => {
+                    inner.set_format(rate, ch);
+                    let mut p = Player {
+                        inner,
+                        output: Output::Asio(out),
+                        ffmpeg: ffmpeg.to_path_buf(),
+                        path: path.to_path_buf(),
+                        generation: Arc::new(AtomicU64::new(0)),
+                        my_gen: 0,
+                        duration_s,
+                        paused: false,
+                        output_label: label,
+                    };
+                    p.spawn_decoder(0.0);
+                    return Ok(p);
+                }
+                Err(e) => {
+                    // 驱动被占用/没有驱动：退回共享，并把原因写进输出描述
+                    let note = format!("ASIO 不可用（{e}）· 已退回共享");
+                    return Self::open_shared(ffmpeg, path, duration_s, opts, Some(note));
+                }
+            }
+        }
+        #[cfg(windows)]
+        if opts.engine == Engine::Exclusive {
             // 独占：s32 字节直通，忽略音量/ReplayGain（位完美优先）
             let inner = Arc::new(Inner::new(opts.source_rate.max(44_100), 2, 1.0));
             match exclusive::start(opts.device_name.as_deref(), opts.source_rate, inner.clone()) {
@@ -488,6 +549,8 @@ impl Drop for Player {
             }
             #[cfg(windows)]
             Output::Exclusive(out) => out.stop(),
+            #[cfg(windows)]
+            Output::Asio(out) => out.stop(),
         }
     }
 }

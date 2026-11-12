@@ -339,17 +339,18 @@ impl App {
         ui.add_space(14.0);
         ui.label(RichText::new("播放引擎").size(10.0).color(DIM));
         ui.add_space(4.0);
-        let mut ex = self.cfg.exclusive_output;
+        let cur = self.cfg.engine_enum();
+        let mut picked = cur;
         if Self::engine_row(
             ui,
             "WASAPI 共享",
             "可用",
             GOOD,
             "走 Windows 混音器，最省事；采样率由系统混音格式决定，音量和 ReplayGain 都生效。",
-            !ex,
+            cur == fc_player::Engine::Shared,
             true,
         ) {
-            ex = false;
+            picked = fc_player::Engine::Shared;
         }
         if Self::engine_row(
             ui,
@@ -357,40 +358,68 @@ impl App {
             "可用",
             GOOD,
             "直通声卡：按源采样率、32-bit 整数原样写；音量和 ReplayGain 不介入。",
-            ex,
+            cur == fc_player::Engine::Exclusive,
             true,
         ) {
-            ex = true;
+            picked = fc_player::Engine::Exclusive;
         }
+        // ASIO：驱动从注册表发现，实际能不能用要真的打开一次才知道
+        // （这台机器的 Realtek ASIO 在板载输出没接时一直报 NotPresent）
+        if self.asio_status.is_none() {
+            #[cfg(windows)]
+            {
+                let list = fc_player::asio::probe();
+                let msg = if list.is_empty() {
+                    "没装 ASIO 驱动（注册表 HKLM\\SOFTWARE\\ASIO 是空的）".to_string()
+                } else {
+                    list.iter()
+                        .map(|(n, s)| format!("{n}：{s}"))
+                        .collect::<Vec<_>>()
+                        .join("；")
+                };
+                let ok = !list.is_empty() && list.iter().all(|(_, s)| s.starts_with("可用"));
+                self.asio_status = Some((ok, msg));
+            }
+            #[cfg(not(windows))]
+            {
+                self.asio_status = Some((false, "只有 Windows 有 ASIO".to_string()));
+            }
+        }
+        let (asio_ok, asio_msg) = self.asio_status.clone().unwrap_or((false, String::new()));
         if Self::engine_row(
             ui,
             "ASIO",
-            "未实现",
-            DIM,
-            "要 ASIO SDK + 各家声卡驱动，还要单独一条输出链路和缓冲管理；现在没有。",
-            false,
-            false,
-        ) {}
+            if asio_ok { "可用" } else { "不可用" },
+            if asio_ok { GOOD } else { WARN },
+            &asio_msg,
+            cur == fc_player::Engine::Asio,
+            asio_ok,
+        ) {
+            picked = fc_player::Engine::Asio;
+        }
+        let mac = cfg!(target_os = "macos");
         if Self::engine_row(
             ui,
             "Apple Core Audio",
-            "仅 macOS",
-            DIM,
-            "macOS 的系统音频层；Windows 上没有这个东西，装不了也用不上。",
-            false,
-            false,
-        ) {}
+            if mac { "可用" } else { "仅 macOS" },
+            if mac { GOOD } else { DIM },
+            "macOS 的系统音频层（Apple 私有，不开源）。Windows 上没有这个引擎；macOS 构建里走的就是它。",
+            cur == fc_player::Engine::CoreAudio,
+            mac,
+        ) {
+            picked = fc_player::Engine::CoreAudio;
+        }
         if Self::engine_row(
             ui,
             "自研引擎",
-            "规划中",
-            DIM,
-            "目标是自己做重采样和时钟同步、绕开系统混音器；目前还没有可用的实现。",
-            false,
+            "开发中",
+            WARN,
+            "自己的解码 → 重采样 → 环形缓冲 → 输出管线，不经过系统混音器。骨架已有，还没接进播放。",
+            cur == fc_player::Engine::Native,
             false,
         ) {}
-        if ex != self.cfg.exclusive_output {
-            self.cfg.exclusive_output = ex;
+        if picked != cur {
+            self.cfg.set_engine(picked);
             self.cfg.save();
             pose_hint(ui, "引擎切换在下次播放时生效（正在播的那首不会中途换）。");
         }

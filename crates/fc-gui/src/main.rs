@@ -336,6 +336,8 @@ pub(crate) struct App {
     bar_rect: egui::Rect,
     /// CPU / 内存 / 编解码压力的采样器
     sys: sysstat::Sampler,
+    /// ASIO 驱动的探测结果（打开过一次就缓存，别每次画界面都开驱动）
+    asio_status: Option<(bool, String)>,
     bar_expand_rect: egui::Rect,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
@@ -553,6 +555,7 @@ impl App {
             bar_hot: false,
             bar_rect: egui::Rect::NOTHING,
             sys: sysstat::Sampler::new(),
+            asio_status: None,
             bar_expand_rect: egui::Rect::NOTHING,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),
@@ -1006,7 +1009,7 @@ impl App {
             } else {
                 None
             },
-            exclusive: self.cfg.exclusive_output,
+            engine: self.cfg.engine_enum(),
         };
         match fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts) {
             Ok(p) => {
@@ -1729,6 +1732,15 @@ fn main() -> eframe::Result<()> {
     }
 
     // 命令行：打印当前用到的 ffmpeg/ffprobe 路径
+    if args.first().map(|s| s.as_str()) == Some("--engines") {
+        // 自检：本机有哪些播放引擎可用
+        #[cfg(windows)]
+        print!("{}", fc_player::asio::describe());
+        let _ = &args;
+        let cfg_e = settings::Settings::load();
+        println!("当前配置的引擎：{}", cfg_e.engine_enum().label());
+        return Ok(());
+    }
     if args.first().map(|s| s.as_str()) == Some("--tools") {
         match fc_core::locate() {
             Some(t) => {
@@ -1867,7 +1879,7 @@ fn main() -> eframe::Result<()> {
             } else {
                 None
             },
-            exclusive: cfg.exclusive_output,
+            engine: cfg.engine_enum(),
         };
         let mut pl = match fc_player::Player::open_with(
             &tools.ffmpeg,

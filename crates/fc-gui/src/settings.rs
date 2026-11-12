@@ -29,6 +29,10 @@ fn default_bar_pos() -> f32 {
     -1.0
 }
 
+fn default_engine() -> String {
+    "shared".to_string()
+}
+
 fn default_bar_w() -> f32 {
     1100.0
 }
@@ -234,9 +238,12 @@ pub struct Settings {
     /// 播放时应用 ReplayGain（读文件里的 replaygain_track_gain 标签）
     #[serde(default)]
     pub replaygain: bool,
-    /// 播放走 WASAPI 独占（直通；失败自动退回共享）
+    /// 播放走 WASAPI 独占（直通；失败自动退回共享）——旧字段，保留给老配置
     #[serde(default)]
     pub exclusive_output: bool,
+    /// 播放引擎："shared" / "exclusive" / "asio" / "native" / "coreaudio"
+    #[serde(default = "default_engine")]
+    pub engine: String,
     /// 选中文件就自动做频谱分析
     pub auto_analyze: bool,
     /// 输出参数（压缩等级 / 位深 / 码率……）——当前配置的展开
@@ -303,6 +310,7 @@ impl Default for Settings {
             audio_out_device: String::new(),
             replaygain: false,
             exclusive_output: false,
+            engine: default_engine(),
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,
@@ -332,6 +340,30 @@ impl Settings {
         Self::dir().map(|d| d.join("config.json"))
     }
 
+    /// 配置里的字符串 → fc_player 的引擎枚举
+    pub fn engine_enum(&self) -> fc_player::Engine {
+        match self.engine.as_str() {
+            "exclusive" => fc_player::Engine::Exclusive,
+            "asio" => fc_player::Engine::Asio,
+            "native" => fc_player::Engine::Native,
+            "coreaudio" => fc_player::Engine::CoreAudio,
+            _ => fc_player::Engine::Shared,
+        }
+    }
+
+    /// 切引擎：同时维护老的 exclusive_output（老版本配置/代码还在读它）
+    pub fn set_engine(&mut self, e: fc_player::Engine) {
+        self.engine = match e {
+            fc_player::Engine::Exclusive => "exclusive",
+            fc_player::Engine::Asio => "asio",
+            fc_player::Engine::Native => "native",
+            fc_player::Engine::CoreAudio => "coreaudio",
+            fc_player::Engine::Shared => "shared",
+        }
+        .to_string();
+        self.exclusive_output = e == fc_player::Engine::Exclusive;
+    }
+
     pub fn load() -> Self {
         let mut s = Self::file()
             .and_then(|p| std::fs::read(p).ok())
@@ -345,6 +377,15 @@ impl Settings {
             s.profiles = list;
             s.active_profile = 0;
         }
+        // 老配置没有 engine 字段：按 exclusive_output 推一次
+        if s.engine.is_empty() {
+            s.engine = if s.exclusive_output {
+                "exclusive".to_string()
+            } else {
+                "shared".to_string()
+            };
+        }
+        s.exclusive_output = s.engine == "exclusive";
         s.active_profile = s.active_profile.min(s.profiles.len().saturating_sub(1));
         s.apply_active();
         s

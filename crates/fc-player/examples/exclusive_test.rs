@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| std::path::PathBuf::from("ffmpeg.exe"));
 
     let opts = fc_player::PlayOptions {
-        exclusive: true,
+        engine: fc_player::Engine::Exclusive,
         source_rate: src_rate,
         ..Default::default()
     };
