@@ -292,7 +292,7 @@ impl App {
                                     row(ui, "推测源质量", &est);
                                 }
 
-                                ui.label(RichText::new("置信度").size(9.5).color(DIM));
+                                ui.label(RichText::new("置信度").size(10.0).color(tint(TEXT, 168)));
                                 let (rect, _) = ui.allocate_exact_size(
                                     egui::vec2(118.0, 10.0),
                                     egui::Sense::hover(),
@@ -323,7 +323,7 @@ impl App {
                                     } else {
                                         format!("{:.0}%", r.confidence * 100.0)
                                     })
-                                    .size(9.5)
+                                    .size(10.0)
                                     .color(TEXT),
                                 );
                                 ui.end_row();
@@ -465,7 +465,7 @@ impl App {
             egui::Grid::new("enc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 row(ui, "平台", enc.platform);
                 row(ui, "格式", enc.format);
-                ui.label(RichText::new("置信度").size(10.0).color(DIM));
+                ui.label(RichText::new("置信度").size(10.0).color(tint(TEXT, 168)));
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(150.0, 12.0), egui::Sense::hover());
                 let p = ui.painter();

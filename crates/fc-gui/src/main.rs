@@ -30,6 +30,7 @@ mod bg;
 #[cfg(windows)]
 mod frame;
 mod settings;
+mod sysstat;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -333,6 +334,8 @@ pub(crate) struct App {
     bar_hot: bool,
     /// 细条这一帧占的矩形 / 展开块的矩形（下一帧用它判鼠标在不在里面）
     bar_rect: egui::Rect,
+    /// CPU / 内存 / 编解码压力的采样器
+    sys: sysstat::Sampler,
     bar_expand_rect: egui::Rect,
     dt: f32,
     fmt_sel: Vec<(&'static str, f32)>,
@@ -549,6 +552,7 @@ impl App {
             bar_t: 0.0,
             bar_hot: false,
             bar_rect: egui::Rect::NOTHING,
+            sys: sysstat::Sampler::new(),
             bar_expand_rect: egui::Rect::NOTHING,
             dt: 0.016,
             fmt_sel: fc_core::browsable().map(|f| (f.id, 0.0)).collect(),

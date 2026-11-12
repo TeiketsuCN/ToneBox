@@ -846,6 +846,52 @@ impl App {
                                     }
                                 });
                         }
+
+                        // ── 系统：CPU / 内存 / 编解码压力（最下面，实时）──
+                        ui.add_space(10.0);
+                        self.hairline(ui);
+                        ui.add_space(7.0);
+                        self.sys.sample(ui.ctx());
+                        let s = self.sys.stats;
+                        ui.label(RichText::new("系统").size(9.5).color(MUTED));
+                        ui.add_space(3.0);
+                        Self::stat_row(
+                            ui,
+                            "CPU",
+                            &format!("{:.0}%", s.cpu_total * 100.0),
+                            &format!("本程序 {:.1}%", s.cpu_self * 100.0),
+                            s.cpu_total,
+                        );
+                        let used = s.mem_total.saturating_sub(s.mem_avail);
+                        let mfrac = if s.mem_total > 0 {
+                            used as f32 / s.mem_total as f32
+                        } else {
+                            0.0
+                        };
+                        Self::stat_row(
+                            ui,
+                            "内存",
+                            &format!(
+                                "{:.1}/{:.1} GB {:.0}%",
+                                used as f64 / 1_073_741_824.0,
+                                s.mem_total as f64 / 1_073_741_824.0,
+                                mfrac * 100.0
+                            ),
+                            &format!("本程序 {} MB", s.mem_self / 1_048_576),
+                            mfrac,
+                        );
+                        Self::stat_row(
+                            ui,
+                            "编解码压力",
+                            &format!("{:.0}%", s.cpu_children * 100.0),
+                            &if s.codec_procs > 0 {
+                                format!("{} 个进程", s.codec_procs)
+                            } else {
+                                "空闲".to_string()
+                            },
+                            s.cpu_children,
+                        );
+                        ui.add_space(8.0);
                     });
                 panel_rect = inner.response.rect;
             });
@@ -872,4 +918,27 @@ impl App {
             .rect_filled(r, Rounding::ZERO, tint(Color32::WHITE, 16));
     }
 
+/// 面板底部的一行系统指标：名称 + 细条 + 数值 + 备注
+fn stat_row(ui: &mut egui::Ui, name: &str, value: &str, sub: &str, frac: f32) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.add_sized(
+            egui::vec2(68.0, 12.0),
+            egui::Label::new(RichText::new(name).size(8.5).color(MUTED)),
+        );
+        let (r, _) = ui.allocate_exact_size(egui::vec2(54.0, 5.0), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(r, Rounding::same(2.5), tint(Color32::WHITE, 18));
+        let w = (r.width() * frac.clamp(0.0, 1.0)).max(1.0);
+        let mut f = r;
+        f.set_width(w);
+        ui.painter().rect_filled(f, Rounding::same(2.5), accent());
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if !sub.is_empty() {
+                ui.label(RichText::new(sub).size(8.5).color(DIM));
+            }
+            ui.label(RichText::new(value).size(9.5).color(TEXT));
+        });
+    });
+}
 }

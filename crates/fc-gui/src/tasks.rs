@@ -68,6 +68,14 @@ impl App {
         for (i, t) in self.tasks.iter().enumerate() {
             let spec = fc_core::by_id(t.spec_id);
             let fmt = spec.map(|s| s.name).unwrap_or("?");
+            // 源编码器：从队列里那条读（任务本身只存格式/参数快照）
+            let src = self
+                .items
+                .iter()
+                .find(|i| i.path == t.path)
+                .and_then(|i| i.info.as_ref())
+                .map(|m| m.codec_label())
+                .unwrap_or("?");
             let (label, color) = match &t.state {
                 State::Pending => ("待转换".to_string(), DIM),
                 State::Running(p) => (format!("{:.0}%", p * 100.0), accent()),
@@ -90,7 +98,7 @@ impl App {
             p.text(
                 rect.left_top() + egui::vec2(4.0, 24.0),
                 Align2::LEFT_TOP,
-                format!("{fmt} · {label}"),
+                format!("{src} → {fmt} · {label}"),
                 FontId::proportional(9.0),
                 color,
             );
@@ -135,6 +143,27 @@ impl App {
                     self.selected = item;
                 }
             }
+        }
+
+        // 这批任务会用到哪些编解码器（解码源 + 编码目标），对拷一遍给人看
+        let mut pairs: Vec<String> = Vec::new();
+        for t in self.tasks.iter() {
+            let fmt = fc_core::by_id(t.spec_id).map(|s| s.name).unwrap_or("?");
+            let src = self
+                .items
+                .iter()
+                .find(|i| i.path == t.path)
+                .and_then(|i| i.info.as_ref())
+                .map(|m| m.codec_label())
+                .unwrap_or("?");
+            let pair = format!("{src} → {fmt}");
+            if !pairs.contains(&pair) {
+                pairs.push(pair);
+            }
+        }
+        if !pairs.is_empty() {
+            ui.add_space(7.0);
+            para(ui, &format!("涉及编解码：{}", pairs.join(" · ")), 8.5, DIM);
         }
 
         ui.add_space(8.0);
