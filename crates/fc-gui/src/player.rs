@@ -80,6 +80,8 @@ impl App {
         let has_cover = cover.is_some();
         let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
 
+        // 四个控件整体往下挪一点，别贴着栏顶
+        ui.add_space(3.0);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 0.0);
             let resp = bar_cover(ui, cover.as_ref(), 30.0);

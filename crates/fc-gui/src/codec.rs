@@ -231,7 +231,7 @@ impl App {
             for d in &self.bt_paired {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&d.name).size(9.5).color(TEXT));
-                    if ui.small_button("取消配对").clicked() {
+                    if ui.add(egui::Button::new(RichText::new("取消配对").size(8.5).color(DIM)).frame(false)).clicked() {
                         unpair_id = Some(d.id.clone());
                     }
                 });

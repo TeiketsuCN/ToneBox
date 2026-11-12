@@ -853,6 +853,7 @@ impl App {
 
         let (tx, rx) = channel();
         self.rx = Some(rx);
+        let gen_lyrics = self.cfg.gen_lyrics;
         let ctx2 = ctx.clone();
 
         std::thread::spawn(move || {
@@ -931,6 +932,13 @@ impl App {
                 };
                 match res {
                     Ok(size) => {
+                        // 空歌词 sidecar：只写 .lrc，不写 .lyc/.txt；已有就不覆盖
+                        if gen_lyrics {
+                            let lrc = out.with_extension("lrc");
+                            if !lrc.exists() {
+                                let _ = std::fs::write(&lrc, b"");
+                            }
+                        }
                         let _ = tx.send(Msg::Done(idx, out, size));
                     }
                     Err(e) => {
@@ -1016,6 +1024,9 @@ impl App {
                 self.play_error = Some("加密文件：本工具只识别，不解码也不播放。".into());
                 return;
             }
+        }
+        if let Some(p) = &self.player {
+            p.fade_out(12);
         }
         self.player = None;
         self.play_error = None;

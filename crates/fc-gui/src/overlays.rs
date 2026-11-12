@@ -501,10 +501,28 @@ impl App {
                                 // ── 行为 ──
                                 section(ui, "行为");
                                 let mut auto = self.cfg.auto_analyze;
-                                if ui
-                                    .checkbox(&mut auto, RichText::new("选中文件时自动分析频谱").size(10.5).color(MUTED))
-                                    .changed()
-                                {
+                                // 复选框底色透明：只留勾和文字，别在深色面板上再压一块方块
+                                let r = ui
+                                    .scope(|ui| {
+                                        let v = &mut ui.style_mut().visuals.widgets;
+                                        v.inactive.bg_fill = Color32::TRANSPARENT;
+                                        v.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                                        v.inactive.bg_stroke = Stroke::NONE;
+                                        v.hovered.bg_fill = tint(Color32::WHITE, 8);
+                                        v.hovered.weak_bg_fill = tint(Color32::WHITE, 8);
+                                        v.hovered.bg_stroke = Stroke::NONE;
+                                        v.active.bg_fill = tint(Color32::WHITE, 12);
+                                        v.active.weak_bg_fill = tint(Color32::WHITE, 12);
+                                        v.active.bg_stroke = Stroke::NONE;
+                                        ui.checkbox(
+                                            &mut auto,
+                                            RichText::new("选中文件时自动分析频谱")
+                                                .size(10.5)
+                                                .color(MUTED),
+                                        )
+                                    })
+                                    .inner;
+                                if r.changed() {
                                     self.cfg.auto_analyze = auto;
                                     changed = true;
                                 }

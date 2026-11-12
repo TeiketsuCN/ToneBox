@@ -537,6 +537,24 @@ impl App {
         ui.add_space(2.0);
 
         if self.meta_open {
+            let mut gen_lyrics = self.cfg.gen_lyrics;
+            if ui
+                .checkbox(
+                    &mut gen_lyrics,
+                    RichText::new("生成空歌词文件（.lrc）").size(9.5).color(MUTED),
+                )
+                .changed()
+            {
+                self.cfg.gen_lyrics = gen_lyrics;
+                changed = true;
+            }
+            para(
+                ui,
+                "只在输出文件旁生成同名 .lrc，不生成 .lyc / .txt；已有同名 .lrc 不覆盖。",
+                8.5,
+                DIM,
+            );
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if radio_dot_inline(ui, "自动", !self.cfg.write_tags) {
                     self.cfg.write_tags = false;

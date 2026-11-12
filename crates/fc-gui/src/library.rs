@@ -203,10 +203,10 @@ impl App {
                                 );
                             });
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button(RichText::new("在文件夹中显示").size(9.0)).clicked() {
+                                if ui.add(egui::Button::new(RichText::new("在文件夹中显示").size(9.0)).frame(false)).clicked() {
                                     lib_reveal = Some(e.path.clone());
                                 }
-                                if ui.button(RichText::new("播放").size(9.0)).clicked() {
+                                if ui.add(egui::Button::new(RichText::new("播放").size(9.0)).frame(false)).clicked() {
                                     lib_play = Some(e.path.clone());
                                 }
                             });

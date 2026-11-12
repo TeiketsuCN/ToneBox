@@ -539,11 +539,14 @@ impl Player {
         );
         inner.pos_offset.store(0, Ordering::SeqCst);
         inner.set_track(&path, duration_s, inner.gain());
+        // 切歌/起播做 10ms 淡入淡出，消掉波形硬切那一下“兹”
+        let fade_len = (inner.sample_rate.load(Ordering::Relaxed) / 100).clamp(64, 4096) as usize;
 
         std::thread::spawn(move || {
             let mut cur_path = path.clone();
             let mut cur_start = start_s;
             let mut first = true;
+            let mut fade_remaining = fade_len;
             loop {
                 if gen_shared.load(Ordering::SeqCst) != my_gen {
                     break;
@@ -567,6 +570,7 @@ impl Player {
                             inner.pos_frames.store(0, Ordering::SeqCst);
                             inner.track_no.fetch_add(1, Ordering::SeqCst);
                             inner.eof.store(false, Ordering::SeqCst);
+                            fade_remaining = fade_len;
                         }
                         None => {
                             inner.eof.store(true, Ordering::SeqCst);
@@ -604,9 +608,54 @@ impl Player {
                         break;
                     }
                     match out.read(&mut raw) {
-                        Ok(0) => break,
+                        Ok(0) => {
+                            // 尾巴淡出：队列里还没播完的最后 10ms 收到 0
+                            let ch = inner.channels.load(Ordering::Relaxed).max(1) as usize;
+                            let bpf = ch * 4;
+                            let mut q = inner.buf.lock().unwrap();
+                            let total = q.len() / bpf;
+                            let f = fade_len.min(total);
+                            if f > 0 {
+                                for i in 0..f {
+                                    let idx = total - f + i;
+                                    let gain = (f - i) as f32 / f as f32;
+                                    for c in 0..ch {
+                                        let off = idx * bpf + c * 4;
+                                        let v = i32::from_le_bytes([
+                                            q[off],
+                                            q[off + 1],
+                                            q[off + 2],
+                                            q[off + 3],
+                                        ]);
+                                        let nv = (v as f32 * gain) as i32;
+                                        let bytes = nv.to_le_bytes();
+                                        for k in 0..4 {
+                                            q[off + k] = bytes[k];
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
                         Ok(n) => {
                             let n = n - (n % 4);
+                            // 新歌开头淡入，避免从上一首尾巴硬切到非零波形
+                            let frames = n / 4;
+                            let f = fade_remaining.min(frames);
+                            let done = fade_len - fade_remaining;
+                            for i in 0..f {
+                                let off = i * 4;
+                                let v = i32::from_le_bytes([
+                                    raw[off],
+                                    raw[off + 1],
+                                    raw[off + 2],
+                                    raw[off + 3],
+                                ]);
+                                let gain = ((done + i) as f32 / fade_len as f32).clamp(0.0, 1.0);
+                                let nv = (v as f32 * gain) as i32;
+                                raw[off..off + 4].copy_from_slice(&nv.to_le_bytes());
+                            }
+                            fade_remaining -= f;
                             let mut q = inner.buf.lock().unwrap();
                             q.extend(&raw[..n]);
                             // 背压：满了就放掉锁睡一会儿，绝不阻塞声卡回调
@@ -766,6 +815,18 @@ impl Player {
         self.spawn_decoder(to);
         if was_playing {
             self.inner.playing.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// 切歌/停止前做一次短淡出：共享输出按回调读 gain，能压掉硬切那一下。
+    pub fn fade_out(&self, ms: u64) {
+        let base = self.inner.gain();
+        let steps = 12u32;
+        for i in (1..=steps).rev() {
+            self.inner
+                .gain
+                .store((base * (i as f32 / steps as f32)).to_bits(), Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(ms / steps as u64));
         }
     }
 
