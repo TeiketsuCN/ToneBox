@@ -1865,6 +1865,15 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    // 命令行：ASIO 探测放在子进程里跑，驱动崩溃也不会带走主程序
+    if args.first().map(|s| s.as_str()) == Some("--asio-probe") {
+        #[cfg(windows)]
+        for (name, status) in fc_player::asio::probe() {
+            println!("{name}\t{status}");
+        }
+        return Ok(());
+    }
+
     // 命令行：打印当前用到的 ffmpeg/ffprobe 路径
     if args.first().map(|s| s.as_str()) == Some("--engines") {
         // 自检：本机有哪些播放引擎可用

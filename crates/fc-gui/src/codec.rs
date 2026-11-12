@@ -497,8 +497,10 @@ impl App {
         if self.asio_status.is_none() {
             #[cfg(windows)]
             {
-                let list = fc_player::asio::probe();
-                let msg = if list.is_empty() {
+                let (list, err) = probe_asio_isolated();
+                let msg = if let Some(err) = err {
+                    err
+                } else if list.is_empty() {
                     "没装 ASIO 驱动（注册表 HKLM\\SOFTWARE\\ASIO 是空的）".to_string()
                 } else {
                     list.iter()
@@ -1175,4 +1177,33 @@ fn transparent_toggle(ui: &mut egui::Ui, on: &mut bool, label: &str) -> bool {
 
 fn pose_hint(ui: &mut egui::Ui, text: &str) {
     para(ui, text, 8.5, DIM);
+}
+
+/// 在子进程里探 ASIO：有些声卡驱动（本机 rthdasio64.dll）一碰就崩，
+/// 绝不能在主进程里直接 load。
+fn probe_asio_isolated() -> (Vec<(String, String)>, Option<String>) {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => return (Vec::new(), Some(format!("找不到自身程序：{e}"))),
+    };
+    let out = match std::process::Command::new(exe).arg("--asio-probe").output() {
+        Ok(o) => o,
+        Err(e) => return (Vec::new(), Some(format!("启动 ASIO 探测进程失败：{e}"))),
+    };
+    if !out.status.success() {
+        return (
+            Vec::new(),
+            Some(format!(
+                "ASIO 驱动探测时崩溃/退出（{}），已隔离；ASIO 暂不可用",
+                out.status.code().unwrap_or(-1)
+            )),
+        );
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let list: Vec<(String, String)> = text
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+    (list, None)
 }
