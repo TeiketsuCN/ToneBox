@@ -202,6 +202,113 @@ impl App {
             DIM,
         );
         ui.add_space(8.0);
+
+        // 配对动作的结果（配对 / 取消配对）
+        if let Some(rx) = &self.bt_action_rx {
+            if let Ok(res) = rx.try_recv() {
+                self.bt_action_rx = None;
+                match res {
+                    Ok(s) => {
+                        self.bt_msg = Some(format!("结果：{s}"));
+                        self.devices_loaded = false;
+                        self.bt_paired_loaded = false;
+                    }
+                    Err(e) => self.bt_msg = Some(format!("失败：{e:#}")),
+                }
+            }
+        }
+        // 已配对设备（系统列表，很快）
+        if !self.bt_paired_loaded {
+            self.bt_paired_loaded = true;
+            match fc_player::bluetooth::list(true) {
+                Ok(v) => self.bt_paired = v,
+                Err(e) => self.bt_msg = Some(format!("读已配对设备失败：{e:#}")),
+            }
+        }
+        if !self.bt_paired.is_empty() {
+            ui.label(RichText::new("已配对设备").size(9.5).color(DIM));
+            let mut unpair_id: Option<String> = None;
+            for d in &self.bt_paired {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&d.name).size(9.5).color(TEXT));
+                    if ui.small_button("取消配对").clicked() {
+                        unpair_id = Some(d.id.clone());
+                    }
+                });
+            }
+            if let Some(id) = unpair_id {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(fc_player::bluetooth::unpair(&id));
+                });
+                self.bt_action_rx = Some(rx);
+                self.bt_msg = Some("正在取消配对…".into());
+            }
+            ui.add_space(6.0);
+        }
+
+        // 扫描未配对设备：DeviceWatcher 跑 8 秒，结果走线程
+        if let Some(rx) = &self.bt_scan_rx {
+            if let Ok(res) = rx.try_recv() {
+                self.bt_scan_rx = None;
+                self.bt_scanning = false;
+                match res {
+                    Ok(v) => {
+                        self.bt_found = v;
+                        self.bt_msg = Some(format!("扫描到 {} 台未配对设备", self.bt_found.len()));
+                    }
+                    Err(e) => {
+                        self.bt_found.clear();
+                        self.bt_msg = Some(format!("扫描失败：{e:#}"));
+                    }
+                }
+            }
+        }
+        ui.horizontal(|ui| {
+            let b = egui::Button::new(
+                RichText::new(if self.bt_scanning {
+                    "扫描中…（8 秒）"
+                } else {
+                    "扫描附近未配对设备"
+                })
+                .size(9.0)
+                .color(MUTED),
+            )
+            .fill(tint(Color32::WHITE, 8))
+            .stroke(line(Color32::WHITE, 16))
+            .rounding(Rounding::same(6.0));
+            if !self.bt_scanning && ui.add(b).clicked() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = tx.send(fc_player::bluetooth::scan(8));
+                });
+                self.bt_scan_rx = Some(rx);
+                self.bt_scanning = true;
+                self.bt_msg = None;
+            }
+        });
+        let mut pair_id: Option<String> = None;
+        for d in &self.bt_found {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(&d.name).size(9.5).color(TEXT));
+                if ui.small_button("配对").clicked() {
+                    pair_id = Some(d.id.clone());
+                }
+            });
+        }
+        if let Some(id) = pair_id {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(fc_player::bluetooth::pair(&id));
+            });
+            self.bt_action_rx = Some(rx);
+            self.bt_msg = Some("正在配对…（Windows 可能弹确认框）".into());
+        }
+        if let Some(msg) = &self.bt_msg {
+            para(ui, msg, 8.5, DIM);
+        }
+        ui.add_space(8.0);
+
         let groups = fc_player::devices::bluetooth_groups(&self.audio_devices);
         if groups.is_empty() {
             para(ui, "没有检测到蓝牙音频设备。", 10.0, MUTED);

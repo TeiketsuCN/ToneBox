@@ -325,6 +325,14 @@ pub(crate) struct App {
     audio_devices: Vec<fc_player::devices::AudioDevice>,
     devices_loaded: bool,
     devices_error: Option<String>,
+    /// 蓝牙：已配对/扫描结果/线程通道
+    bt_paired: Vec<fc_player::bluetooth::BtDevice>,
+    bt_paired_loaded: bool,
+    bt_found: Vec<fc_player::bluetooth::BtDevice>,
+    bt_scanning: bool,
+    bt_scan_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<Vec<fc_player::bluetooth::BtDevice>>>>,
+    bt_action_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<String>>>,
+    bt_msg: Option<String>,
     /// 左侧格式分组菜单的展开状态（无损/有损/视频/设备专用）
     group_open: [bool; 4],
     /// 「引擎和设备」子页：设备 / 蓝牙 / 引擎
@@ -554,6 +562,13 @@ impl App {
             audio_devices: Vec::new(),
             devices_loaded: false,
             devices_error: None,
+            bt_paired: Vec::new(),
+            bt_paired_loaded: false,
+            bt_found: Vec::new(),
+            bt_scanning: false,
+            bt_scan_rx: None,
+            bt_action_rx: None,
+            bt_msg: None,
             // 常用两组和视频默认展开；设备专用（ATRAC）默认收着
             group_open: [true, true, true, false],
             codec_tab: codec::CodecTab::Devices,
