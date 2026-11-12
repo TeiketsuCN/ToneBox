@@ -137,6 +137,9 @@ impl AudioTrackInfo {
             "av3a" => "菁彩声 Audio Vivid".to_string(),
             "eac3_atmos" => "杜比全景声 E-AC-3".to_string(),
             "truehd_atmos" => "杜比全景声 TrueHD".to_string(),
+            "ac3" => "杜比 AC-3".to_string(),
+            "eac3" => "杜比 E-AC-3".to_string(),
+            "truehd" => "杜比 TrueHD".to_string(),
             other => other.to_uppercase(),
         };
         if self.channels > 0 {
@@ -254,6 +257,9 @@ impl MediaInfo {
             "av3a" => "菁彩声 Audio Vivid",
             "eac3_atmos" => "杜比全景声 E-AC-3",
             "truehd_atmos" => "杜比全景声 TrueHD",
+            "ac3" => "杜比 AC-3",
+            "eac3" => "杜比 E-AC-3",
+            "truehd" => "杜比 TrueHD",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",

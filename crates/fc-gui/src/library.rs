@@ -722,9 +722,22 @@ pub(crate) fn lib_row(
 
     // 右边的音质标识（上方）+ 时长（下方）
     let q = if e.codec.starts_with("杜比全景声") {
-        Some(Quality::Atmos)
+        let spec = if e.codec.contains("E-AC-3") {
+            "E-AC-3"
+        } else if e.codec.contains("TrueHD") {
+            "TrueHD"
+        } else {
+            "AC-4"
+        };
+        Some(Quality::Atmos(spec))
     } else if e.codec.starts_with("菁彩声") {
         Some(Quality::Vivid)
+    } else if e.codec.contains("E-AC-3") {
+        Some(Quality::Eac3)
+    } else if e.codec.contains("AC-3") {
+        Some(Quality::Ac3)
+    } else if e.codec.contains("TrueHD") {
+        Some(Quality::TrueHd)
     } else if e.codec == "DSD" {
         Some(Quality::Dsd(fc_core::dsd_tier(
             &e.codec,

@@ -124,6 +124,17 @@ impl App {
                     8.5,
                     DANGER,
                 );
+            } else if m.is_spatial() {
+                ui.add_space(5.0);
+                para(
+                    ui,
+                    &format!(
+                        "{}：内置解码器只能解声道 bed，转码会丢掉对象声/高度信息。",
+                        m.codec_label()
+                    ),
+                    8.5,
+                    DANGER,
+                );
             }
             ui.add_space(10.0);
 

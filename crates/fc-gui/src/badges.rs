@@ -23,10 +23,16 @@ use crate::overlays::*;
 pub(crate) enum Quality {
     /// DSD 的采样率档位（64 / 128 / 256 / 512 …），0 = 认不出来
     Dsd(u32),
-    /// 杜比全景声：特殊动画徽章，不按码率写“有损 xxxk”
-    Atmos,
+    /// 杜比全景声：特殊动画徽章，spec = AC-4 / E-AC-3 / TrueHD
+    Atmos(&'static str),
     /// 菁彩声 Audio Vivid：特殊动画徽章
     Vivid,
+    /// 普通杜比 AC-3（有损）
+    Ac3,
+    /// 普通杜比 E-AC-3（有损）
+    Eac3,
+    /// 杜比 TrueHD（无损）
+    TrueHd,
     HiRes,
     Cd,
     Hq,
@@ -42,6 +48,7 @@ pub(crate) fn label_is_lossy(label: &str) -> bool {
         "MP3" | "AAC" | "Vorbis" | "Opus" | "WMA" | "AC-3" | "E-AC-3" | "MP2" | "ATRAC1"
             | "ATRAC3" | "ATRAC3+" | "Musepack" | "Speex"
             | "杜比全景声 AC-4" | "杜比全景声 E-AC-3" | "杜比全景声 TrueHD" | "菁彩声 Audio Vivid"
+            | "杜比 AC-3" | "杜比 E-AC-3"
     )
 }
 
@@ -77,8 +84,14 @@ pub(crate) fn quality_of(m: &fc_core::MediaInfo) -> Option<Quality> {
     if m.codec == "av3a" {
         return Some(Quality::Vivid);
     }
-    if matches!(m.codec.as_str(), "ac4" | "eac3_atmos" | "truehd_atmos") {
-        return Some(Quality::Atmos);
+    match m.codec.as_str() {
+        "ac4" => return Some(Quality::Atmos("AC-4")),
+        "eac3_atmos" => return Some(Quality::Atmos("E-AC-3")),
+        "truehd_atmos" => return Some(Quality::Atmos("TrueHD")),
+        "ac3" => return Some(Quality::Ac3),
+        "eac3" => return Some(Quality::Eac3),
+        "truehd" => return Some(Quality::TrueHd),
+        _ => {}
     }
     if m.codec.starts_with("dsd") {
         return Some(Quality::Dsd(fc_core::dsd_tier(
@@ -100,8 +113,17 @@ pub(crate) fn quality_label(q: Quality, kbps: u64) -> String {
                 "DSD".to_string()
             }
         }
-        Quality::Atmos => "杜比全景声".to_string(),
-        Quality::Vivid => "菁彩声".to_string(),
+        Quality::Atmos(spec) => {
+            if spec == "TrueHD" {
+                "杜比全景声 TrueHD 无损".to_string()
+            } else {
+                format!("杜比全景声 {spec} 有损")
+            }
+        }
+        Quality::Vivid => "菁彩声 Audio Vivid 有损".to_string(),
+        Quality::Ac3 => "杜比 AC-3 有损".to_string(),
+        Quality::Eac3 => "杜比 E-AC-3 有损".to_string(),
+        Quality::TrueHd => "杜比 TrueHD 无损".to_string(),
         Quality::HiRes => "Hi-Res 无损".to_string(),
         Quality::Cd => "CD 无损".to_string(),
         Quality::Hq | Quality::Std | Quality::Lq => {
@@ -125,8 +147,9 @@ pub(crate) fn quality_width(ctx: &egui::Context, q: Quality, kbps: u64) -> f32 {
     match q {
         // DSD 左边有一段码流点串，CD 左边有个小光盘，都要额外留位
         Quality::Dsd(_) => 41.0 + w,
-        Quality::Atmos => 36.0 + w,
+        Quality::Atmos(_) => 36.0 + w,
         Quality::Vivid => 34.0 + w,
+        Quality::Ac3 | Quality::Eac3 | Quality::TrueHd => 18.0 + w,
         Quality::Cd => 25.0 + w,
         _ => (w + 14.0).max(30.0),
     }
@@ -203,7 +226,7 @@ pub(crate) fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbp
     let label = quality_label(q, kbps);
     let label = label.as_str();
     match q {
-        Quality::Atmos => {
+        Quality::Atmos(_) => {
             // 杜比全景声：深蓝底 + 环绕轨道 + 绕行光点，不写码率
             let blue = Color32::from_rgb(128, 186, 255);
             let bg = Color32::from_rgb(15, 24, 46);
@@ -256,6 +279,33 @@ pub(crate) fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbp
                 mint,
             );
             true
+        }
+        Quality::Ac3 | Quality::Eac3 => {
+            let amber = Color32::from_rgb(224, 176, 96);
+            p.rect_filled(rect, r, tint(amber, 18));
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(amber, 80)));
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                amber,
+            );
+            false
+        }
+        Quality::TrueHd => {
+            // 杜比 TrueHD：金色无损徽章（不写码率）
+            let gold = Color32::from_rgb(240, 206, 138);
+            p.rect_filled(rect, r, Color32::from_rgb(44, 34, 18));
+            p.rect_stroke(rect, r, Stroke::new(1.0, tint(gold, 135)));
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(8.5),
+                gold,
+            );
+            false
         }
         Quality::HiRes => {
             // 金属金：细切的纵向渐变 + 上沿高光/下沿暗边做倒角 + 慢扫光
