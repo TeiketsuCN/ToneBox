@@ -794,6 +794,15 @@ impl App {
             // 视频容器要看见源流的编码（能不能 copy / 音轨要不要重编），所以把 info 也传进去。
             let src_item = self.items.iter().find(|x| x.path == self.tasks[i].path);
             let src_info = src_item.and_then(|x| x.info.as_ref());
+            if let Some(m) = src_info {
+                if m.needs_external_decoder() {
+                    self.tasks[i].state = State::Failed(format!(
+                        "{} 是空间音频，内置 ffmpeg 没有解码器，不能转码；请保留原文件。",
+                        m.codec_label()
+                    ));
+                    continue;
+                }
+            }
             let mut args = fc_core::args_for_with(spec, &self.tasks[i].opts, src_info);
 
             // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢
@@ -1046,6 +1055,15 @@ impl App {
             self.player_for = Some(self.items[idx].path.clone());
             return;
         };
+        if info.needs_external_decoder() {
+            self.player = None;
+            self.player_for = Some(it.path.clone());
+            self.play_error = Some(format!(
+                "{}：内置 ffmpeg 没有这个空间音频解码器，只能保留原文件，不能转成普通声道。",
+                info.codec_label()
+            ));
+            return;
+        }
         // 输出设备 / 采样率跟随 / ReplayGain 都从设置里带过去
         let dsd = info.codec.starts_with("dsd");
         let tier = fc_core::dsd_tier(&info.codec, info.sample_rate, info.bitrate_kbps);
@@ -2006,6 +2024,13 @@ fn main() -> eframe::Result<()> {
             dop: dop_rate.is_some(),
             dop_lsb_first: info.codec.contains("lsbf"),
         };
+        if info.needs_external_decoder() {
+            eprintln!(
+                "{}：内置 ffmpeg 没有这个空间音频解码器，不能试听；请保留原文件。",
+                info.codec_label()
+            );
+            std::process::exit(1);
+        }
         let mut pl = match fc_player::Player::open_with(
             &tools.ffmpeg,
             Path::new(input),

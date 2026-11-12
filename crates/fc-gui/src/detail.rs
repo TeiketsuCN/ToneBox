@@ -105,6 +105,15 @@ impl App {
                     m.codec_label().to_string()
                 };
                 chip(ui, &codec, accent());
+                if m.needs_external_decoder() {
+                    ui.add_space(4.0);
+                    para(
+                        ui,
+                        "空间音频：内置 ffmpeg 没有这个解码器，不能试听/转码；请保留原文件。",
+                        8.5,
+                        DANGER,
+                    );
+                }
                 // 视频文件不画音频音质徽章：画面质量跟这条音频码率没有关系
                 if !m.has_video() {
                     if let Some(q) = quality_of(m) {

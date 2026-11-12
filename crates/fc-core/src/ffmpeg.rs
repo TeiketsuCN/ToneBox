@@ -83,6 +83,8 @@ struct ProbeOut {
 struct Stream {
     codec_type: Option<String>,
     codec_name: Option<String>,
+    /// MP4 sample entry（Audio Vivid 的 av3a 在 ffprobe 里 codec_name 是空的）
+    codec_tag_string: Option<String>,
     sample_rate: Option<String>,
     channels: Option<u32>,
     bit_rate: Option<String>,
@@ -236,11 +238,18 @@ impl MediaInfo {
             "atrac3al" => "ATRAC3 AL",
             "atrac3plusal" => "ATRAC3+ AL",
             "dsd_lsbf" | "dsd_msbf" | "dsd_lsbf_planar" | "dsd_msbf_planar" => "DSD",
+            "ac4" => "AC-4",
+            "av3a" => "Audio Vivid",
             "wmav2" => "WMA",
             "wavpack" => "WavPack",
             "ape" => "APE",
             other => other,
         }
+    }
+
+    /// 内置 ffmpeg 没有解码器的空间音频：AC-4（杜比全景声）和 Audio Vivid（菁彩声）。
+    pub fn needs_external_decoder(&self) -> bool {
+        matches!(self.codec.as_str(), "ac4" | "av3a")
     }
 }
 
@@ -344,7 +353,15 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
                     .filter(|v| !v.trim().is_empty())
             };
             AudioTrackInfo {
-                codec: s.codec_name.clone().unwrap_or_default(),
+                codec: s
+                    .codec_name
+                    .clone()
+                    .filter(|c| !c.is_empty())
+                    .or_else(|| match s.codec_tag_string.as_deref() {
+                        Some("av3a") => Some("av3a".to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default(),
                 channels: s.channels.unwrap_or(0),
                 bitrate_kbps: parse_u64(&s.bit_rate) / 1000,
                 language: tag("language"),
@@ -378,7 +395,15 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
 
     Ok(MediaInfo {
         codec: audio
-            .and_then(|s| s.codec_name.clone())
+            .and_then(|s| {
+                s.codec_name
+                    .clone()
+                    .filter(|c| !c.is_empty())
+                    .or_else(|| match s.codec_tag_string.as_deref() {
+                        Some("av3a") => Some("av3a".to_string()),
+                        _ => None,
+                    })
+            })
             .unwrap_or_default(),
         container: fmt.format_name.clone().unwrap_or_default(),
         sample_rate: audio
