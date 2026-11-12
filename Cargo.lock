@@ -951,6 +951,8 @@ dependencies = [
  "anyhow",
  "cpal",
  "wasapi",
+ "windows 0.62.2",
+ "windows-future",
 ]
 
 [[package]]

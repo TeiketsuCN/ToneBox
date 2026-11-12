@@ -181,6 +181,27 @@ impl App {
 
     /// 蓝牙子页：按耳机分组，写明正在使用的蓝牙协议，并画一条"冲刺"数据带动效。
     fn codec_bluetooth(&mut self, ui: &mut egui::Ui) {
+        // 配对交给 Windows：PIN/确认、驱动选择都由系统弹窗处理，程序不碰底层 HCI
+        ui.horizontal(|ui| {
+            let b = egui::Button::new(
+                RichText::new("蓝牙配对（Windows 设置）").size(9.5).color(MUTED),
+            )
+            .fill(tint(Color32::WHITE, 10))
+            .stroke(line(Color32::WHITE, 18))
+            .rounding(Rounding::same(7.0));
+            if ui.add(b).clicked() {
+                let _ = std::process::Command::new("explorer.exe")
+                    .arg("ms-settings:bluetooth")
+                    .spawn();
+            }
+        });
+        para(
+            ui,
+            "配对/取消配对由 Windows 完成（PIN、确认、驱动）；配好后回这里点「重新检测」看协议。",
+            8.5,
+            DIM,
+        );
+        ui.add_space(8.0);
         let groups = fc_player::devices::bluetooth_groups(&self.audio_devices);
         if groups.is_empty() {
             para(ui, "没有检测到蓝牙音频设备。", 10.0, MUTED);

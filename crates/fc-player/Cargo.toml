@@ -9,3 +9,5 @@ cpal = "0.15"
 
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.27.0"
+windows = { version = "0.62", features = ["Devices_Enumeration", "Devices_Bluetooth", "Foundation"] }
+windows-future = "0.3"
