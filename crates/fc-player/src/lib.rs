@@ -12,6 +12,7 @@
 //! 用有界队列做背压：解码比播放快时，解码线程会阻塞，不会撑爆内存。
 
 pub mod devices;
+pub mod dop;
 pub mod coreaudio;
 #[cfg(windows)]
 mod exclusive;
