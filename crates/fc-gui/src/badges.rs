@@ -48,7 +48,7 @@ pub(crate) fn label_is_lossy(label: &str) -> bool {
         "MP3" | "AAC" | "Vorbis" | "Opus" | "WMA" | "AC-3" | "E-AC-3" | "MP2" | "ATRAC1"
             | "ATRAC3" | "ATRAC3+" | "Musepack" | "Speex"
             | "杜比全景声 AC-4" | "杜比全景声 E-AC-3" | "杜比全景声 TrueHD" | "菁彩声 Audio Vivid"
-            | "杜比 AC-3" | "杜比 E-AC-3" | "DTS"
+            | "杜比 AC-3" | "杜比 E-AC-3" | "DTS" | "AMR-NB" | "AMR-WB"
     )
 }
 

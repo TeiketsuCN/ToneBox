@@ -113,7 +113,12 @@ impl App {
                     }
                 }
             });
-            if m.needs_external_decoder() {
+            let has_spatial_decoder = self
+                .tools
+                .as_ref()
+                .map(|t| fc_core::ffmpeg::has_decoder(t, &m.codec))
+                .unwrap_or(false);
+            if m.needs_external_decoder() && !has_spatial_decoder {
                 ui.add_space(5.0);
                 para(
                     ui,

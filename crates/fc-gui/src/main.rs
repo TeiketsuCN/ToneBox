@@ -808,7 +808,10 @@ impl App {
             let src_item = self.items.iter().find(|x| x.path == self.tasks[i].path);
             let src_info = src_item.and_then(|x| x.info.as_ref());
             if let Some(m) = src_info {
-                if m.needs_external_decoder() && !(spec.id == "ac4" && m.codec == "ac4") {
+                if m.needs_external_decoder()
+                    && !fc_core::ffmpeg::has_decoder(&tools, &m.codec)
+                    && !(spec.id == "ac4" && m.codec == "ac4")
+                {
                     self.tasks[i].state = State::Failed(format!(
                         "{} 是空间音频，内置 ffmpeg 没有解码器，不能转码；请保留原文件。",
                         m.codec_label()
@@ -1074,7 +1077,12 @@ impl App {
             self.player_for = Some(self.items[idx].path.clone());
             return;
         };
-        if info.needs_external_decoder() {
+        let has_external_decoder = self
+            .tools
+            .as_ref()
+            .map(|t| fc_core::ffmpeg::has_decoder(t, &info.codec))
+            .unwrap_or(false);
+        if info.needs_external_decoder() && !has_external_decoder {
             self.player = None;
             self.player_for = Some(it.path.clone());
             self.play_error = Some(format!(
@@ -2078,7 +2086,7 @@ fn main() -> eframe::Result<()> {
             dop: dop_rate.is_some(),
             dop_lsb_first: info.codec.contains("lsbf"),
         };
-        if info.needs_external_decoder() {
+        if info.needs_external_decoder() && !fc_core::ffmpeg::has_decoder(&tools, &info.codec) {
             eprintln!(
                 "{}：内置 ffmpeg 没有这个空间音频解码器，不能试听；请保留原文件。",
                 info.codec_label()

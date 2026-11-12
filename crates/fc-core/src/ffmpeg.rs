@@ -24,6 +24,22 @@ pub struct Tools {
     pub ffprobe: PathBuf,
 }
 
+/// 当前这份 ffmpeg 是否真的带某个解码器。
+/// 这样换一份带 AC-4/Audio Vivid 解码器的开源构建时，程序能自动放行，
+/// 不需要再改死代码里的“没有解码器”。
+pub fn has_decoder(tools: &Tools, codec: &str) -> bool {
+    let mut cmd = Command::new(&tools.ffmpeg);
+    cmd.args(["-hide_banner", "-decoders"]);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let Ok(out) = cmd.output() else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.lines()
+        .any(|l| l.split_whitespace().any(|w| w == codec))
+}
+
 fn find_in_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
