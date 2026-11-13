@@ -17,10 +17,12 @@
 
 pub mod device;
 pub mod lossless;
+pub mod reference;
 pub mod lossy;
 pub mod video;
 
 pub use device::DEVICE;
+pub use reference::REFERENCE;
 pub use lossless::LOSSLESS;
 pub use lossy::LOSSY;
 pub use video::VIDEO;
@@ -61,6 +63,12 @@ impl Patent {
 pub enum Group {
     Lossless,
     Lossy,
+    /// 语音/电话编码：GSM、G.711/722/729、ADPCM 等
+    Speech,
+    /// DTS/MPEG 环绕与空间音频
+    Spatial,
+    /// SND/AU/BWF/RF64 等音频封装
+    Container,
     Device,
     /// 视频容器（mkv/mp4/webm/avi）。既有只读输入，也能当输出目标。
     Video,
@@ -71,14 +79,24 @@ impl Group {
         match self {
             Group::Lossless => "无损",
             Group::Lossy => "有损",
+            Group::Speech => "语音/电话",
+            Group::Spatial => "DTS/空间音频",
+            Group::Container => "音频容器",
             Group::Device => "设备专用",
             Group::Video => "视频容器",
         }
     }
-    pub fn all() -> [Group; 4] {
-        // 视频容器排在设备专用前面：ATRAC 那组还要装外部工具，
-        // 视频是所有人都可能用到的目标，不该埋在最底下。
-        [Group::Lossless, Group::Lossy, Group::Video, Group::Device]
+    pub fn all() -> [Group; 7] {
+        // 常用格式靠前；视频容器在设备专用前面，只读参考分组排在中间。
+        [
+            Group::Lossless,
+            Group::Lossy,
+            Group::Speech,
+            Group::Spatial,
+            Group::Container,
+            Group::Video,
+            Group::Device,
+        ]
     }
 }
 
@@ -108,7 +126,12 @@ pub struct FormatSpec {
 
 /// 全部格式（无损 → 有损 → 设备专用 → 视频容器）
 pub fn all() -> impl Iterator<Item = &'static FormatSpec> {
-    LOSSLESS.iter().chain(LOSSY).chain(DEVICE).chain(VIDEO)
+    LOSSLESS
+        .iter()
+        .chain(LOSSY)
+        .chain(DEVICE)
+        .chain(VIDEO)
+        .chain(REFERENCE)
 }
 
 /// 视频容器（能当输出的那几个）

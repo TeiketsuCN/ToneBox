@@ -397,8 +397,11 @@ impl App {
                     let gi = match group {
                         Group::Lossless => 0,
                         Group::Lossy => 1,
-                        Group::Video => 2,
-                        Group::Device => 3,
+                        Group::Speech => 2,
+                        Group::Spatial => 3,
+                        Group::Container => 4,
+                        Group::Video => 5,
+                        Group::Device => 6,
                     };
                     let open = self.group_open[gi];
                     ui.add_space(3.0);

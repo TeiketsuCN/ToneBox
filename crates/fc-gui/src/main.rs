@@ -341,7 +341,7 @@ pub(crate) struct App {
     bt_action_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<String>>>,
     bt_msg: Option<String>,
     /// 左侧格式分组菜单的展开状态（无损/有损/视频/设备专用）
-    group_open: [bool; 4],
+    group_open: [bool; 7],
     /// 「引擎和设备」子页：设备 / 蓝牙 / 引擎
     codec_tab: codec::CodecTab,
     // 背景与动效
@@ -587,7 +587,7 @@ impl App {
             bt_action_rx: None,
             bt_msg: None,
             // 常用两组和视频默认展开；设备专用（ATRAC）默认收着
-            group_open: [true, true, true, false],
+            group_open: [true, true, true, true, true, true, false],
             codec_tab: codec::CodecTab::Devices,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,
