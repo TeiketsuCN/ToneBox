@@ -447,15 +447,11 @@ pub(crate) fn quality_badge(ui: &mut egui::Ui, q: Quality, kbps: u64) -> bool {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 17.0), egui::Sense::hover());
     let t = ui.input(|i| i.time);
     let anim = paint_quality(ui.painter(), rect, q, kbps, t);
-    // 滚动时不要再用 45ms 定时器抢帧；停下后动画自然继续
-    let scrolling = ui.input(|i| {
-        i.raw_scroll_delta.length_sq() > 0.0 || i.smooth_scroll_delta.length_sq() > 0.0
-    });
-    if anim && !scrolling {
+    if anim {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(45));
     }
-    anim && !scrolling
+    anim
 }
 
 /// 是不是 DSD（ffprobe 的 codec 名是 dsd_lsbf / dsd_msbf / *_planar）

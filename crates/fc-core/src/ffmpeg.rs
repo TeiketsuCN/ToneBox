@@ -28,16 +28,29 @@ pub struct Tools {
 /// 这样换一份带 AC-4/Audio Vivid 解码器的开源构建时，程序能自动放行，
 /// 不需要再改死代码里的“没有解码器”。
 pub fn has_decoder(tools: &Tools, codec: &str) -> bool {
-    let mut cmd = Command::new(&tools.ffmpeg);
-    cmd.args(["-hide_banner", "-decoders"]);
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
-    let Ok(out) = cmd.output() else {
-        return false;
-    };
-    let text = String::from_utf8_lossy(&out.stdout);
-    text.lines()
-        .any(|l| l.split_whitespace().any(|w| w == codec))
+    // 这个函数会被详情页每帧调用：绝不能在 UI 线程每帧起一次 ffmpeg。
+    // 只查一次，把 decoder 名字缓存起来。
+    static DECODERS: std::sync::OnceLock<std::collections::HashSet<String>> =
+        std::sync::OnceLock::new();
+    let set = DECODERS.get_or_init(|| {
+        let mut cmd = Command::new(&tools.ffmpeg);
+        cmd.args(["-hide_banner", "-decoders"]);
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let mut set = std::collections::HashSet::new();
+        if let Ok(out) = cmd.output() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                for w in line.split_whitespace() {
+                    if !w.starts_with('-') {
+                        set.insert(w.to_string());
+                    }
+                }
+            }
+        }
+        set
+    });
+    set.contains(codec)
 }
 
 fn find_in_path(name: &str) -> Option<PathBuf> {
