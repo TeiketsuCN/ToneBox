@@ -786,7 +786,8 @@ pub(crate) fn lib_row(
             egui::vec2(badge_w, 17.0),
         );
         let t = ui.input(|i| i.time);
-        if paint_quality(ui.painter(), r, q, e.bitrate_kbps, t) {
+        let scrolling = ui.input(|i| i.raw_scroll_delta.length_sq() > 0.0 || i.smooth_scroll_delta.length_sq() > 0.0);
+        if paint_quality(ui.painter(), r, q, e.bitrate_kbps, t) && !scrolling {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(45));
         }

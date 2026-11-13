@@ -1431,6 +1431,7 @@ pub(crate) fn set_fullscreen(full: &mut bool, ctx: &egui::Context, size_px: (f32
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let frame_start = std::time::Instant::now();
         self.frames += 1;
         if !self.backdrop_done && self.frames > 3 {
             self.backdrop_done = apply_backdrop();
@@ -1753,6 +1754,12 @@ impl eframe::App for App {
         }
         if animating {
             ctx.request_repaint();
+        }
+        if std::env::var_os("TONEBOX_FRAME_LOG").is_some() {
+            let ms = frame_start.elapsed().as_secs_f64() * 1000.0;
+            if ms > 25.0 {
+                eprintln!("[frame] {ms:.1} ms");
+            }
         }
     }
 }
