@@ -905,7 +905,7 @@ impl App {
                             &if s.codec_procs > 0 {
                                 format!("{} 个进程", s.codec_procs)
                             } else {
-                                "空闲".to_string()
+                                "空闲（无编解码任务）".to_string()
                             },
                             s.cpu_children,
                         );

@@ -747,9 +747,8 @@ impl App {
         let sel = self.selected;
         let target = self.cfg.loudness.unwrap_or(0.0);
 
-        // 没测过响度就借一次后台分析（结果会缓存，切回来不重跑）。
-        // 即使用户关掉了「自动分析」也该测：他刚打开响度归一化，
-        // 不测就没法告诉他会被加/减多少 dB、会不会顶到峰值余量。
+        // 响度预览也受「自动分析」开关控制：关掉后不在后台跑整轨分析，
+        // 等用户真正转换时再测（转换路径有自己的一次测量）。
         let need = self
             .items
             .get(sel)
@@ -759,7 +758,7 @@ impl App {
                     && matches!(it.analysis, Analysis::Idle)
             })
             .unwrap_or(false);
-        if need {
+        if need && self.cfg.auto_analyze {
             self.start_analyze(sel, ui.ctx());
         }
 

@@ -216,9 +216,26 @@ impl App {
             // ── 质量评估（频谱分析）──
             ui.add_space(14.0);
             match &it.analysis {
-                Analysis::Idle | Analysis::Running => {
-                    // 纯视频文件不派发分析（没有音轨），所以永远停在 Idle——
-                    // 别再写"正在分析频谱…"，那会一直转下去
+                Analysis::Idle => {
+                    let no_audio = it
+                        .info
+                        .as_ref()
+                        .map(|m| m.sample_rate == 0 && m.has_video())
+                        .unwrap_or(false);
+                    if no_audio {
+                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                    } else if self.cfg.auto_analyze {
+                        para(ui, "准备分析频谱…", 10.0, DIM);
+                    } else {
+                        ui.horizontal(|ui| {
+                            para(ui, "未分析（自动分析已关闭）", 9.5, DIM);
+                            if ui.small_button("分析频谱").clicked() {
+                                self.pending_analyze = Some(self.selected);
+                            }
+                        });
+                    }
+                }
+                Analysis::Running => {
                     let no_audio = it
                         .info
                         .as_ref()

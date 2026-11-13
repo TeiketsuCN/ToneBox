@@ -373,6 +373,8 @@ pub(crate) struct App {
     blurb_id: Option<&'static str>,
     detail_t: f32,
     detail_for: usize,
+    /// 详情页里点了“分析频谱”，等这一帧画完再起线程
+    pending_analyze: Option<usize>,
     /// 上一次点击的行号和时刻，用来自己判定双击
     last_click: (usize, f64),
     /// 窗口是否置顶
@@ -608,6 +610,7 @@ impl App {
             blurb_id: Some(target.id),
             detail_t: 1.0,
             detail_for: 0,
+            pending_analyze: None,
             last_click: (usize::MAX, -10.0),
             pinned: false,
             analysis_tx: atx,
@@ -1640,6 +1643,9 @@ impl eframe::App for App {
                             }),
                     )
                     .show(ctx, |ui| animating |= self.detail(ui));
+            if let Some(i) = self.pending_analyze.take() {
+                self.start_analyze(i, ctx);
+            }
             }
 
             egui::CentralPanel::default()
