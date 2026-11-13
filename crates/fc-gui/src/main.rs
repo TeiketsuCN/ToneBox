@@ -1898,6 +1898,7 @@ pub(crate) fn apply_backdrop() -> bool {
 
 fn main() -> eframe::Result<()> {
     std::env::set_var("WGPU_BACKEND", "vulkan");
+    std::env::set_var("WGPU_POWER_PREF", "high");
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
