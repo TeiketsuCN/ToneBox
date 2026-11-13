@@ -32,13 +32,13 @@ const KNEE_MIN_HZ: f64 = 4000.0;
 
 /// 超过这个时长就不再整段解码。10 分钟的整段 f32 单声道约 106MB，
 /// 30 分钟约 317MB；频谱特征只需要几十秒。
-const FULL_DECODE_LIMIT_S: f64 = 600.0;
+const FULL_DECODE_LIMIT_S: f64 = 120.0;
 /// 长文件取三个 30 秒窗口，共 90 秒，避免只看开头。
-const SAMPLE_WINDOW_S: f64 = 30.0;
+const SAMPLE_WINDOW_S: f64 = 20.0;
 const SAMPLE_POINTS: [f64; 3] = [0.1, 0.5, 0.9];
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CREATE_NO_WINDOW: u32 = 0x0800_0000 | 0x0000_4000; // 无窗口 + 低于正常优先级
 
 #[derive(Debug, Clone)]
 pub struct QualityReport {
