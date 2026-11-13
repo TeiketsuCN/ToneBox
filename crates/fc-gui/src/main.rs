@@ -1897,7 +1897,6 @@ pub(crate) fn apply_backdrop() -> bool {
 }
 
 fn main() -> eframe::Result<()> {
-    #[cfg(feature = "vulkan")]
     std::env::set_var("WGPU_BACKEND", "vulkan");
     let args: Vec<String> = std::env::args().skip(1).collect();
 
@@ -2200,31 +2199,21 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([1120.0, 600.0])
             .with_decorations(false)
             .with_title(APP_NAME);
-    // wgpu/Vulkan 后端的透明窗口和 DWM 玻璃不兼容，会出现黑块；Vulkan 版直接用不透明表面
-    let mut viewport = if cfg!(feature = "vulkan") {
-        viewport.with_transparent(false)
-    } else {
-        viewport.with_transparent(true)
-    };
+    // wgpu/Vulkan 的透明窗口和 DWM 玻璃不兼容，会出黑块；统一用不透明表面
+    let mut viewport = viewport.with_transparent(false);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
 
-    let title = if cfg!(feature = "vulkan") {
-        "声箱ToneBox Vulkan"
-    } else {
-        APP_NAME
-    };
     let mut options = eframe::NativeOptions {
         viewport,
         ..Default::default()
     };
-    #[cfg(feature = "vulkan")]
-    {
-        options.renderer = eframe::Renderer::Wgpu;
-    }
+    options.renderer = eframe::Renderer::Wgpu;
+    // 拖动窗口时少排一帧，降低输入延迟
+    options.wgpu_options.desired_maximum_frame_latency = Some(1);
     eframe::run_native(
-        title,
+        APP_NAME,
         options,
         Box::new(move |cc| {
             let mut app = App::new(cc);
