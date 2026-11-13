@@ -786,7 +786,7 @@ pub(crate) fn lib_row(
             egui::vec2(badge_w, 17.0),
         );
         let t = ui.input(|i| i.time);
-        if paint_quality(ui.painter(), r, q, e.bitrate_kbps, t) {
+        if paint_quality(ui.painter(), r, q, e.bitrate_kbps, t) && hovered {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(45));
         }

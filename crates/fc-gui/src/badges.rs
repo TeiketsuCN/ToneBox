@@ -441,17 +441,19 @@ pub(crate) fn paint_quality(p: &egui::Painter, rect: egui::Rect, q: Quality, kbp
     }
 }
 
-/// 布局里放一个标识（会占位），返回 true 表示这一帧有动画
+/// 布局里放一个标识（会占位），返回 true 表示这一帧有动画。
+/// 动画只在鼠标悬停时跑，避免选中 Hi-Res/DSD 后 UI 永远 45ms 重绘一次。
 pub(crate) fn quality_badge(ui: &mut egui::Ui, q: Quality, kbps: u64) -> bool {
     let w = quality_width(ui.ctx(), q, kbps);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 17.0), egui::Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 17.0), egui::Sense::hover());
     let t = ui.input(|i| i.time);
     let anim = paint_quality(ui.painter(), rect, q, kbps, t);
-    if anim {
+    let active = anim && resp.hovered();
+    if active {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(45));
     }
-    anim
+    active
 }
 
 /// 是不是 DSD（ffprobe 的 codec 名是 dsd_lsbf / dsd_msbf / *_planar）
