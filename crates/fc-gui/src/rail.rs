@@ -392,6 +392,10 @@ impl App {
                 ui.add_space(2.0);
                 let show_ro = self.show_readonly;
                 for group in Group::all() {
+                    // 没有 atracdenc 时整个 ATRAC 分组都不可用，直接不画
+                    if group == Group::Device && self.atracdenc.is_none() {
+                        continue;
+                    }
                     // 列出该组全部格式：能编码的可以选为输出，
                     // 只读的也列出来——用户需要知道"手上这个是什么、为什么不能输出成它"
                     let specs: Vec<&'static FormatSpec> =
