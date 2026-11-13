@@ -342,8 +342,6 @@ pub(crate) struct App {
     bt_msg: Option<String>,
     /// 左侧格式分组菜单的展开状态（无损/有损/视频/设备专用）
     group_open: [bool; 7],
-    /// 是否显示只读参考格式（默认不显示，避免列表太长/掉帧）
-    show_readonly: bool,
     /// 「引擎和设备」子页：设备 / 蓝牙 / 引擎
     codec_tab: codec::CodecTab,
     // 背景与动效
@@ -592,7 +590,6 @@ impl App {
             bt_msg: None,
             // 常用两组和视频默认展开；设备专用（ATRAC）默认收着
             group_open: [true, true, false, false, false, false, false],
-            show_readonly: false,
             codec_tab: codec::CodecTab::Devices,
             bg: bg::WallpaperBg::new(&cc.egui_ctx),
             accent_now: bg::DEFAULT_ACCENT,

@@ -384,13 +384,7 @@ impl App {
                 // 按钮默认内边距 7px 会把 24px 的行撑到 28px，侧栏挤不下
                 ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
 
-                // 只读参考格式默认收起：列表少一半，滚动不掉帧
-                let mut show_readonly = self.show_readonly;
-                if ui.checkbox(&mut show_readonly, RichText::new("显示只读参考格式").size(9.0).color(DIM)).changed() {
-                    self.show_readonly = show_readonly;
-                }
                 ui.add_space(2.0);
-                let show_ro = self.show_readonly;
                 for group in Group::all() {
                     // 列出该组全部格式：能编码的可以选为输出，
                     // 只读的也列出来——用户需要知道"手上这个是什么、为什么不能输出成它"
@@ -416,7 +410,7 @@ impl App {
                         self.group_open[gi] = !open;
                     }
                     if open {
-                        for spec in specs.iter().copied().filter(|f| f.can_encode || show_ro) {
+                        for spec in &specs {
                             animating |= self.format_row(ui, spec, dt);
                         }
                     }
