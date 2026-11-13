@@ -1897,6 +1897,8 @@ pub(crate) fn apply_backdrop() -> bool {
 }
 
 fn main() -> eframe::Result<()> {
+    #[cfg(feature = "vulkan")]
+    std::env::set_var("WGPU_BACKEND", "vulkan");
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
@@ -2193,22 +2195,36 @@ fn main() -> eframe::Result<()> {
 
     // 启动时按配置里的窗口尺寸开窗（设置页里改了就立刻改窗口）
     let (win_w, win_h) = settings::Settings::load().window.size_px();
-    let mut viewport = egui::ViewportBuilder::default()
+    let viewport = egui::ViewportBuilder::default()
             .with_inner_size([win_w / zoom(), win_h / zoom()])
             .with_min_inner_size([1120.0, 600.0])
             .with_decorations(false)
-            .with_transparent(true)
             .with_title(APP_NAME);
+    // wgpu/Vulkan 后端的透明窗口和 DWM 玻璃不兼容，会出现黑块；Vulkan 版直接用不透明表面
+    let mut viewport = if cfg!(feature = "vulkan") {
+        viewport.with_transparent(false)
+    } else {
+        viewport.with_transparent(true)
+    };
     if let Some(icon) = icon {
         viewport = viewport.with_icon(icon);
     }
 
-    let options = eframe::NativeOptions {
+    let title = if cfg!(feature = "vulkan") {
+        "声箱ToneBox Vulkan"
+    } else {
+        APP_NAME
+    };
+    let mut options = eframe::NativeOptions {
         viewport,
         ..Default::default()
     };
+    #[cfg(feature = "vulkan")]
+    {
+        options.renderer = eframe::Renderer::Wgpu;
+    }
     eframe::run_native(
-        APP_NAME,
+        title,
         options,
         Box::new(move |cc| {
             let mut app = App::new(cc);

@@ -349,7 +349,12 @@ impl Default for Settings {
 
 impl Settings {
     pub fn dir() -> Option<PathBuf> {
-        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("FormatConverter"))
+        let folder = if cfg!(feature = "vulkan") {
+            "FormatConverter-Vulkan"
+        } else {
+            "FormatConverter"
+        };
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join(folder))
     }
 
     pub fn file() -> Option<PathBuf> {

@@ -7,6 +7,9 @@ edition.workspace = true
 name = "format-converter"
 path = "src/main.rs"
 
+[features]
+vulkan = ["eframe/wgpu"]
+
 [dependencies]
 fc-core = { path = "../fc-core" }
 fc-analyze = { path = "../fc-analyze" }
