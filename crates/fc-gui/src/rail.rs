@@ -412,35 +412,11 @@ impl App {
                     };
                     let open = self.group_open[gi];
                     ui.add_space(3.0);
-                    let hrect = egui::Rect::from_min_size(
-                        ui.cursor().min,
-                        egui::vec2(ui.available_width(), 24.0),
-                    );
-                    if ui.clip_rect().intersects(hrect) {
-                        if group_header(ui, group.title(), specs.len(), open) {
-                            self.group_open[gi] = !open;
-                        }
-                    } else {
-                        // 屏幕外的分组标题不排版，只占位
-                        ui.add_space(24.0);
+                    if group_header(ui, group.title(), specs.len(), open) {
+                        self.group_open[gi] = !open;
                     }
                     if open {
-                        for spec in specs
-                            .iter()
-                            .copied()
-                            .filter(|f| f.can_encode || show_ro)
-                        {
-                            // 屏幕外的格式行不排版；只保留高度，滚动条才对
-                            if self.expanded != Some(spec.id) {
-                                let rrect = egui::Rect::from_min_size(
-                                    ui.cursor().min,
-                                    egui::vec2(ui.available_width(), 22.0),
-                                );
-                                if !ui.clip_rect().intersects(rrect) {
-                                    ui.add_space(22.0);
-                                    continue;
-                                }
-                            }
+                        for spec in specs.iter().copied().filter(|f| f.can_encode || show_ro) {
                             animating |= self.format_row(ui, spec, dt);
                         }
                     }
