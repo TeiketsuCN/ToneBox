@@ -16,12 +16,14 @@
 //! 再加一层 `primary`：分组内默认只显示常用的几个，其余收进"更多"。
 
 pub mod device;
+pub mod feasible;
 pub mod lossless;
 pub mod reference;
 pub mod lossy;
 pub mod video;
 
 pub use device::DEVICE;
+pub use feasible::FEASIBLE;
 pub use reference::REFERENCE;
 pub use lossless::LOSSLESS;
 pub use lossy::LOSSY;
@@ -131,6 +133,7 @@ pub fn all() -> impl Iterator<Item = &'static FormatSpec> {
         .chain(LOSSY)
         .chain(DEVICE)
         .chain(VIDEO)
+        .chain(FEASIBLE)
         .chain(REFERENCE)
 }
 
