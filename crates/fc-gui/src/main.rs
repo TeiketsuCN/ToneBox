@@ -263,6 +263,13 @@ pub(crate) enum Job {
         codec: &'static str,
         dur: f64,
     },
+    /// 随包 speexenc：ffmpeg 解 8k WAV，再交给 speexenc
+    Speex {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -397,6 +404,8 @@ pub(crate) struct App {
     encoders: std::collections::HashSet<String>,
     /// 外部 ATRAC 编码器（atracdenc）。用户自己装，我们不随包分发。
     atracdenc: Option<PathBuf>,
+    /// 随包的 Speex 编码器（vendor\speex\speexenc.exe）
+    speexenc: Option<PathBuf>,
     /// 格式百科
     wiki_open: bool,
     wiki_sel: &'static str,
@@ -618,6 +627,7 @@ impl App {
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay", DONATE_ALIPAY),
             encoders,
             atracdenc: fc_core::find_atracdenc(),
+            speexenc: fc_core::find_speexenc(),
             wiki_open: false,
             wiki_sel: "flac",
             wiki_filter: String::new(),
@@ -767,6 +777,7 @@ impl App {
     fn start_batch(&mut self, ctx: &egui::Context) {
         let Some(tools) = self.tools.clone() else { return };
         let atracdenc = self.atracdenc.clone();
+        let speexenc = self.speexenc.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -797,6 +808,23 @@ impl App {
                     input: self.tasks[i].path.clone(),
                     out,
                     codec,
+                    dur,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // Speex 走随包的 speexenc：ffmpeg 只负责解成 8k WAV
+            if spec.id == "speex" {
+                if self.speexenc.is_none() {
+                    self.tasks[i].state =
+                        State::Failed("找不到 speexenc，Speex 输出不可用".to_string());
+                    continue;
+                }
+                jobs.push(Job::Speex {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
                     dur,
                 });
                 self.tasks[i].state = State::Running(0.0);
@@ -892,6 +920,7 @@ impl App {
                 let (idx, out) = match &job {
                     Job::Ffmpeg { idx, out, .. } => (*idx, out.clone()),
                     Job::Atrac { idx, out, .. } => (*idx, out.clone()),
+                    Job::Speex { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -958,6 +987,29 @@ impl App {
                             None => Err(anyhow::anyhow!(
                                 "找不到 atracdenc。ATRAC 输出需要你自己装它（设置页有说明）。"
                             )),
+                        }
+                    }
+                    Job::Speex {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match speexenc.as_ref() {
+                            Some(exe) => fc_core::external::speex_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 speexenc")),
                         }
                     }
                 };

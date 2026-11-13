@@ -34,12 +34,14 @@ if (-not (Test-Path $built)) { throw "构建产物不存在: $built" }
 Write-Host "== 2/4 安装到 $AppDir ==" -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
 New-Item -ItemType Directory -Force -Path "$AppDir\ffmpeg" | Out-Null
+New-Item -ItemType Directory -Force -Path "$AppDir\speex" | Out-Null
 
 Get-Process -Name 'format-converter','格式转换器' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 Copy-Item -LiteralPath $built -Destination "$AppDir\$ExeName" -Force
 Copy-Item -LiteralPath (Join-Path $src 'crates\fc-gui\assets\icon.ico') -Destination "$AppDir\ToneBox.ico" -Force
+Copy-Item -LiteralPath (Join-Path $src 'THIRD_PARTY_NOTICES.md') -Destination "$AppDir\THIRD_PARTY_NOTICES.md" -Force
 
 # 随包 ffmpeg（LGPL 共享版，由 tools\fetch-ffmpeg.ps1 下载）
 $ffSrc = Join-Path $src 'vendor\ffmpeg'
@@ -50,6 +52,14 @@ if (Test-Path (Join-Path $ffSrc "ffmpeg.exe")) {
     Write-Host "已随包 ffmpeg"
 } else {
     Write-Host "警告：没有 vendor\ffmpeg，安装后需另外装 ffmpeg（跑 tools\fetch-ffmpeg.ps1）"
+}
+# 随包 Speex 编码器（BSD，speexenc + libspeex/libspeexdsp/libogg DLL）
+$speexSrc = Join-Path $src 'vendor\speex'
+if (Test-Path (Join-Path $speexSrc "speexenc.exe")) {
+    Get-ChildItem -LiteralPath $speexSrc -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination "$AppDir\speex\$($_.Name)" -Force
+    }
+    Write-Host "已随包 speexenc"
 }
 @"
 ToneBox $Version

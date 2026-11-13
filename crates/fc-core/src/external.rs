@@ -188,3 +188,73 @@ pub fn convert(
     }
     Ok(std::fs::metadata(output).map(|m| m.len()).unwrap_or(0))
 }
+
+/// 找随包的 Speex 编码器（vendor\speex\speexenc.exe）。
+pub fn find_speexenc() -> Option<std::path::PathBuf> {
+    let exe = if cfg!(windows) { "speexenc.exe" } else { "speexenc" };
+    let mut cands: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("speex").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        cands.push(cwd.join("vendor").join("speex").join(exe));
+        cands.push(cwd.join("..").join("vendor").join("speex").join(exe));
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 speexenc 编码：ffmpeg 先解成 8k/单声道/16bit WAV，再交给 speexenc。
+pub fn speex_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_speex_{tag}.wav"));
+    let tmp_spx = std::env::temp_dir().join(format!("fc_speex_{tag}.spx"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-ac", "1", "-ar", "8000", "-c:a", "pcm_s16le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（Speex 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 8k WAV 失败"));
+    }
+    on_progress(0.55);
+
+    let mut enc = Command::new(exe);
+    enc.arg(&tmp_wav)
+        .arg(&tmp_spx)
+        .args(["--rate", "8000", "--quality", "8"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 speexenc 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_spx);
+        return Err(anyhow!("speexenc 编码失败"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_spx, output).context("复制 Speex 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_spx);
+    on_progress(1.0);
+    Ok(size)
+}

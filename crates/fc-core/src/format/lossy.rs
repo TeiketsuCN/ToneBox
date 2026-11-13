@@ -151,12 +151,10 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Lossy,
         patent: Patent::Free,
-        // 专利免费，但**随包的 LGPL 构建没有 libspeex 编码器**，
-        // 只有开发机上那份 gyan 全量版才有。开放了就是给用户挖坑，所以关掉。
-        // 教训：验证编码能力要用"随包的那份 ffmpeg"，不是开发机碰巧装的那份。
-        can_encode: false,
+        // 随包 vendor\speex 带 speexenc，走外部分派，不依赖 ffmpeg 的 libspeex。
+        can_encode: true,
         primary: false,
-        blurb: "2002 年的开源语音编码，专利免费。\n专为人声设计，频率上限只有 8 kHz，已被 Opus 取代。",
+        blurb: "2002 年的开源语音编码（BSD），专利免费。\n随包 speexenc 输出 8 kHz 单声道 .spx；\n专为人声设计，频率上限只有 4 kHz。",
         args: &[],
         size_ratio: 0.02,
     },

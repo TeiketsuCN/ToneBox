@@ -22,6 +22,7 @@ pub use loudness::Loudness as LoudnessReport;
 pub use encoders::list_encoders;
 /// 外部 ATRAC 编码器（atracdenc）：检测 + 调用。我们不随包分发它。
 pub use external::find as find_atracdenc;
+pub use external::find_speexenc;
 pub use identify::{identify, Encrypted};
 pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;

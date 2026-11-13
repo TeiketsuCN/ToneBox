@@ -1,32 +1,47 @@
-# 第三方组件与许可
+# 第三方组件与署名
 
-ToneBox 本身以 MIT 许可发布（见 `LICENSE`）。它**通过独立进程调用 FFmpeg**，并随 Windows 发布包附带
-FFmpeg 的共享库与可执行文件。FFmpeg 不是 MIT 代码，发布时必须遵守它自己的许可。
+ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下，感谢原作者。
 
 ## FFmpeg
 
-- 版本：`N-128560-g967f0ffb10-20261107`
-- 构建：Windows x86_64，**LGPL v3（--enable-version3，未开启 --enable-gpl）**，shared DLL
-- 许可证：LGPL-3.0-or-later（见 `vendor/ffmpeg/LICENSE-ffmpeg.txt`，发布包内为 `ffmpeg/LICENSE-ffmpeg.txt`）
-- 源码与构建配置：https://ffmpeg.org/download.html
-  - 本包对应源码可用 FFmpeg 官方快照 `N-128560-g967f0ffb10`；
-  - 完整 configure 参数记录在 `docs/FFmpeg-LGPL.md`，可按该参数重新构建同一份 LGPL 二进制。
-- 书面要约：如需要，可联系仓库维护者获取对应 FFmpeg 源码副本（有效期三年）。
-- 合规要点：
-  - 保留 FFmpeg 的版权与许可证文件，不删除、不修改 DLL 的许可声明；
-  - 用户可以用自己编译的同版本 LGPL FFmpeg DLL 替换发布包里的 DLL（App 通过独立进程调用，不静态链接）；
-  - 不随包提供 GPL 组件（本构建禁用了 libx264/libx265）。
+- 项目：FFmpeg
+- 主页：<https://ffmpeg.org/>
+- 许可：LGPL-2.1-or-later（随包为 LGPL 共享构建）
+- 用途：解码/编码/探测
+- 说明：`vendor/ffmpeg/` 下为随包二进制，许可证见 `vendor/ffmpeg/LICENSE-ffmpeg.txt`。
 
-## Rust / GUI 依赖
+## Speex（speexenc / libspeex）
 
-主要依赖及其常见许可（以各 crate 的 `Cargo.toml` / LICENSE 为准）：
+- 项目：Speex
+- 作者：Jean-Marc Valin / Xiph.Org
+- 主页：<https://www.speex.org/>
+- 源码：<https://gitlab.xiph.org/xiph/speex>
+- 许可：BSD 3-Clause
+- 用途：`vendor/speex/speexenc.exe` 输出 `.spx`
+- 二进制来源：MSYS2 的 `mingw-w64-ucrt-x86_64-speex` 1.2.1-1 包
+  <https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-speex>
+- 许可证全文：`vendor/speex/LICENSE-speex.txt`
 
-- `eframe` / `egui`：MIT OR Apache-2.0
-- `image`：MIT OR Apache-2.0
-- `serde` / `serde_json`：MIT OR Apache-2.0
-- `anyhow`：MIT OR Apache-2.0
-- `rfd`：MIT
-- `wasapi` / `windows`：MIT OR Apache-2.0（Windows API 绑定）
-- `cpal`：MIT OR Apache-2.0
+## SpeexDSP（libspeexdsp-1.dll）
 
-完整依赖树可用 `cargo tree` 查看；发布二进制时建议同时附上 `cargo metadata` 生成的依赖清单。
+- 项目：SpeexDSP
+- 作者：Jean-Marc Valin / Xiph.Org
+- 源码：<https://gitlab.xiph.org/xiph/speexdsp>
+- 许可：BSD 3-Clause
+- 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-speexdsp` 1.2.1-1
+- 许可证全文：`vendor/speex/LICENSE-speexdsp.txt`
+
+## libogg（libogg-0.dll）
+
+- 项目：libogg
+- 作者：Xiph.Org
+- 主页：<https://www.xiph.org/ogg/>
+- 许可：BSD 3-Clause
+- 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-libogg` 1.3.5-1
+- 许可证全文：`vendor/speex/LICENSE-libogg.txt`
+
+## 说明
+
+- ToneBox 调用这些程序时使用子进程，不修改其源码。
+- 如果你重新分发本项目的安装包，请一并保留本文件和 `vendor/*/LICENSE-*`。
+- 如果只使用系统已安装的 ffmpeg/speexenc，则对应组件的许可由系统安装包负责。
