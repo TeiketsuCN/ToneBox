@@ -7,6 +7,9 @@ edition.workspace = true
 name = "format-converter"
 path = "src/main.rs"
 
+[features]
+vulkan = ["eframe/wgpu"]
+
 [dependencies]
 fc-core = { path = "../fc-core" }
 fc-analyze = { path = "../fc-analyze" }
@@ -14,7 +17,7 @@ fc-player = { path = "../fc-player" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-eframe = { version = "0.29", default-features = false, features = ["wgpu", "default_fonts"] }
+eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 rfd = { version = "0.14", default-features = false, features = ["xdg-portal"] }
 image = { version = "0.25", default-features = false, features = [ "jpeg", "png" ] }
 

@@ -10,7 +10,7 @@ $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path 
 $exe = Join-Path $target 'release\format-converter.exe'
 
 Write-Host "== build Vulkan/wgpu ==" -ForegroundColor Cyan
-& (Join-Path $src 'build.ps1') release
+& (Join-Path $src 'build.ps1') release --features vulkan
 if (-not (Test-Path $exe)) { throw "build output missing: $exe" }
 
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
