@@ -1,4 +1,4 @@
-# Build a Windows release zip (exe + ffmpeg + short readme).
+﻿# Build a Windows release zip (exe + ffmpeg + short readme).
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
 #   powershell ... -Out D:\ToneBox-beta1.0-win64.zip
