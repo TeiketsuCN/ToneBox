@@ -1953,10 +1953,37 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    // 命令行：列出可以当输出的格式 id（配 --convert --to 用）
+    if args.first().map(|s| s.as_str()) == Some("--formats") {
+        for f in fc_core::all().filter(|f| f.can_encode) {
+            println!("{:<16} {:<24} .{}", f.id, f.name, f.ext);
+        }
+        return Ok(());
+    }
+
     if args.first().map(|s| s.as_str()) == Some("--convert") {
         let (Some(input), Some(output)) = (args.get(1), args.get(2)) else {
-            eprintln!("用法: format-converter --convert <输入> <输出.flac>");
+            eprintln!("用法: format-converter --convert <输入> <输出> [--to <格式id>]");
+            eprintln!("例:   format-converter --convert a.flac b.aptx --to aptx");
             std::process::exit(2);
+        };
+        // --to 可选：不写就是默认目标（FLAC）。id 见左侧输出格式列表。
+        let target = match args.iter().position(|a| a == "--to") {
+            Some(i) => {
+                let id = args.get(i + 1).map(|s| s.as_str()).unwrap_or("");
+                match fc_core::by_id(id) {
+                    Some(f) if f.can_encode => f,
+                    Some(_) => {
+                        eprintln!("{id} 只能读，不能作为输出格式");
+                        std::process::exit(2);
+                    }
+                    None => {
+                        eprintln!("未知格式 id: {id}（试 --formats 看列表）");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            None => fc_core::default_target(),
         };
         let tools = fc_core::locate().expect("找不到 ffmpeg / ffprobe");
         let info = match fc_core::probe(&tools, Path::new(input)) {
@@ -1973,10 +2000,7 @@ fn main() -> eframe::Result<()> {
             info.sample_rate,
             info.duration_s
         );
-        let args = fc_core::args_for(
-            fc_core::default_target(),
-            &fc_core::ConvertOptions::default(),
-        );
+        let args = fc_core::args_for(target, &fc_core::ConvertOptions::default());
         let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         if let Err(e) = fc_core::convert(
             &tools,

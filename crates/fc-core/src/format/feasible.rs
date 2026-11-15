@@ -137,4 +137,135 @@ pub static FEASIBLE: &[FormatSpec] = &[
         args: &["-c:a", "pcm_s24le", "-write_bext", "1"],
         size_ratio: 1.0,
     },
+    // ── 蓝牙编码：喂耳机/发射器的，不是拿来存档的 ──
+    FormatSpec {
+        id: "aptx",
+        name: "aptX",
+        ext: "aptx",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "蓝牙 aptX 的编码，固定 352kbps、4:1 压缩。\nCSR 的基础专利多已到期。\n只有要喂 aptX 耳机/发射器时才有意义。",
+        args: &["-c:a", "aptx", "-f", "aptx"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "aptx_hd",
+        name: "aptX HD",
+        ext: "aptxhd",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "aptX HD：576kbps / 24bit，主打「高解析蓝牙」。\n带宽够了，但仍然是 4:1 压缩，不等于无损。",
+        args: &["-c:a", "aptx_hd", "-f", "aptx_hd"],
+        size_ratio: 0.41,
+    },
+    FormatSpec {
+        id: "sbc",
+        name: "SBC",
+        ext: "sbc",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "蓝牙 A2DP 的「最低配」编码，任何蓝牙音频设备都必须支持。\n质量大致相当于 MP3 128kbps，胜在兼容性。",
+        args: &["-c:a", "sbc", "-f", "sbc"],
+        size_ratio: 0.23,
+    },
+    // ── 语音 / 游戏 ADPCM ──
+    FormatSpec {
+        id: "adpcm_yamaha",
+        name: "ADPCM (Yamaha)",
+        ext: "wav",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "雅马哈 ADPCM，老声卡和游戏机里常见。\n输出 WAV，4-bit 差分，体积约为 PCM 的四分之一。",
+        args: &["-c:a", "adpcm_yamaha"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "adpcm_ima_qt",
+        name: "IMA ADPCM (QT)",
+        ext: "mov",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "QuickTime 里的 IMA ADPCM，老 Mac 视频工程常用。\n输出 .mov，4-bit 差分。",
+        args: &["-c:a", "adpcm_ima_qt"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "g723_1",
+        name: "G.723.1",
+        ext: "wav",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "1996 年的 ITU 窄带语音编码，5.3 / 6.3kbps。\n会议系统和语音网关里常见，只适合人声。\n输出装进 WAV 容器，本软件和其它播放器都能认。",
+        args: &["-c:a", "g723_1", "-ar", "8000", "-ac", "1"],
+        size_ratio: 0.02,
+    },
+    FormatSpec {
+        id: "g726",
+        name: "G.726",
+        ext: "wav",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "ITU G.726 电话 ADPCM（16/24/32/40kbps）。\n交换机和语音网关用得多，8kHz 单声道。\n输出装进 WAV 容器，便于试听和再导入。",
+        args: &["-c:a", "g726", "-ar", "8000", "-ac", "1"],
+        size_ratio: 0.04,
+    },
+    FormatSpec {
+        id: "real_144",
+        name: "RealAudio 1.0",
+        ext: "rm",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "1995 年 RealAudio 1.0 的语音编码（RA144）。\n当年「网上听广播」就靠它，音质大致是 AM 水平。",
+        args: &["-c:a", "real_144", "-ar", "8000", "-ac", "1"],
+        size_ratio: 0.02,
+    },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 这些是实测能用**随包** ffmpeg 编出来的，别在重构时弄丢。
+    #[test]
+    fn extra_codecs_stay_listed() {
+        let ids: Vec<&str> = crate::format::all().map(|f| f.id).collect();
+        for id in [
+            "aptx",
+            "aptx_hd",
+            "sbc",
+            "adpcm_yamaha",
+            "adpcm_ima_qt",
+            "g723_1",
+            "g726",
+            "real_144",
+        ] {
+            let f = crate::format::by_id(id).unwrap_or_else(|| panic!("表里没有 {id}"));
+            assert!(f.can_encode, "{id} 应该是可编码的");
+            assert!(!f.args.is_empty(), "{id} 没有编码参数");
+        }
+    }
+}
