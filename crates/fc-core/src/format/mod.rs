@@ -1466,6 +1466,8 @@ pub fn ext_choices(spec: &FormatSpec) -> Vec<&'static str> {
         "pcm" => vec!["pcm", "raw"],
         // Sun/NeXT 的 AU，官方后缀 .au；.snd 是老别名，ffmpeg 要显式 -f au 才认
         "au" => vec!["au", "snd"],
+        // AMR-WB 标准叫法是 .awb，但 ffmpeg 的 amr muxer 只认 .amr，靠 -f amr 兜住
+        "amr_wb" => vec!["awb", "amr"],
         _ => vec![spec.ext],
     }
 }
@@ -2637,6 +2639,11 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         "adpcm_yamaha" => "adpcm_yamaha",
         "adpcm_ima_qt" => "adpcm_ima_qt",
         "gsm" => "libgsm",
+        // 这三个（AMR-WB / iLBC / LC3）随包 LGPL 构建没有，完整构建才有
+        "amr_wb" => "libvo_amrwbenc",
+        "ilbc" => "libilbc",
+        "lc3" => "liblc3",
+        "codec2" => "libcodec2",
         "g723_1" => "g723_1",
         "g726" => "g726",
         "real_144" => "real_144",

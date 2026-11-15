@@ -187,10 +187,10 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Speech,
         patent: Patent::Expiring,
-        can_encode: false,
+        can_encode: true,
         primary: false,
-        blurb: "AMR 的宽带版本（16kHz），VoLTE 前常用。\n只解码。",
-        args: &[],
+        blurb: "AMR 的宽带版本（16kHz，23.85kbps 档），VoLTE 之前的主力。\n编码器是 ffmpeg 的 libvo_amrwbenc —— 随包构建没编进去，\n换成带它的完整构建（gyan full 之类）这一行才会亮。",
+        args: &["-c:a", "libvo_amrwbenc", "-ar", "16000", "-ac", "1", "-f", "amr"],
         size_ratio: 0.02,
     },
     FormatSpec {

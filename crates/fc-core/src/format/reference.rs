@@ -89,8 +89,6 @@ pub static REFERENCE: &[FormatSpec] = &[
         "AAC Low Delay，低延迟通信。\n只读；没有编码器。"),
     ro!("usac", "USAC", "m4a", Group::Lossy, Kind::Lossy, Patent::Active,
         "MPEG-D USAC / xHE-AAC 的核心。\n只读；没有编码器。"),
-    ro!("lc3", "LC3", "lc3", Group::Lossy, Kind::Lossy, Patent::Active,
-        "蓝牙 LE Audio 的 LC3。\n只读；没有编码器。"),
     ro!("lc3plus", "LC3plus", "lc3", Group::Lossy, Kind::Lossy, Patent::Active,
         "LC3plus，低延迟/高音质。\n只读；没有编码器。"),
     ro!("evs", "EVS", "evs", Group::Lossy, Kind::Lossy, Patent::Active,
@@ -107,8 +105,6 @@ pub static REFERENCE: &[FormatSpec] = &[
     ro!("aifc", "AIFC", "aifc", Group::Container, Kind::Container, Patent::Free,
         "AIFF-C 压缩/多字节序变体。\n只读参考；当前不作为输出。"),
     // ── 语音：后缀按维基 / Asterisk 的格式定义 ──
-    ro!("ilbc", "iLBC", "lbc", Group::Speech, Kind::Lossy, Patent::Free,
-        "RFC 3951 的低码率语音，专为丢包场景设计（WebRTC 也在用）。\n文件头是 `#!iLBC20` / `#!iLBC30`，后缀 `.lbc`。\n只读；没有编码器。"),
     ro!("siren7", "Siren 7 (G.722.1)", "siren7", Group::Speech, Kind::Lossy, Patent::Expiring,
         "ITU G.722.1，Polycom 的 32kbps 宽带语音。\nAsterisk 用的后缀就是 `.siren7`。只读；没有编码器。"),
     ro!("siren14", "Siren 14 (G.722.1C)", "siren14", Group::Speech, Kind::Lossy, Patent::Expiring,
