@@ -63,12 +63,14 @@ pub(crate) struct Boot {
     items: Vec<Item>,
     data: Option<BootData>,
     started: Instant,
+    /// 检查全部完成、进入「正在加载项目」的时刻
+    data_at: Option<Instant>,
     logo: Option<egui::TextureHandle>,
     shot: Option<egui::TextureHandle>,
 }
 
-/// 最短停留：检查本身约 1 秒，这里再垫一点，让清单看得清。
-const MIN_SHOW: Duration = Duration::from_millis(2400);
+/// 「正在加载项目」停留时长。达芬奇也在这句上停一会儿，切过去太突兀。
+const PROJECT_HOLD: Duration = Duration::from_millis(2000);
 /// 兜底：检查卡死（ffmpeg 挂起之类）也别把窗口钉在过场。
 const TIMEOUT: Duration = Duration::from_secs(8);
 
@@ -79,6 +81,11 @@ impl Boot {
         std::thread::spawn(move || {
             let send = move |i: usize, s: Step, d: String| {
                 let _ = txc.send(Msg::Step(i, s, d));
+                // 每项开跑前停一下：一行一行往下走才看得清，
+                // 否则 7 项会在几十毫秒里闪过去
+                if s == Step::Running {
+                    std::thread::sleep(Duration::from_millis(140));
+                }
             };
 
             // 0 定位
@@ -195,6 +202,7 @@ impl Boot {
                 .collect(),
             data: None,
             started: Instant::now(),
+            data_at: None,
             logo: None,
             shot: None,
         }
@@ -212,13 +220,19 @@ impl Boot {
                         }
                     }
                 }
-                Msg::Done(d) => self.data = Some(d),
+                Msg::Done(d) => {
+                    self.data = Some(d);
+                    self.data_at = Some(Instant::now());
+                }
             }
         }
-        if self.data.is_some() && self.started.elapsed() >= MIN_SHOW {
-            return self.data.take();
+        // 检查完还要在「正在加载项目」上停 2 秒
+        if let Some(t) = self.data_at {
+            if t.elapsed() >= PROJECT_HOLD {
+                return self.data.take();
+            }
         }
-        if self.started.elapsed() >= TIMEOUT {
+        if self.data.is_none() && self.started.elapsed() >= TIMEOUT {
             return Some(BootData {
                 tools: None,
                 encoders: HashSet::new(),
@@ -234,22 +248,28 @@ impl Boot {
             .count()
     }
 
-    /// 进度 = 检查项完成度（92%）+ 时间兜底（8%），到最后一项也走满，不会停在 100% 干等。
-    fn progress(&self) -> f32 {
-        let by_step = self.done_count() as f32 / self.items.len() as f32 * 0.92;
-        let by_time =
-            (self.started.elapsed().as_secs_f32() / MIN_SHOW.as_secs_f32()).min(1.0) * 0.08;
-        (by_step + by_time).min(1.0)
+    /// 当前这一行：检查阶段显示正在跑的那项，检查完显示「正在加载项目」。
+    fn current(&self) -> (String, String, Step) {
+        if self.data.is_some() {
+            return ("正在加载项目…".to_string(), String::new(), Step::Running);
+        }
+        if let Some(it) = self.items.iter().find(|i| i.state == Step::Running) {
+            return (it.label.to_string(), it.detail.clone(), Step::Running);
+        }
+        if let Some(it) = self.items.iter().rev().find(|i| i.state != Step::Todo) {
+            return (it.label.to_string(), it.detail.clone(), it.state);
+        }
+        ("准备中…".to_string(), String::new(), Step::Running)
     }
 
-    fn status(&self) -> String {
-        if self.data.is_some() {
-            return "就绪".to_string();
-        }
-        match self.items.iter().find(|i| i.state == Step::Running) {
-            Some(it) => format!("{}…", it.label),
-            None => "准备界面…".to_string(),
-        }
+    /// 进度：检查阶段走到 70%，「加载项目」那 2 秒走完剩下的 30%
+    fn progress(&self) -> f32 {
+        let by_step = self.done_count() as f32 / self.items.len() as f32 * 0.70;
+        let by_hold = match self.data_at {
+            Some(t) => (t.elapsed().as_secs_f32() / PROJECT_HOLD.as_secs_f32()).min(1.0) * 0.30,
+            None => 0.0,
+        };
+        (by_step + by_hold).min(1.0)
     }
 
     /// 画过场。调用方负责每帧 `request_repaint`。
@@ -302,65 +322,59 @@ impl Boot {
             tint(TEXT, 120),
         );
 
-        // 检查清单
+        // 一次只显示一行（达芬奇那种「检查一项、显示一项」）
+        let (label, detail, state) = self.current();
         let amber = Color32::from_rgb(232, 176, 84);
-        let row_y0 = area.top() + 96.0;
-        for (i, it) in self.items.iter().enumerate() {
-            let y = row_y0 + i as f32 * 32.0;
-            let cx = area.left() + m + 6.0;
-            let color = match it.state {
-                Step::Ok => accent(),
-                Step::Warn => amber,
-                Step::Running => accent(),
-                Step::Skip | Step::Todo => tint(TEXT, 70),
-            };
-            match it.state {
-                Step::Ok => {
-                    p.circle_filled(egui::pos2(cx, y), 5.0, color);
-                    // 手画的勾：两段线，不依赖字体里有没有 ✓
-                    p.line_segment(
-                        [egui::pos2(cx - 2.6, y), egui::pos2(cx - 0.6, y + 2.2)],
-                        Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
-                    );
-                    p.line_segment(
-                        [egui::pos2(cx - 0.6, y + 2.2), egui::pos2(cx + 2.8, y - 2.4)],
-                        Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
-                    );
-                }
-                Step::Skip => {
-                    p.line_segment(
-                        [egui::pos2(cx - 4.0, y), egui::pos2(cx + 4.0, y)],
-                        Stroke::new(1.4f32, color),
-                    );
-                }
-                Step::Todo => {
-                    p.circle_stroke(egui::pos2(cx, y), 4.5, Stroke::new(1.0f32, color));
-                }
-                Step::Running | Step::Warn => {
-                    p.circle_filled(egui::pos2(cx, y), 5.0, color);
-                }
-            }
-
-            p.text(
-                egui::pos2(area.left() + m + 22.0, y),
-                Align2::LEFT_CENTER,
-                it.label,
-                FontId::proportional(11.5),
-                if it.state == Step::Todo {
-                    tint(TEXT, 90)
-                } else {
-                    tint(TEXT, 210)
-                },
-            );
-            if !it.detail.is_empty() {
-                p.text(
-                    egui::pos2(area.right() - m, y),
-                    Align2::RIGHT_CENTER,
-                    &it.detail,
-                    FontId::proportional(10.5),
-                    tint(TEXT, if it.state == Step::Skip { 90 } else { 135 }),
+        let ry = area.bottom() - m - 46.0;
+        let cx = area.left() + m + 6.0;
+        let color = match state {
+            Step::Ok | Step::Running => accent(),
+            Step::Warn => amber,
+            Step::Skip | Step::Todo => tint(TEXT, 70),
+        };
+        match state {
+            Step::Ok => {
+                p.circle_filled(egui::pos2(cx, ry), 5.0, color);
+                // 手画的勾：两段线，不依赖字体里有没有 ✓
+                p.line_segment(
+                    [egui::pos2(cx - 2.6, ry), egui::pos2(cx - 0.6, ry + 2.2)],
+                    Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
+                );
+                p.line_segment(
+                    [egui::pos2(cx - 0.6, ry + 2.2), egui::pos2(cx + 2.8, ry - 2.4)],
+                    Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
                 );
             }
+            Step::Skip => {
+                p.line_segment(
+                    [egui::pos2(cx - 4.0, ry), egui::pos2(cx + 4.0, ry)],
+                    Stroke::new(1.4f32, color),
+                );
+            }
+            Step::Todo => {
+                p.circle_stroke(egui::pos2(cx, ry), 4.5, Stroke::new(1.0f32, color));
+            }
+            Step::Running | Step::Warn => {
+                // 正在跑的时候画空心环 + 中心点，看着像在转
+                p.circle_stroke(egui::pos2(cx, ry), 4.5, Stroke::new(1.4f32, color));
+                p.circle_filled(egui::pos2(cx, ry), 1.8, color);
+            }
+        }
+        p.text(
+            egui::pos2(area.left() + m + 22.0, ry),
+            Align2::LEFT_CENTER,
+            &label,
+            FontId::proportional(12.0),
+            tint(TEXT, 215),
+        );
+        if !detail.is_empty() {
+            p.text(
+                egui::pos2(area.right() - m, ry),
+                Align2::RIGHT_CENTER,
+                &detail,
+                FontId::proportional(10.5),
+                tint(TEXT, 130),
+            );
         }
 
         // 底部：状态 + 进度条
@@ -377,13 +391,6 @@ impl Boot {
                 accent(),
             );
         }
-        p.text(
-            egui::pos2(area.left() + m, bar.top() - 10.0),
-            Align2::LEFT_BOTTOM,
-            self.status(),
-            FontId::proportional(10.5),
-            tint(TEXT, 150),
-        );
         p.text(
             egui::pos2(area.right() - m, bar.top() - 10.0),
             Align2::RIGHT_BOTTOM,
