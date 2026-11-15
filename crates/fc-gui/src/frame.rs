@@ -152,6 +152,69 @@ pub fn set_fill_work_area(on: bool) -> bool {
     }
 }
 
+/// 把窗口按当前尺寸挪到显示器工作区正中（过场那个小窗口用）。
+///
+/// 只摆位置、不改尺寸：尺寸是 eframe 按 `with_inner_size` 建好的，
+/// 这里再算一遍 DPI 容易两边对不上。
+pub fn center_window() -> bool {
+    let hwnd = HWND_SAVED.load(Ordering::SeqCst) as HWND;
+    if hwnd.is_null() {
+        return false;
+    }
+    unsafe {
+        let mut r: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut r) == 0 {
+            return false;
+        }
+        let (w, h) = (r.right - r.left, r.bottom - r.top);
+        let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if mon.is_null() {
+            return false;
+        }
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(mon, &mut info) == 0 {
+            return false;
+        }
+        let work = info.rcWork;
+        let x = work.left + (work.right - work.left - w) / 2;
+        let y = work.top + (work.bottom - work.top - h) / 2;
+        SetWindowPos(hwnd, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE) != 0
+    }
+}
+
+/// 覆盖「退出全屏要还原到哪」。
+///
+/// 从过场的小窗口进全屏时，`set_fill_work_area(true)` 会把那个小窗口记成还原点，
+/// 之后按 F11 就缩成 760×440——不对。所以进全屏后立刻按配置的窗口尺寸
+/// 重算一个居中的矩形把它盖掉。
+pub fn set_restore_size(w_px: f32, h_px: f32) {
+    let hwnd = HWND_SAVED.load(Ordering::SeqCst) as HWND;
+    if hwnd.is_null() {
+        return;
+    }
+    unsafe {
+        let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if mon.is_null() {
+            return;
+        }
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(mon, &mut info) == 0 {
+            return;
+        }
+        let work = info.rcWork;
+        let w = w_px.max(320.0) as i32;
+        let h = h_px.max(240.0) as i32;
+        let x = work.left + (work.right - work.left - w) / 2;
+        let y = work.top + (work.bottom - work.top - h) / 2;
+        FS_RECT[0].store(x, Ordering::SeqCst);
+        FS_RECT[1].store(y, Ordering::SeqCst);
+        FS_RECT[2].store(x + w, Ordering::SeqCst);
+        FS_RECT[3].store(y + h, Ordering::SeqCst);
+    }
+}
+
 unsafe extern "system" fn subclass_proc(
     hwnd: HWND,
     msg: u32,

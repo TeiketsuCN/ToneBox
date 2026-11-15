@@ -522,14 +522,9 @@ impl App {
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
-        // 开局按配置里的窗口尺寸对齐一次（窗口是固定尺寸，只能靠命令改）
-        {
-            let (w, h) = cfg.window.size_px();
-            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                w / zoom(),
-                h / zoom(),
-            )));
-        }
+        // 注意：窗口尺寸这里不能再动。
+        // 建窗口时是过场的小尺寸（boot::SPLASH_W/H），进主界面那一刻直接铺满工作区；
+        // 之前这里有一句"按配置尺寸对齐"，会把过场窗口立刻撑大，小窗口就白做了。
         // 音乐库上次扫描的结果直接从配置里铺出来（不再每次启动都扫一遍）
         let cached_lib: Vec<LibEntry> = cfg
             .library_cache
@@ -1439,6 +1434,11 @@ impl eframe::App for App {
             #[cfg(windows)]
             frame::install(APP_NAME);
         }
+        // 过场窗口要居中：eframe 建窗口时不能指定位置，这里等句柄装好后摆一次
+        #[cfg(windows)]
+        if self.frames == 4 {
+            frame::center_window();
+        }
 
         // 启动过场：窗口已经开出来了，ffmpeg 探测还在后台跑；这期间只画过场，
         // 主界面的面板一个都不排版。结束的那一帧顺手铺满工作区（默认全屏）。
@@ -1455,8 +1455,19 @@ impl eframe::App for App {
             self.boot = None;
             self.tools = d.tools;
             self.encoders = d.encoders;
-            // 默认全屏：进主界面这一刻铺满工作区，F11 / Esc 退回原来的窗口尺寸
+            // 默认全屏：进主界面这一刻把过场小窗口铺满工作区
             set_fullscreen(&mut self.fullscreen, ctx, self.cfg.window.size_px());
+            // 小窗口当还原点会很难看：按配置尺寸重算一个居中矩形
+            #[cfg(windows)]
+            {
+                let (w, h) = self.cfg.window.size_px();
+                frame::set_restore_size(w, h);
+            }
+            // 主界面的最小尺寸（布局规范：1120×600）
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                1120.0 / zoom(),
+                600.0 / zoom(),
+            )));
             let pre = std::mem::take(&mut self.preload);
             if !pre.is_empty() {
                 self.add_files(pre);
@@ -2221,11 +2232,12 @@ fn main() -> eframe::Result<()> {
         })
     };
 
-    // 启动时按配置里的窗口尺寸开窗（设置页里改了就立刻改窗口）
-    let (win_w, win_h) = settings::Settings::load().window.size_px();
+    // 先开一个小的过场窗口（检查完再铺满工作区）。
+    // 这里不能用配置里的窗口尺寸：那会变成一个满屏空壳先晃一下。
     let viewport = egui::ViewportBuilder::default()
-            .with_inner_size([win_w / zoom(), win_h / zoom()])
-            .with_min_inner_size([1120.0, 600.0])
+            .with_inner_size([boot::SPLASH_W, boot::SPLASH_H])
+            // 过场阶段的最小尺寸先放宽，进主界面时再抬到 1120×600
+            .with_min_inner_size([400.0, 320.0])
             .with_decorations(false)
             .with_title(APP_NAME);
     // wgpu/Vulkan 后端的透明窗口和 DWM 玻璃不兼容，会出现黑块；Vulkan 版直接用不透明表面

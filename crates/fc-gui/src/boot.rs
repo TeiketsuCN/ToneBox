@@ -1,62 +1,200 @@
-//! 启动过场：窗口先出来，慢活儿丢后台，加载完再切主界面。
+//! 启动过场：一个小窗口居中弹出，边检查边推进，检查完再进主界面。
 //!
-//! 起因：`App::new` 里原来同步跑 `fc_core::locate()` 和 `list_encoders()`，
-//! 后者要起一次 `ffmpeg -encoders` 子进程（冷启动 300~800ms）。
-//! eframe 的窗口是**先**建好的，所以这段时间用户面对的是一个空壳窗口。
-//! 现在第一步挪到后台线程，第一帧就画过场，最短停留 650ms 再切主界面。
+//! 为什么要这么多检查项：ffmpeg 是关键依赖，用户机器上的构建跟开发机可能不一样
+//! （常见的是 LGPL 共享版，没有 `libspeex`）。与其等用户第一次转换才失败，
+//! 不如开机把这些问清楚，顺便让这 2 秒有内容可看。
 //!
-//! 过场是画在 `Order::Foreground` 层上的，不影响下面任何面板的布局。
+//! 检查在后台线程里跑（`ffmpeg -encoders` / `-decoders` / `-version` 各是一次子进程），
+//! 主线程只管按收到的进度重绘，所以窗口不会卡住。
 
 use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use egui::{Align2, Color32, FontId, Rect, Vec2};
+use egui::{Align2, Color32, FontId, Rect, Stroke, Vec2};
 
 use crate::util::{accent, tint};
 use crate::{APP_NAME, BG, TEXT, VERSION};
+
+/// 过场窗口尺寸（逻辑点）。小窗口先看一眼，检查完再铺满屏幕。
+pub(crate) const SPLASH_W: f32 = 760.0;
+pub(crate) const SPLASH_H: f32 = 440.0;
 
 pub(crate) struct BootData {
     pub tools: Option<fc_core::Tools>,
     pub encoders: HashSet<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Todo,
+    Running,
+    Ok,
+    /// 这项没装，但不影响使用（比如 atracdenc 是可选的）
+    Skip,
+    Warn,
+}
+
+struct Item {
+    label: &'static str,
+    state: Step,
+    detail: String,
+}
+
+enum Msg {
+    Step(usize, Step, String),
+    Done(BootData),
+}
+
+/// 检查项。加一项就在这里加一行，线程里对应加一段。
+const LABELS: [&str; 7] = [
+    "定位 ffmpeg / ffprobe",
+    "读取 ffmpeg 版本",
+    "读取编码器表",
+    "读取解码器表",
+    "检查开源解码库",
+    "检查 ATRAC 编码器",
+    "检查 Speex 编码器",
+];
+
 pub(crate) struct Boot {
-    rx: Receiver<BootData>,
-    started: Instant,
+    rx: Receiver<Msg>,
+    items: Vec<Item>,
     data: Option<BootData>,
+    started: Instant,
     logo: Option<egui::TextureHandle>,
-    /// 过场底图（照片）
     shot: Option<egui::TextureHandle>,
 }
 
-/// 过场停留时长。
-///
-/// 真实启动只要 300~500ms（探测 ffmpeg/ffprobe + 取编码器表），这里多留一会儿是
-/// **故意的**：太快切过去像闪屏，也不符合"一个程序被打开了"的心理预期。
-/// 想调手感就改这一个数：800ms 利落，1800ms 有仪式感，3000ms 以上开始像卡住。
-const SPLASH: Duration = Duration::from_millis(1800);
-/// 兜底：后台如果卡住（ffmpeg 挂起之类），到点先放行，不能把窗口钉死在过场。
-const TIMEOUT: Duration = Duration::from_secs(6);
+/// 最短停留：检查本身约 1 秒，这里再垫一点，让清单看得清。
+const MIN_SHOW: Duration = Duration::from_millis(2400);
+/// 兜底：检查卡死（ffmpeg 挂起之类）也别把窗口钉在过场。
+const TIMEOUT: Duration = Duration::from_secs(8);
 
 impl Boot {
-    /// 起后台线程去摸 ffmpeg / ffprobe 和编码器表。
     pub fn start() -> Self {
         let (tx, rx) = channel();
+        let txc = tx.clone();
         std::thread::spawn(move || {
+            let send = move |i: usize, s: Step, d: String| {
+                let _ = txc.send(Msg::Step(i, s, d));
+            };
+
+            // 0 定位
+            send(0, Step::Running, String::new());
             let tools = fc_core::locate();
+            match &tools {
+                Some(t) => send(
+                    0,
+                    Step::Ok,
+                    t.ffmpeg
+                        .parent()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "已在 PATH".to_string()),
+                ),
+                None => send(0, Step::Warn, "没找到，转换不可用".to_string()),
+            }
+
+            // 1 版本
+            send(1, Step::Running, String::new());
+            match tools
+                .as_ref()
+                .and_then(|t| fc_core::ffmpeg_version(&t.ffmpeg))
+            {
+                Some(v) => send(1, Step::Ok, v),
+                None => send(1, Step::Skip, "读不到".to_string()),
+            }
+
+            // 2 编码器表
+            send(2, Step::Running, String::new());
             let encoders = tools
                 .as_ref()
                 .map(|t| fc_core::list_encoders(&t.ffmpeg))
                 .unwrap_or_default();
-            // 接收端已经没了（窗口刚开就被关掉）也无所谓，静默丢掉
-            let _ = tx.send(BootData { tools, encoders });
+            send(
+                2,
+                if encoders.is_empty() {
+                    Step::Warn
+                } else {
+                    Step::Ok
+                },
+                format!("{} 个", encoders.len()),
+            );
+
+            // 3 解码器表
+            send(3, Step::Running, String::new());
+            let decoders = tools
+                .as_ref()
+                .map(|t| fc_core::list_decoders(&t.ffmpeg))
+                .unwrap_or_default();
+            send(
+                3,
+                if decoders.is_empty() {
+                    Step::Warn
+                } else {
+                    Step::Ok
+                },
+                format!("{} 个", decoders.len()),
+            );
+
+            // 4 开源解码库：ffmpeg 里名字带 lib 前缀的都是外挂开源库
+            send(4, Step::Running, String::new());
+            let mut libs: Vec<String> = decoders
+                .iter()
+                .filter(|n| n.starts_with("lib"))
+                .map(|n| n.trim_start_matches("lib").to_string())
+                .collect();
+            libs.sort();
+            libs.dedup();
+            let detail = if libs.is_empty() {
+                "没发现外挂解码库".to_string()
+            } else {
+                format!(
+                    "{} … 共 {} 个",
+                    libs.iter().take(4).cloned().collect::<Vec<_>>().join(" / "),
+                    libs.len()
+                )
+            };
+            send(
+                4,
+                if libs.is_empty() {
+                    Step::Skip
+                } else {
+                    Step::Ok
+                },
+                detail,
+            );
+
+            // 5 ATRAC 编码器（可选）
+            send(5, Step::Running, String::new());
+            match fc_core::find_atracdenc() {
+                Some(_) => send(5, Step::Ok, "已安装".to_string()),
+                None => send(5, Step::Skip, "未安装（可选）".to_string()),
+            }
+
+            // 6 Speex 编码器
+            send(6, Step::Running, String::new());
+            match fc_core::find_speexenc() {
+                Some(_) => send(6, Step::Ok, "已找到".to_string()),
+                None => send(6, Step::Skip, "未找到".to_string()),
+            }
+
+            let _ = tx.send(Msg::Done(BootData { tools, encoders }));
         });
+
         Self {
             rx,
-            started: Instant::now(),
+            items: LABELS
+                .iter()
+                .map(|l| Item {
+                    label: l,
+                    state: Step::Todo,
+                    detail: String::new(),
+                })
+                .collect(),
             data: None,
+            started: Instant::now(),
             logo: None,
             shot: None,
         }
@@ -64,13 +202,20 @@ impl Boot {
 
     /// 每帧调一次；`Some` 表示可以进主界面了。
     pub fn poll(&mut self) -> Option<BootData> {
-        if self.data.is_none() {
-            if let Ok(d) = self.rx.try_recv() {
-                self.data = Some(d);
+        while let Ok(m) = self.rx.try_recv() {
+            match m {
+                Msg::Step(i, s, d) => {
+                    if let Some(it) = self.items.get_mut(i) {
+                        it.state = s;
+                        if !d.is_empty() {
+                            it.detail = d;
+                        }
+                    }
+                }
+                Msg::Done(d) => self.data = Some(d),
             }
         }
-        // 结果到了也要走满停留时间；结果没到就一直等（但受 TIMEOUT 保护）
-        if self.data.is_some() && self.started.elapsed() >= SPLASH {
+        if self.data.is_some() && self.started.elapsed() >= MIN_SHOW {
             return self.data.take();
         }
         if self.started.elapsed() >= TIMEOUT {
@@ -82,30 +227,28 @@ impl Boot {
         None
     }
 
-    /// 时间轴进度：真进度拿不到（`ffmpeg -encoders` 是一次性子进程，没有中间量），
-    /// 就按停留时长匀速走；结果还没到手时最多到 92%，避免"100% 了还在等"。
-    fn progress(&self) -> f32 {
-        let f = (self.started.elapsed().as_secs_f32() / SPLASH.as_secs_f32()).min(1.0);
-        if self.data.is_some() {
-            f
-        } else {
-            f * 0.92
-        }
+    fn done_count(&self) -> usize {
+        self.items
+            .iter()
+            .filter(|i| matches!(i.state, Step::Ok | Step::Skip | Step::Warn))
+            .count()
     }
 
-    fn status(&self) -> &'static str {
-        let f = (self.started.elapsed().as_secs_f32() / SPLASH.as_secs_f32()).min(1.0);
-        if self.data.is_none() {
-            return if f < 0.45 {
-                "正在检测 ffmpeg 与 ffprobe…"
-            } else {
-                "仍在检测 ffmpeg…"
-            };
+    /// 进度 = 检查项完成度（92%）+ 时间兜底（8%），到最后一项也走满，不会停在 100% 干等。
+    fn progress(&self) -> f32 {
+        let by_step = self.done_count() as f32 / self.items.len() as f32 * 0.92;
+        let by_time =
+            (self.started.elapsed().as_secs_f32() / MIN_SHOW.as_secs_f32()).min(1.0) * 0.08;
+        (by_step + by_time).min(1.0)
+    }
+
+    fn status(&self) -> String {
+        if self.data.is_some() {
+            return "就绪".to_string();
         }
-        match f {
-            x if x < 0.45 => "正在检测 ffmpeg 与 ffprobe…",
-            x if x < 0.80 => "正在载入编码器表…",
-            _ => "正在准备界面…",
+        match self.items.iter().find(|i| i.state == Step::Running) {
+            Some(it) => format!("{}…", it.label),
+            None => "准备界面…".to_string(),
         }
     }
 
@@ -117,7 +260,7 @@ impl Boot {
             egui::Id::new("boot-splash"),
         ));
 
-        // ── 底图：铺满整个窗口（cover），不留黑边 ──
+        // 底图：小窗口里也铺一张（裁切后正好落在双屏那一段）
         p.rect_filled(area, egui::Rounding::ZERO, BG);
         let shot = self.shot.get_or_insert_with(|| load_shot(ctx));
         let [sw, sh] = shot.size();
@@ -129,58 +272,104 @@ impl Boot {
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        // 小窗口里字更密，压得比全屏版狠一点
+        p.rect_filled(area, egui::Rounding::ZERO, tint(BG, 226));
 
-        // 左边压暗（标题要读得清），底部再压一道（许可小字）
-        hgrad(&p, area, tint(BG, 178), tint(BG, 0));
-        vgrad(&p, area, tint(BG, 0), tint(BG, 150));
+        let m = 24.0;
 
-        let margin = 46.0;
-
-        // ── 左上角：logo + 名字 ──
+        // 头部：logo + 名字 + 版本
         let logo = self.logo.get_or_insert_with(|| load_logo(ctx));
-        let logo_rect = Rect::from_min_size(
-            area.min + Vec2::new(margin, margin - 6.0),
-            Vec2::splat(40.0),
-        );
+        let logo_rect = Rect::from_min_size(egui::pos2(area.left() + m, area.top() + 20.0), Vec2::splat(26.0));
         p.image(
             logo.id(),
             logo_rect,
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        let nx = logo_rect.right() + 10.0;
         p.text(
-            egui::pos2(logo_rect.right() + 13.0, logo_rect.center().y),
+            egui::pos2(nx, logo_rect.center().y - 6.0),
             Align2::LEFT_CENTER,
             APP_NAME,
-            FontId::proportional(18.0),
-            tint(TEXT, 225),
-        );
-
-        // ── 大标题压在照片左侧（达芬奇那种排法）──
-        let ty = area.top() + area.height() * 0.52;
-        p.text(
-            egui::pos2(area.left() + margin, ty),
-            Align2::LEFT_CENTER,
-            APP_NAME,
-            FontId::proportional(46.0),
+            FontId::proportional(15.0),
             TEXT,
         );
         p.text(
-            egui::pos2(area.left() + margin + 2.0, ty + 38.0),
+            egui::pos2(nx, logo_rect.center().y + 9.0),
             Align2::LEFT_CENTER,
-            format!("FORMAT WORKBENCH · v{VERSION}"),
-            FontId::proportional(12.0),
-            tint(TEXT, 150),
+            format!("v{VERSION} · 正在检查运行环境"),
+            FontId::proportional(9.5),
+            tint(TEXT, 120),
         );
 
-        // ── 进度条 + 状态：跟着标题往下排 ──
-        let bar_w = 250.0;
+        // 检查清单
+        let amber = Color32::from_rgb(232, 176, 84);
+        let row_y0 = area.top() + 96.0;
+        for (i, it) in self.items.iter().enumerate() {
+            let y = row_y0 + i as f32 * 32.0;
+            let cx = area.left() + m + 6.0;
+            let color = match it.state {
+                Step::Ok => accent(),
+                Step::Warn => amber,
+                Step::Running => accent(),
+                Step::Skip | Step::Todo => tint(TEXT, 70),
+            };
+            match it.state {
+                Step::Ok => {
+                    p.circle_filled(egui::pos2(cx, y), 5.0, color);
+                    // 手画的勾：两段线，不依赖字体里有没有 ✓
+                    p.line_segment(
+                        [egui::pos2(cx - 2.6, y), egui::pos2(cx - 0.6, y + 2.2)],
+                        Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
+                    );
+                    p.line_segment(
+                        [egui::pos2(cx - 0.6, y + 2.2), egui::pos2(cx + 2.8, y - 2.4)],
+                        Stroke::new(1.4f32, Color32::from_rgb(12, 26, 24)),
+                    );
+                }
+                Step::Skip => {
+                    p.line_segment(
+                        [egui::pos2(cx - 4.0, y), egui::pos2(cx + 4.0, y)],
+                        Stroke::new(1.4f32, color),
+                    );
+                }
+                Step::Todo => {
+                    p.circle_stroke(egui::pos2(cx, y), 4.5, Stroke::new(1.0f32, color));
+                }
+                Step::Running | Step::Warn => {
+                    p.circle_filled(egui::pos2(cx, y), 5.0, color);
+                }
+            }
+
+            p.text(
+                egui::pos2(area.left() + m + 22.0, y),
+                Align2::LEFT_CENTER,
+                it.label,
+                FontId::proportional(11.5),
+                if it.state == Step::Todo {
+                    tint(TEXT, 90)
+                } else {
+                    tint(TEXT, 210)
+                },
+            );
+            if !it.detail.is_empty() {
+                p.text(
+                    egui::pos2(area.right() - m, y),
+                    Align2::RIGHT_CENTER,
+                    &it.detail,
+                    FontId::proportional(10.5),
+                    tint(TEXT, if it.state == Step::Skip { 90 } else { 135 }),
+                );
+            }
+        }
+
+        // 底部：状态 + 进度条
         let bar = Rect::from_min_size(
-            egui::pos2(area.left() + margin + 2.0, ty + 68.0),
-            Vec2::new(bar_w, 2.0),
+            egui::pos2(area.left() + m, area.bottom() - m - 2.0),
+            Vec2::new(area.width() - m * 2.0, 2.0),
         );
-        p.rect_filled(bar, egui::Rounding::same(1.0), tint(Color32::WHITE, 28));
-        let w = bar_w * self.progress().clamp(0.0, 1.0);
+        p.rect_filled(bar, egui::Rounding::same(1.0), tint(Color32::WHITE, 26));
+        let w = bar.width() * self.progress();
         if w > 0.5 {
             p.rect_filled(
                 Rect::from_min_size(bar.min, Vec2::new(w, 2.0)),
@@ -189,85 +378,22 @@ impl Boot {
             );
         }
         p.text(
-            egui::pos2(bar.left(), bar.bottom() + 11.0),
-            Align2::LEFT_TOP,
-            self.status(),
-            FontId::proportional(11.0),
-            tint(TEXT, 140),
-        );
-
-        // ── 左下角：免责 + 许可（达芬奇左下那块小字的位置）──
-        p.text(
-            egui::pos2(area.left() + margin, area.bottom() - margin - 9.0),
+            egui::pos2(area.left() + m, bar.top() - 10.0),
             Align2::LEFT_BOTTOM,
+            self.status(),
+            FontId::proportional(10.5),
+            tint(TEXT, 150),
+        );
+        p.text(
+            egui::pos2(area.right() - m, bar.top() - 10.0),
+            Align2::RIGHT_BOTTOM,
             "建议所有操作备份 · 慎防设备损坏，请自己负责",
             FontId::proportional(9.5),
-            tint(TEXT, 80),
-        );
-        p.text(
-            egui::pos2(area.left() + margin, area.bottom() - margin + 8.0),
-            Align2::LEFT_BOTTOM,
-            "© 2026 ToneBox · MIT License · 随包 FFmpeg 为 LGPL 构建",
-            FontId::proportional(9.5),
-            tint(TEXT, 100),
+            tint(TEXT, 75),
         );
     }
 }
 
-/// 水平渐变：左 → 右。
-fn hgrad(p: &egui::Painter, r: Rect, left: Color32, right: Color32) {
-    let mut m = egui::epaint::Mesh::default();
-    for (pos, color) in [
-        (r.left_top(), left),
-        (r.right_top(), right),
-        (r.right_bottom(), right),
-        (r.left_bottom(), left),
-    ] {
-        m.vertices.push(egui::epaint::Vertex {
-            pos,
-            uv: egui::Pos2::ZERO,
-            color,
-        });
-    }
-    m.add_triangle(0, 1, 2);
-    m.add_triangle(0, 2, 3);
-    p.add(egui::Shape::mesh(m));
-}
-
-/// 垂直渐变：上 → 下。
-fn vgrad(p: &egui::Painter, r: Rect, top: Color32, bottom: Color32) {
-    let mut m = egui::epaint::Mesh::default();
-    for (pos, color) in [
-        (r.left_top(), top),
-        (r.right_top(), top),
-        (r.right_bottom(), bottom),
-        (r.left_bottom(), bottom),
-    ] {
-        m.vertices.push(egui::epaint::Vertex {
-            pos,
-            uv: egui::Pos2::ZERO,
-            color,
-        });
-    }
-    m.add_triangle(0, 1, 2);
-    m.add_triangle(0, 2, 3);
-    p.add(egui::Shape::mesh(m));
-}
-
-/// 过场底图。要换照片就替换 `assets/splash.jpg`，代码一个字都不用动。
-///
-/// 现在的图是程序生成的占位（暗房 + 双屏波形 + 人形剪影）：DeepSeek 这边
-/// 拉不到 Unsplash/Pexels 那类素材站，而且把人家的照片塞进发行版还有肖像权
-/// 问题。正式图最好用自己的照片，或者明确写明授权来源。
-fn load_shot(ctx: &egui::Context) -> egui::TextureHandle {
-    const JPG: &[u8] = include_bytes!("../assets/splash.jpg");
-    let img = image::load_from_memory(JPG)
-        .expect("内置 splash.jpg 读不出来")
-        .to_rgba8();
-    let size = [img.width() as usize, img.height() as usize];
-    let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-    ctx.load_texture("boot-shot", ci, egui::TextureOptions::LINEAR)
-}
 fn load_logo(ctx: &egui::Context) -> egui::TextureHandle {
     const PNG: &[u8] = include_bytes!("../assets/icon.png");
     let img = image::load_from_memory(PNG)
@@ -276,4 +402,15 @@ fn load_logo(ctx: &egui::Context) -> egui::TextureHandle {
     let size = [img.width() as usize, img.height() as usize];
     let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
     ctx.load_texture("boot-logo", ci, egui::TextureOptions::LINEAR)
+}
+
+/// 过场底图。要换照片就替换 `assets/splash.jpg`，代码一个字都不用动。
+fn load_shot(ctx: &egui::Context) -> egui::TextureHandle {
+    const JPG: &[u8] = include_bytes!("../assets/splash.jpg");
+    let img = image::load_from_memory(JPG)
+        .expect("内置 splash.jpg 读不出来")
+        .to_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+    ctx.load_texture("boot-shot", ci, egui::TextureOptions::LINEAR)
 }

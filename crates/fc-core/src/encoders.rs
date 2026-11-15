@@ -1,4 +1,4 @@
-//! 运行时探测 ffmpeg 到底带哪些编码器。
+//! 运行时探测 ffmpeg 到底带哪些编码器 / 解码器。
 //!
 //! 为什么需要：开发机装的是 gyan 全量版（有 `libspeex`），随包的是 LGPL 共享版
 //! （**没有** `libspeex`）。按开发机验证过的功能，装到用户机器上可能直接失败。
@@ -14,25 +14,42 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// 问 ffmpeg 要编码器清单。失败返回空集合（界面会把所有编码格式标成不可用，
-/// 但至少不会假装能用）。
-pub fn list_encoders(ffmpeg: &Path) -> HashSet<String> {
+/// 跑一次 `ffmpeg -hide_banner <flag>`，把 stdout 捞回来。
+fn run(ffmpeg: &Path, flag: &str) -> Option<String> {
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(["-hide_banner", "-encoders"])
+    cmd.args(["-hide_banner", flag])
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-
-    let Ok(out) = cmd.output() else {
-        return HashSet::new();
-    };
-    parse(&String::from_utf8_lossy(&out.stdout))
+    let out = cmd.output().ok()?;
+    Some(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-/// 解析 `ffmpeg -encoders` 的输出。
+/// 问 ffmpeg 要编码器清单。失败返回空集合（界面会把所有编码格式标成不可用，
+/// 但至少不会假装能用）。
+pub fn list_encoders(ffmpeg: &Path) -> HashSet<String> {
+    run(ffmpeg, "-encoders").map(|t| parse(&t)).unwrap_or_default()
+}
+
+/// 问 ffmpeg 要解码器清单。启动过场的「检查开源解码库」就靠它。
+pub fn list_decoders(ffmpeg: &Path) -> HashSet<String> {
+    run(ffmpeg, "-decoders").map(|t| parse(&t)).unwrap_or_default()
+}
+
+/// ffmpeg 版本串，例如 `N-128909-g604ef3784d-20261114`。拿不到返回 `None`。
+pub fn version(ffmpeg: &Path) -> Option<String> {
+    let text = run(ffmpeg, "-version")?;
+    let line = text.lines().next()?;
+    let mut it = line.split_whitespace();
+    let _ = it.next(); // ffmpeg
+    let _ = it.next(); // version
+    it.next().map(|s| s.to_string())
+}
+
+/// 解析 `ffmpeg -encoders` / `-decoders` 的输出，两者格式相同。
 ///
-/// 格式是六列标志 + 名字 + 描述：
+/// 六列标志 + 名字 + 描述：
 /// ```text
 ///  A....D aac                  AAC (Advanced Audio Coding)
 ///  A....D libmp3lame           libmp3lame MP3
@@ -75,5 +92,20 @@ Encoders:
         assert!(s.contains("libx264"));
         assert!(!s.contains("Encoders:"));
         assert!(!s.contains("======="));
+    }
+
+    #[test]
+    fn decoders_use_the_same_parser() {
+        let text = "\
+Decoders:
+ A....D libopus              libopus Opus
+ A....D libvorbis            libvorbis
+ A....D aac                  AAC (Advanced Audio Coding)
+ =======
+ ";
+        let s = parse(text);
+        assert!(s.contains("libopus"));
+        assert!(s.contains("libvorbis"));
+        assert_eq!(s.iter().filter(|n| n.starts_with("lib")).count(), 2);
     }
 }
