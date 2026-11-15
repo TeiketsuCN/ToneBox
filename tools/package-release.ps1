@@ -1,15 +1,28 @@
 ﻿# Build a Windows release zip (exe + ffmpeg + short readme).
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
-#   powershell ... -Out D:\ToneBox-beta1.0-win64.zip
+#   powershell ... -Out D:\ToneBox-beta1.2-win64.zip
+#   powershell ... -Ver beta1.3          # 默认从 Cargo.toml 取
 
 param(
-    [string]$Out = ""
+    [string]$Out = "",
+    [string]$Ver = ""
 )
 
 $ErrorActionPreference = 'Stop'
 $src = Split-Path -Parent $PSScriptRoot
-$ver = 'beta1.0'
+
+# 版本号从 Cargo.toml 取，别再手写：1.2.0-beta.1 -> beta1.2
+# （手写的那次在发 beta 1.2 时还留着 beta1.0，包名和 README 全对不上）
+if (-not $Ver) {
+    $toml = Get-Content (Join-Path $src 'Cargo.toml') -Raw
+    if ($toml -match '(?m)^version\s*=\s*"(\d+)\.(\d+)\.\d+-beta\.(\d+)"') {
+        $Ver = "beta$($Matches[1]).$($Matches[2])"
+    } else {
+        throw "无法从 Cargo.toml 解析版本号，请用 -Ver 指定"
+    }
+}
+$ver = $Ver
 if (-not $Out) {
     $Out = Join-Path $src "dist\ToneBox-$ver-win64.zip"
 }
@@ -54,8 +67,9 @@ if (Test-Path $speex) {
 }
 
 Write-Host "== 3/4 write readme ==" -ForegroundColor Cyan
+$disp = $ver -replace '^beta', ''
 $readme = @"
-ToneBox beta 1.0 (Windows x64)
+ToneBox beta $disp (Windows x64)
 
 TEST BUILD. Back up your files before converting or playing.
 You are responsible for any device/file damage.
