@@ -3,12 +3,12 @@
 一个"格式顾问"，不是很正经的格式转换工具。转换只是入口。
 顺带能管理音乐库、试听、记住你几套常用配置。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 2.0
+Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.2
  · 建议所有操作备份 · 慎防设备损坏，请自己负责
 
 ## 下载（Windows x64）
 
-> beta 2.0 的安装包还没构建，下面这条仍是 beta 1.0 的构建，可以直接用。
+> beta 1.2 的安装包还没构建，下面这条仍是 beta 1.0 的构建，可以直接用。
 
 - [ToneBox-beta1.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.0.0-beta.1/ToneBox-beta1.0-win64.zip)（约 67 MB，含 ffmpeg）
 - SHA256：`FDE77FF76956E5A243D08E37E8690F2285C8E40DBE856E82A14080197A516CEB`
@@ -16,7 +16,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 
 ---
 
-## beta 2.0 更新了什么
+## beta 1.2 更新了什么
 
 相比 beta 1.0：
 
@@ -117,7 +117,7 @@ tools/           样本下载、标定、截图脚本
 
 ## 构建
 
-没有 MSVC 的机器用 **gnu 工具链 + WinLibs binutils**；有 MSVC Build Tools 的直接用默认工具链就行——beta 2.0 就是在 MSVC 2022 Build Tools 上用 `cargo build --release --workspace` 编出来的，两种工具链都能过。
+没有 MSVC 的机器用 **gnu 工具链 + WinLibs binutils**；有 MSVC Build Tools 的直接用默认工具链就行——beta 1.2 就是在 MSVC 2022 Build Tools 上用 `cargo build --release --workspace` 编出来的，两种工具链都能过。
 
 ```powershell
 # 一次性准备
