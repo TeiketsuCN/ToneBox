@@ -300,6 +300,11 @@ fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> 
         VideoCodec::Hevc => 0.055,
         VideoCodec::Vp9 => 0.06,
         VideoCodec::Av1 => 0.045,
+        // 老编码器效率低，按更高码率估
+        VideoCodec::Mpeg2 => 0.20,
+        VideoCodec::Mpeg4 => 0.16,
+        VideoCodec::Theora => 0.15,
+        VideoCodec::Wmv2 => 0.17,
         VideoCodec::Copy => return 0,
     };
     // CRF 每差 6，码率大约差一倍；以 23 为基准
@@ -641,10 +646,14 @@ pub fn effective_video_codec(
     o: &ConvertOptions,
     src_video: &str,
 ) -> VideoCodec {
-    let fallback = if container == "webm" {
-        VideoCodec::Vp9
-    } else {
-        VideoCodec::H264
+    let fallback = match container {
+        "webm" => VideoCodec::Vp9,
+        "ogv" => VideoCodec::Theora,
+        "wmv" => VideoCodec::Wmv2,
+        "vob" => VideoCodec::Mpeg2,
+        "mpg" => VideoCodec::Mpeg2,
+        "3gp" => VideoCodec::Mpeg4,
+        _ => VideoCodec::H264,
     };
     let mut c = o.video_codec;
     if c == VideoCodec::Copy {
@@ -740,6 +749,14 @@ pub enum VideoCodec {
     Hevc,
     Vp9,
     Av1,
+    /// MPEG-2（DVD / 电视录制）
+    Mpeg2,
+    /// MPEG-4 Part 2（divx 那一代，3GP 也用）
+    Mpeg4,
+    /// Theora（Ogg 视频）
+    Theora,
+    /// WMV2（ASF 容器的老画面）
+    Wmv2,
 }
 
 impl VideoCodec {
@@ -750,6 +767,10 @@ impl VideoCodec {
             VideoCodec::Hevc => "H.265",
             VideoCodec::Vp9 => "VP9",
             VideoCodec::Av1 => "AV1",
+            VideoCodec::Mpeg2 => "MPEG-2",
+            VideoCodec::Mpeg4 => "MPEG-4",
+            VideoCodec::Theora => "Theora",
+            VideoCodec::Wmv2 => "WMV2",
         }
     }
     /// 短标签（旋钮上放得下）
@@ -760,6 +781,10 @@ impl VideoCodec {
             VideoCodec::Hevc => "H.265",
             VideoCodec::Vp9 => "VP9",
             VideoCodec::Av1 => "AV1",
+            VideoCodec::Mpeg2 => "MPEG-2",
+            VideoCodec::Mpeg4 => "MPEG-4",
+            VideoCodec::Theora => "Theora",
+            VideoCodec::Wmv2 => "WMV2",
         }
     }
     /// ffmpeg 编码器名；`Copy` 没有编码器
@@ -770,6 +795,10 @@ impl VideoCodec {
             VideoCodec::Hevc => "libx265",
             VideoCodec::Vp9 => "libvpx-vp9",
             VideoCodec::Av1 => "libsvtav1",
+            VideoCodec::Mpeg2 => "mpeg2video",
+            VideoCodec::Mpeg4 => "mpeg4",
+            VideoCodec::Theora => "libtheora",
+            VideoCodec::Wmv2 => "wmv2",
         })
     }
 
@@ -785,6 +814,11 @@ impl VideoCodec {
             VideoCodec::Hevc => &["libx265", "libkvazaar"],
             VideoCodec::Vp9 => &["libvpx-vp9"],
             VideoCodec::Av1 => &["libsvtav1", "libaom-av1", "librav1e"],
+            // 这几个都是 ffmpeg 自带的内置编码器，任何构建都有
+            VideoCodec::Mpeg2 => &["mpeg2video"],
+            VideoCodec::Mpeg4 => &["mpeg4"],
+            VideoCodec::Theora => &["libtheora"],
+            VideoCodec::Wmv2 => &["wmv2"],
         }
     }
 }
@@ -839,6 +873,15 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "ts" | "m2ts" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Hevc],
         "flv" => &[VideoCodec::Copy, VideoCodec::H264],
         "avi" => &[VideoCodec::Copy, VideoCodec::H264],
+        // 节目流 / DVD：MPEG-2 是正主
+        "mpg" => &[VideoCodec::Copy, VideoCodec::Mpeg2, VideoCodec::Mpeg4],
+        "vob" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        // Ogg 视频：Theora
+        "ogv" => &[VideoCodec::Copy, VideoCodec::Theora],
+        // WMV：WMV2
+        "wmv" => &[VideoCodec::Copy, VideoCodec::Wmv2],
+        // 3GP：MPEG-4 Part 2
+        "3gp" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
         _ => &[],
     }
 }
@@ -858,6 +901,15 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "flv" => matches!(c.as_str(), "h264"),
         // AVI 的老规矩：MPEG-4 Part 2 / H.264 都有人认，但容器里放 H.265 基本没设备能放
         "avi" => matches!(c.as_str(), "mpeg4" | "msmpeg4v3" | "h264" | "mjpeg"),
+        // MPEG 节目流 / DVD：MPEG-2 是原生居民，MPEG-4 Part 2 老播放器也认
+        "mpg" => matches!(c.as_str(), "mpeg1video" | "mpeg2video" | "mpeg4"),
+        "vob" => matches!(c.as_str(), "mpeg2video"),
+        // Ogg 视频只收 Theora
+        "ogv" => matches!(c.as_str(), "theora"),
+        // ASF/WMV：WMV1/2/3 和 VC-1
+        "wmv" => matches!(c.as_str(), "wmv1" | "wmv2" | "wmv3" | "vc1"),
+        // 3GP 收 H.263 / MPEG-4 Part 2 / H.264
+        "3gp" => matches!(c.as_str(), "h263" | "mpeg4" | "h264"),
         _ => false,
     }
 }
@@ -905,6 +957,13 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "ts" | "m2ts" => matches!(c.as_str(), "aac" | "ac3" | "eac3" | "mp2" | "mp3"),
         "flv" => matches!(c.as_str(), "aac" | "mp3"),
         "avi" => matches!(c.as_str(), "mp3" | "mp2" | "ac3"),
+        // 节目流 / DVD：MP2 和 AC-3 是标配
+        "mpg" => matches!(c.as_str(), "mp2" | "mp3" | "ac3"),
+        "vob" => matches!(c.as_str(), "ac3" | "mp2" | "dts"),
+        // Ogg 只收 Xiph 自家的
+        "ogv" => matches!(c.as_str(), "vorbis" | "opus" | "flac"),
+        "wmv" => matches!(c.as_str(), "wmav1" | "wmav2" | "wmavoice" | "mp3"),
+        "3gp" => matches!(c.as_str(), "aac" | "amr_nb" | "amr_wb"),
         _ => false,
     }
 }
@@ -948,6 +1007,31 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 192,
             label: "MP3",
         },
+        "mpg" => AudioPlan::Encode {
+            codec: "mp2",
+            kbps: 224,
+            label: "MP2",
+        },
+        "vob" => AudioPlan::Encode {
+            codec: "ac3",
+            kbps: 448,
+            label: "AC-3",
+        },
+        "ogv" => AudioPlan::Encode {
+            codec: "libvorbis",
+            kbps: 160,
+            label: "Vorbis",
+        },
+        "wmv" => AudioPlan::Encode {
+            codec: "wmav2",
+            kbps: 192,
+            label: "WMA",
+        },
+        "3gp" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 96,
+            label: "AAC",
+        },
         // MKV 什么都收；走到这里说明源是 WMA/ATRAC/DSD 之类，
         // 转 FLAC 至少不再丢东西（DSD 会被解码成 PCM，这是格式决定的）
         _ => AudioPlan::Encode {
@@ -968,6 +1052,11 @@ pub fn container_note(container: &str) -> &'static str {
         "ts" | "m2ts" => "电视/蓝光容器：H.264/H.265 + AAC/AC-3，没索引、拖进度条不灵。",
         "flv" => "老网页容器：只有 H.264 + AAC/MP3，别指望新设备认。",
         "avi" => "AVI 给老设备用：画面 H.264、声音 MP3 最稳。",
+        "mpg" => "MPEG 节目流：画面 MPEG-2、声音 MP2，老播放器和车载屏认它。",
+        "vob" => "DVD 的容器：画面固定 MPEG-2、声音 AC-3，方便直接刻盘。",
+        "ogv" => "Ogg 视频：画面 Theora、声音 Vorbis，全开源但认它的设备很少。",
+        "wmv" => "Windows Media：画面 WMV2、声音 WMA，给老 Windows 设备和老播放器用。",
+        "3gp" => "3GPP 手机容器：画面 MPEG-4、声音 AAC，体积小。",
         _ => "",
     }
 }
@@ -1300,7 +1389,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
         "atrac3" => &[Knob::Atrac3Bitrate],
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
-        "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" => &[
+        "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
+        | "ogv" | "wmv" | "3gp" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -1546,6 +1636,11 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
             a.extend([s("-row-mt"), s("1")]);
         }
         VideoCodec::Av1 => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
+        // MPEG-2 / MPEG-4 / Theora / WMV2：都是码率型编码器，走 quality 的兜底分支
+        VideoCodec::Mpeg2 | VideoCodec::Mpeg4 | VideoCodec::Theora | VideoCodec::Wmv2 => {
             a.extend([s("-c:v"), s(enc)]);
             quality(&mut a, vc);
         }
@@ -2210,7 +2305,10 @@ mod tests {
 
     #[test]
     fn video_containers_are_selectable_targets() {
-        for id in ["mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi"] {
+        for id in [
+            "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
+            "3gp",
+        ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
             assert_eq!(s.group, Group::Video, "{id} 分组不对");
@@ -2224,7 +2322,10 @@ mod tests {
         }
         assert_eq!(
             video_containers().map(|f| f.id).collect::<Vec<_>>(),
-            vec!["mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi"]
+            vec![
+                "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv",
+                "wmv", "3gp"
+            ]
         );
     }
 
@@ -2416,6 +2517,7 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         "g726" => "g726",
         "real_144" => "real_144",
         "adx" => "adpcm_adx",
+        "dfpwm" => "dfpwm",
         "ogg_flac" => "flac",
         "mlp" => "mlp",
         "truehd" => "truehd",

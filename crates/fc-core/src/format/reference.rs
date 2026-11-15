@@ -128,10 +128,4 @@ pub static REFERENCE: &[FormatSpec] = &[
     // ── 视频 / 广播容器（只读）──
     ro!("mxf", "MXF", "mxf", Group::Video, Kind::Container, Patent::Free,
         "广播行业的标准封装（Material Exchange Format）。\n只读参考；当前不作为输出。"),
-    ro!("vob", "VOB", "vob", Group::Video, Kind::Container, Patent::Expiring,
-        "DVD 视频的容器（MPEG-PS 变体）。\n只读参考；当前不作为输出。"),
-    ro!("mpg", "MPEG-PS", "mpg", Group::Video, Kind::Container, Patent::Expiring,
-        "老的 MPEG 节目流，VCD / DVD 时代最常见。\n只读参考；当前不作为输出。"),
-    ro!("3gp", "3GP", "3gp", Group::Video, Kind::Container, Patent::Expiring,
-        "3GPP 的手机视频容器，功能机时代的标准。\n只读参考；当前不作为输出。"),
 ];

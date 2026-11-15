@@ -2046,7 +2046,9 @@ fn main() -> eframe::Result<()> {
             info.sample_rate,
             info.duration_s
         );
-        let args = fc_core::args_for(target, &fc_core::ConvertOptions::default());
+        // 带上源信息：视频容器要靠它决定"能不能直接 copy"，
+        // 否则 CLI 一律按 copy 走，转 mpg/vob 这种会直接失败
+        let args = fc_core::args_for_with(target, &fc_core::ConvertOptions::default(), Some(&info));
         let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         if let Err(e) = fc_core::convert(
             &tools,

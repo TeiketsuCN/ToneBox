@@ -296,6 +296,19 @@ pub static FEASIBLE: &[FormatSpec] = &[
         args: &["-c:a", "wmav1", "-b:a", "192k"],
         size_ratio: 0.14,
     },
+    FormatSpec {
+        id: "dfpwm",
+        name: "DFPWM",
+        ext: "dfpwm",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "1-bit 差分脉宽调制，ComputerCraft（我的世界里的电脑模组）用的音频。\n8kHz 单声道、码率固定，体积非常小。\n`.dfpwm` 是 ffmpeg 的叫法，那个模组自己也这么存。",
+        args: &["-c:a", "dfpwm"],
+        size_ratio: 0.02,
+    },
 ];
 
 #[cfg(test)]

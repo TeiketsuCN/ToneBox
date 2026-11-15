@@ -48,7 +48,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
 | 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
 | 转 Speex / AMR-NB / G.711 A·μ / G.722 / MS ADPCM / IMA ADPCM / Nellymoser / AAC 5.1 / AU / RF64 / BWF | ✅ |
-| 转 aptX / aptX HD / SBC（蓝牙）、G.723.1 / G.726、Yamaha ADPCM、IMA ADPCM (QT)、RealAudio 1.0 | ✅ |
+| 转 aptX / aptX HD / SBC（蓝牙）、G.723.1 / G.726、Yamaha ADPCM、IMA ADPCM (QT)、RealAudio 1.0、ADX、MLP、DFPWM | ✅ |
 | 只读格式也在侧栏列出（徽章灰色），点开说明"为什么不能输出成它"；装了 atracdenc 后 ATRAC1/3/3+ 自动变成可选 | ✅ |
 | 输出格式菜单显示后缀；多后缀格式可在输出栏切换（AAC .m4a/.aac、Opus .opus/.ogg、Vorbis .ogg/.oga、WMA .wma/.asf、AIFF .aiff/.aif、裸 PCM .pcm/.raw、MKV .mkv/.mka、MP4 .mp4/.m4v） | ✅ |
 | 侧栏七组分类（无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用）+「更多」折叠 | ✅ |
@@ -57,7 +57,8 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
 | 响度归一化（EBU R128）与预览（源/目标包络、峰值余量、限幅提示） | ✅ |
 | 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |
-| 视频容器输出（MKV / MP4 / WEBM / AVI；直接复制或转 H.264/H.265/VP9/AV1；多音轨逐条保留/重编） | ✅ |
+| 视频容器输出（MKV / MP4 / WEBM / MOV / TS / M2TS / FLV / AVI；直接复制或转 H.264/H.265/VP9/AV1；多音轨逐条保留/重编） | ✅ |
+| 老一代视频容器（MPEG-PS / VOB / OGV / WMV / 3GP；画面 MPEG-2/MPEG-4/Theora/WMV2，声音 MP2/AC-3/Vorbis/WMA/AAC） | ✅ |
 | 格式百科（34 条长文案，可从百科直接设为输出格式） | ✅ |
 | 元数据与内嵌封面 | ✅ |
 | 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
