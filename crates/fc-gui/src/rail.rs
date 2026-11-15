@@ -500,8 +500,7 @@ impl App {
         };
         let text_c = blend(base, accent(), cur);
 
-        // 名字 + 后缀：后缀用小一号的暗色跟在后面，一眼看出会输出什么文件
-        let exts = fc_core::ext_choices(spec);
+        // 名字。后缀不排进文字里，画成行尾的徽章（见 paint_ext_badges）
         let mut job = egui::text::LayoutJob::default();
         job.append(
             spec.name,
@@ -517,20 +516,6 @@ impl App {
                 ..Default::default()
             },
         );
-        let ext_txt = if exts.len() > 1 {
-            format!("  .{}", exts.join(" / ."))
-        } else {
-            format!("  .{}", exts[0])
-        };
-        job.append(
-            &ext_txt,
-            0.0,
-            egui::TextFormat {
-                font_id: egui::FontId::proportional(9.5),
-                color: blend(base, tint(TEXT, 110), cur),
-                ..Default::default()
-            },
-        );
         let mut row = egui::Button::new(job)
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke_c))
@@ -541,6 +526,8 @@ impl App {
         }
 
         let mut resp = ui.add(row);
+        // 后缀徽章画在行尾，点过之后跟着强调色一起亮
+        paint_ext_badges(ui, spec, resp.rect, cur, text_c);
         if !enc_ok {
             let msg = match external {
                 Some(name) => format!(
@@ -764,4 +751,58 @@ pub(crate) fn rail_sub(ui: &mut egui::Ui, label: &str, count: usize, on: bool) -
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// 行尾的「后缀徽章」：按大类型着色，无损=强调色、有损=琥珀、未压缩=蓝、容器=紫。
+///
+/// 一个格式可能有多个后缀（AAC → M4A / AAC），从右往左摆；
+/// 名字太长放不下就少摆几个，绝不去压名字。
+fn paint_ext_badges(
+    ui: &egui::Ui,
+    spec: &FormatSpec,
+    rect: egui::Rect,
+    cur: f32,
+    text_c: Color32,
+) {
+    let p = ui.painter();
+    let color = match spec.kind {
+        fc_core::Kind::Lossless => accent(),
+        fc_core::Kind::Lossy => Color32::from_rgb(232, 176, 84),
+        fc_core::Kind::Uncompressed => Color32::from_rgb(150, 190, 255),
+        fc_core::Kind::Container => Color32::from_rgb(186, 150, 255),
+        _ => tint(TEXT, 120),
+    };
+    let font = FontId::proportional(8.5);
+    let name_w = p
+        .layout_no_wrap(spec.name.to_string(), FontId::proportional(11.5), text_c)
+        .size()
+        .x;
+    let min_left = rect.left() + 10.0 + name_w + 8.0;
+    let mut right = rect.right() - 7.0;
+    for ext in fc_core::ext_choices(spec).iter() {
+        let g = p.layout_no_wrap(ext.to_uppercase(), font.clone(), color);
+        let w = g.size().x + 9.0;
+        let left = right - w;
+        if left < min_left {
+            break;
+        }
+        let h = 12.5;
+        let r = egui::Rect::from_min_size(
+            egui::pos2(left, rect.center().y - h / 2.0),
+            Vec2::new(w, h),
+        );
+        // 选中时徽章跟着亮一点，和行的强调色状态一致
+        p.rect_filled(
+            r,
+            Rounding::same(3.0),
+            tint(color, 30 + (cur * 24.0) as u8),
+        );
+        p.rect_stroke(r, Rounding::same(3.0), Stroke::new(1.0f32, tint(color, 90)));
+        p.galley(
+            egui::pos2(left + 4.5, rect.center().y - g.size().y / 2.0),
+            g,
+            color,
+        );
+        right = left - 3.0;
+    }
 }
