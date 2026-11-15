@@ -82,7 +82,7 @@ impl Group {
             Group::Lossless => "无损",
             Group::Lossy => "有损",
             Group::Speech => "语音/电话",
-            Group::Spatial => "DTS/空间音频",
+            Group::Spatial => "空间音频",
             Group::Container => "音频容器",
             Group::Device => "设备专用",
             Group::Video => "视频容器",

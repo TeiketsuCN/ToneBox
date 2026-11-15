@@ -527,7 +527,7 @@ impl App {
 
         let mut resp = ui.add(row);
         // 后缀徽章画在行尾，点过之后跟着强调色一起亮
-        paint_ext_badges(ui, spec, resp.rect, cur, text_c);
+        paint_ext_badges(ui, spec, resp.rect, cur, text_c, enc_ok);
         if !enc_ok {
             let msg = match external {
                 Some(name) => format!(
@@ -763,10 +763,12 @@ fn paint_ext_badges(
     rect: egui::Rect,
     cur: f32,
     text_c: Color32,
+    avail: bool,
 ) {
     let p = ui.painter();
-    // 只读格式的徽章一律灰掉：颜色是"能不能输出"的第一眼信号
-    let color = if !spec.can_encode {
+    // 徽章颜色 = "现在这一刻真能不能输出"：
+    // 只读格式灰；表里说能、但这台机器的 ffmpeg 缺编码器（比如没编 libgsm 的 GSM）也灰
+    let color = if !spec.can_encode || !avail {
         tint(TEXT, 90)
     } else {
         match spec.kind {
