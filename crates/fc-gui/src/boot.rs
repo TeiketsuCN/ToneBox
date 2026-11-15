@@ -24,6 +24,8 @@ pub(crate) const SPLASH_H: f32 = 440.0;
 pub(crate) struct BootData {
     pub tools: Option<fc_core::Tools>,
     pub encoders: HashSet<String>,
+    /// ffmpeg 版本串（设置页要显示）
+    pub version: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -110,11 +112,11 @@ impl Boot {
 
             // 1 版本
             send(1, Step::Running, String::new());
-            match tools
+            let ver = tools
                 .as_ref()
-                .and_then(|t| fc_core::ffmpeg_version(&t.ffmpeg))
-            {
-                Some(v) => send(1, Step::Ok, v),
+                .and_then(|t| fc_core::ffmpeg_version(&t.ffmpeg));
+            match &ver {
+                Some(v) => send(1, Step::Ok, v.clone()),
                 None => send(1, Step::Skip, "读不到".to_string()),
             }
 
@@ -282,7 +284,7 @@ impl Boot {
                 },
             );
 
-            let _ = tx.send(Msg::Done(BootData { tools, encoders }));
+            let _ = tx.send(Msg::Done(BootData { tools, encoders, version: ver }));
         });
 
         Self {
@@ -331,6 +333,7 @@ impl Boot {
             return Some(BootData {
                 tools: None,
                 encoders: HashSet::new(),
+                version: None,
             });
         }
         None

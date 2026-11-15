@@ -593,39 +593,139 @@ impl App {
                                     }
                                 });
 
-                                ui.add_space(8.0);
-                                match &self.atracdenc {
-                                    Some(p) => para(
-                                        ui,
-                                        &format!("atracdenc：已找到  {}", p.display()),
-                                        9.0,
-                                        accent(),
-                                    ),
-                                    None => para(
-                                        ui,
-                                        "atracdenc：未安装 —— ATRAC1 / ATRAC3 / ATRAC3+ 暂时只能解码，不能转出。",
-                                        9.0,
-                                        WARN,
-                                    ),
+                                ui.add_space(10.0);
+                                section(ui, "依赖 / 外部工具");
+
+                                // 一行：圆点 + 名字 + 状态；下面缩进一行路径
+                                let dep = |ui: &mut egui::Ui,
+                                               name: &str,
+                                               ok: bool,
+                                               status: &str,
+                                               detail: &str| {
+                                    ui.horizontal(|ui| {
+                                        let (r, _) = ui.allocate_exact_size(
+                                            egui::vec2(10.0, 10.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        ui.painter().circle_filled(
+                                            r.center(),
+                                            3.0,
+                                            if ok { accent() } else { WARN },
+                                        );
+                                        ui.label(
+                                            RichText::new(name)
+                                                .size(9.5)
+                                                .color(if ok { TEXT } else { MUTED }),
+                                        );
+                                        ui.label(
+                                            RichText::new(status)
+                                                .size(8.8)
+                                                .color(if ok { accent() } else { WARN }),
+                                        );
+                                    });
+                                    if !detail.is_empty() {
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(14.0);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(detail).size(8.0).color(DIM),
+                                                )
+                                                .truncate(),
+                                            );
+                                        });
+                                    }
+                                };
+
+                                // ffmpeg：核心依赖
+                                {
+                                    let ok = self.tools.is_some();
+                                    let path = self
+                                        .tools
+                                        .as_ref()
+                                        .map(|t| t.ffmpeg.display().to_string())
+                                        .unwrap_or_else(|| "未找到 —— 所有转换都不可用".to_string());
+                                    let status = if ok {
+                                        format!(
+                                            "{} · {} 个编码器",
+                                            self.ffmpeg_ver.as_deref().unwrap_or("版本未知"),
+                                            self.encoders.len()
+                                        )
+                                    } else {
+                                        "未找到".to_string()
+                                    };
+                                    dep(ui, "ffmpeg", ok, &status, &path);
                                 }
+                                // ffprobe：读文件真实参数
+                                {
+                                    let ok = self.tools.is_some();
+                                    let path = self
+                                        .tools
+                                        .as_ref()
+                                        .map(|t| t.ffprobe.display().to_string())
+                                        .unwrap_or_else(|| "未找到 —— 读不出采样率/位深".to_string());
+                                    let status = if ok { "已找到" } else { "未找到" };
+                                    dep(ui, "ffprobe", ok, status, &path);
+                                }
+                                // atracdenc：可选
+                                {
+                                    let ok = self.atracdenc.is_some();
+                                    let status = if ok {
+                                        "已安装 · ATRAC1/3/3+ 可输出"
+                                    } else {
+                                        "未安装（可选）· ATRAC 只能解码"
+                                    };
+                                    let path = self
+                                        .atracdenc
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| {
+                                            "装好后放到程序目录或 PATH，再点下面的「重新检测」"
+                                                .to_string()
+                                        });
+                                    dep(ui, "atracdenc", ok, status, &path);
+                                }
+                                // speexenc：随包
+                                {
+                                    let ok = self.speexenc.is_some();
+                                    let status = if ok {
+                                        "已找到 · Speex 可输出"
+                                    } else {
+                                        "未找到 · Speex 不可输出"
+                                    };
+                                    let path = self
+                                        .speexenc
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| {
+                                            "随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录"
+                                                .to_string()
+                                        });
+                                    dep(ui, "speexenc", ok, status, &path);
+                                }
+
+                                ui.add_space(8.0);
                                 ui.horizontal(|ui| {
                                     let b = egui::Button::new(
-                                        RichText::new("重新检测外部工具").size(9.0).color(MUTED),
+                                        RichText::new("重新检测").size(9.0).color(MUTED),
                                     )
                                     .fill(tint(Color32::WHITE, 10))
                                     .stroke(line(Color32::WHITE, 18))
                                     .rounding(Rounding::same(7.0));
                                     if ui.add(b).clicked() {
+                                        self.tools = fc_core::locate();
+                                        if let Some(t) = &self.tools {
+                                            self.ffmpeg_ver = fc_core::ffmpeg_version(&t.ffmpeg);
+                                            self.encoders = fc_core::list_encoders(&t.ffmpeg);
+                                        }
                                         self.atracdenc = fc_core::find_atracdenc();
+                                        self.speexenc = fc_core::find_speexenc();
                                         changed = true;
                                     }
-                                    if self.atracdenc.is_some() {
-                                        ui.label(
-                                            RichText::new("ATRAC 输出已可用")
-                                                .size(9.0)
-                                                .color(accent()),
-                                        );
-                                    }
+                                    ui.label(
+                                        RichText::new("换过工具目录或版本后点一下")
+                                            .size(8.5)
+                                            .color(DIM),
+                                    );
                                 });
                                 para(
                                     ui,

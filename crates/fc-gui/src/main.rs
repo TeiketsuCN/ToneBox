@@ -418,6 +418,8 @@ pub(crate) struct App {
     atracdenc: Option<PathBuf>,
     /// 随包的 Speex 编码器（vendor\speex\speexenc.exe）
     speexenc: Option<PathBuf>,
+    /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
+    ffmpeg_ver: Option<String>,
     /// 格式百科
     wiki_open: bool,
     wiki_sel: &'static str,
@@ -653,6 +655,7 @@ impl App {
             encoders: std::collections::HashSet::new(),
             atracdenc: fc_core::find_atracdenc(),
             speexenc: fc_core::find_speexenc(),
+            ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
             wiki_filter: String::new(),
@@ -1479,6 +1482,7 @@ impl eframe::App for App {
             self.boot = None;
             self.tools = d.tools;
             self.encoders = d.encoders;
+            self.ffmpeg_ver = d.version;
             // 默认全屏：进主界面这一刻把过场小窗口铺满工作区
             set_fullscreen(&mut self.fullscreen, ctx, self.cfg.window.size_px());
             // 小窗口当还原点会很难看：按配置尺寸重算一个居中矩形
