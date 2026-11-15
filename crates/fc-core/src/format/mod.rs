@@ -1312,10 +1312,18 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
 
 /// 这个格式能用的文件后缀，第一个是默认。
 ///
-/// 只放 **ffmpeg 按后缀就能选对封装器** 的别名，所以列表里既有同容器换名
-/// （`.aiff` / `.aif`），也有换封装的（AAC 的 `.m4a` 和裸 `.aac`、Opus 的
-/// `.opus` 和 `.ogg`）。凡是需要额外 `-f` 才能写出来的组合都不放进来——
-/// 那得改编码参数，不是换个后缀就能解决的事。
+/// 只放 **ffmpeg 按后缀就能选对封装器** 的别名，而且每一条都在现实里有出处：
+/// - `.oga`：RFC 5334 正式定义的 audio/ogg 后缀（跟 `.ogg` 并存）
+/// - `.mka`：Matroska 的音频专用后缀（`.mkv` 是视频、`.mks` 是字幕）
+/// - `.aif`：AIFF 的老写法，和 `.aiff` 等价
+/// - `.asf`：ASF 容器本名，WMA 就是装在里面
+/// - `.m4a` / `.m4v`：MPEG-4 Part 14 规定的后缀
+/// - `.aac`：裸 ADTS 流，和 `.m4a` 封装二选一
+/// - `.raw` / `.pcm`：裸采样数据没有标准后缀，两个都是通行叫法
+///
+/// **不在这里的**：蓝牙那三个（aptX / aptX HD / SBC）是实时流，
+/// `.aptx` / `.aptxhd` / `.sbc` 只是 ffmpeg muxer 自己的命名，不是文件格式标准，
+/// 所以侧栏只显示一个后缀、不给选。
 pub fn ext_choices(spec: &FormatSpec) -> Vec<&'static str> {
     match spec.id {
         "aac" => vec!["m4a", "aac"],
