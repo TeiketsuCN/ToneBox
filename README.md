@@ -3,29 +3,33 @@
 一个"格式顾问"，不是很正经的格式转换工具。转换只是入口。
 顺带能管理音乐库、试听、记住你几套常用配置。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.2
+Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.3
  · 建议所有操作备份 · 慎防设备损坏，请自己负责
 
 ## 下载（Windows x64）
 
-- [ToneBox-beta1.2-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.2.0-beta.1/ToneBox-beta1.2-win64.zip)（67.5 MB，含 ffmpeg 与 speexenc）
-- SHA256：`2E021DDF9D6B958C8E1A709008AA6CC92EDD9CB52A897B25EA446A579CDA8BEB`
-- 解压后双击 `format-converter.exe`；不要单独移动或删除 `ffmpeg\` 目录。
+- [ToneBox-beta1.3-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.0-beta.1/ToneBox-beta1.3-win64.zip)（27.8 MB，含 ffmpeg、speexenc、wavpack）
+- SHA256：`DC131E30AD997F7CAF77E971D680FD33EA4744B2C5960C3D43AC23022DF930B4`
+- 解压后双击 `format-converter.exe`；不要单独移动或删除 `ffmpeg\` / `speex\` / `wavpack\` 目录。
 
 ---
 
-## beta 1.2 更新了什么
+## beta 1.3 更新了什么
 
-相比 beta 1.0：
+相比 beta 1.2，**可输出格式从 43 个涨到 68 个**：
 
-- **新增可直接编码的格式**：Speex（随包 `speexenc`，BSD）、AMR-NB、G.711 A-law / μ-law、G.722、MS ADPCM、IMA ADPCM、Nellymoser（FLV）、AAC 5.1（384k）、AU、RF64、BWF
-- **侧栏重组为七组**：无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用；常用格式留在外面，其余收进「更多 ▾」
-- **只读参考格式始终显示**，不再需要那个开关——它们能识别、能解释，但不参与转换
-- **频谱分析更省**：长文件只抽样 60 秒，分析进程降到低于正常优先级；详情页不再每帧起一次 ffmpeg
-- **滚动更顺**：屏幕外的行不排版，音质徽章平时不重绘、只在悬停时跑
-- **自动分析开关真正生效**，关掉后详情页可以手动分析
-- **Vulkan / wgpu 实验已回退**，默认仍是 glow 后端
-- 发布脚本的编码问题修复（Speex 变量解析）
+- **视频容器从 8 个扩到 13 个**：新增 MPEG-PS(.mpg) / VOB / OGV(Theora) / WMV2 / 3GP；画面可选 MPEG-2 / MPEG-4 / Theora / WMV2，音频按容器自动选 MP2 / AC-3 / Vorbis / WMA / AAC
+- **新增语音编码输出**：GSM 06.10、AMR-WB、iLBC、LC3、Codec2、DFPWM
+- **WavPack 有损（hybrid）**：ffmpeg 的 wavpack 编码器只做无损，有损走随包的官方 `wavpack.exe`（BSD）
+- **IEC 61937（S/PDIF 直通）**、**SND**（`.au` 的 `.snd` 后缀）也能输出了
+- **随包 ffmpeg 换成自己构建的 8.0**：LGPL v3，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2；体积 152 MB → 59.6 MB
+- **分组理顺**：空间音频组收进 AC-3 / E-AC-3 / AC-4 / DTS，语音组收进 Speex / AMR
+- **设置页新增「依赖 / 外部工具」**：ffmpeg（版本 + 编码器数）、ffprobe、atracdenc、speexenc、wavpack 逐项显示路径与状态
+- **格式徽章按运行时可用性着色**：表里能编但这台机器的 ffmpeg 缺库（比如没编 libgsm）也会变灰，不再骗人
+- **新格式补上参数旋钮**：AMR-NB / G.723.1 / G.726 码率、WMA v1 码率、MLP 位深、Ogg FLAC 压缩等级、WavPack 有损码率
+- **只读格式**用灰色徽章显示，能识别、能解释，但不参与转换
+
+更早的 beta 1.2 主要是格式扩容（Speex / AMR-NB / G.711 / G.722 / ADPCM 系列 / AU / RF64 / BWF）和侧栏七组重组。
 
 ---
 

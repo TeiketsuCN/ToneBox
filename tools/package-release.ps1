@@ -1,4 +1,4 @@
-﻿# Build a Windows release zip (exe + ffmpeg + short readme).
+# Build a Windows release zip (exe + ffmpeg + short readme).
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
 #   powershell ... -Out D:\ToneBox-beta1.2-win64.zip
@@ -66,6 +66,12 @@ if (Test-Path $speex) {
     Copy-Item $speex (Join-Path $stage 'speex') -Recurse -Force
 }
 
+# 随包 WavPack CLI（BSD；有损 hybrid 模式只有官方 CLI 支持，ffmpeg 只做无损）
+$wavpack = Join-Path $src 'vendor\wavpack'
+if (Test-Path $wavpack) {
+    Copy-Item $wavpack (Join-Path $stage 'wavpack') -Recurse -Force
+}
+
 Write-Host "== 3/4 write readme ==" -ForegroundColor Cyan
 $disp = $ver -replace '^beta', ''
 $readme = @"
@@ -79,6 +85,7 @@ First start uses the Aurora gradient and the Large window size.
 
 ffmpeg is bundled in .\ffmpeg and found automatically. Do not move it.
 Speex encoding uses the bundled .\speex\speexenc (BSD, see THIRD_PARTY_NOTICES.md).
+WavPack lossy (hybrid) uses the bundled .\wavpack\wavpack.exe (BSD).
 ATRAC encoding needs atracdenc (included only if atracdenc\ exists).
 
 Uninstall: delete this folder. No registry entries, no services.
