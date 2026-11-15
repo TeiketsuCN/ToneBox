@@ -62,8 +62,11 @@ $msysScript = "$msysRoot/tools/build-ffmpeg.sh"
 $env:CHERE_INVOKING = '1'
 $env:MSYSTEM = 'UCRT64'
 $env:MSYS2_PATH_TYPE = 'inherit'
+# 线程数只在用户指定时才传；否则交给 sh 里的 "${JOBS:-$(nproc)}" 自己算
+# （之前写成 PowerShell 字符串里的 '$(nproc)' 会被当字面量，make -j 直接报错）
+$jobsExpr = if ($Jobs -gt 0) { "export JOBS='$Jobs' && " } else { '' }
 $cmd = "cd '$msysRoot' && " +
-       "export JOBS='$(if ($Jobs -gt 0) { $Jobs } else { '$(nproc)' })' && " +
+       $jobsExpr +
        "export FFMPEG_VERSION='$FfmpegVersion' && " +
        "bash '$msysScript'"
 

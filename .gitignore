@@ -19,3 +19,6 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# ffmpeg 构建目录（源码树 + 中间产物，几十 GB 级，绝不入库）
+/build/

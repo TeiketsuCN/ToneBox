@@ -23,7 +23,7 @@ PREFIX="$BUILD/prefix"
 OUT="$ROOT/vendor/ffmpeg"
 JOBS="${JOBS:-$(nproc)}"
 FFMPEG_VERSION="${FFMPEG_VERSION:-8.0}"
-LC3_VERSION="${LC3_VERSION:-1.0.6}"
+LC3_VERSION="${LC3_VERSION:-1.1.3}"
 
 echo "==> 项目根目录: $ROOT"
 echo "==> 线程数: $JOBS"
@@ -33,6 +33,8 @@ echo "==> 线程数: $JOBS"
 PKGS=(
   make nasm pkgconf git
   mingw-w64-ucrt-x86_64-gcc
+  mingw-w64-ucrt-x86_64-cmake
+  mingw-w64-ucrt-x86_64-meson
   mingw-w64-ucrt-x86_64-gsm
   mingw-w64-ucrt-x86_64-vo-amrwbenc
   mingw-w64-ucrt-x86_64-libilbc
@@ -46,29 +48,34 @@ PKGS=(
   mingw-w64-ucrt-x86_64-openh264
   mingw-w64-ucrt-x86_64-kvazaar
   mingw-w64-ucrt-x86_64-dav1d
-  mingw-w64-ucrt-x86_64-svt-av1
+  mingw-w64-ucrt-x86_64-aom
   mingw-w64-ucrt-x86_64-zlib
 )
 echo "==> 安装依赖包…"
 pacman -S --needed --noconfirm "${PKGS[@]}"
 
 mkdir -p "$BUILD" "$PREFIX" "$OUT"
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 # ── 2. liblc3（MSYS2 没有包，自己编）────────────────────
 if [ ! -f "$PREFIX/lib/liblc3.a" ] && [ ! -f "$PREFIX/lib/liblc3.dll.a" ]; then
   echo "==> 构建 liblc3 $LC3_VERSION"
   cd "$BUILD"
+  # 上一次失败的克隆可能留下空目录，先清掉
+  if [ -d liblc3 ] && [ ! -f liblc3/meson.build ]; then rm -rf liblc3; fi
   if [ ! -d liblc3 ]; then
-    git clone --depth 1 --branch "v$LC3_VERSION" https://github.com/google/liblc3.git
+    git clone --depth 1 --branch "v$LC3_VERSION" https://github.com/google/liblc3.git \
+      || git clone --depth 1 https://github.com/google/liblc3.git
   fi
   cd liblc3
-  # 静态库 + 头文件，装到私有前缀
-  cmake -B build -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-        -DBUILD_SHARED_LIBS=OFF \
-        -DLC3_BUILD_TOOLS=OFF -DLC3_BUILD_EXAMPLES=OFF
-  cmake --build build -j "$JOBS"
-  cmake --install build
+  # liblc3 用 meson（不是 CMake），静态库装到私有前缀
+  # 选项名在不同版本间可能变，失败就退回默认选项再试一次
+  if ! meson setup build --prefix="$PREFIX" --buildtype=release -Dtools=false; then
+    rm -rf build
+    meson setup build --prefix="$PREFIX" --buildtype=release
+  fi
+  ninja -C build
+  ninja -C build install
 else
   echo "==> liblc3 已存在，跳过"
 fi
@@ -112,7 +119,8 @@ CONFIGURE=(
   --enable-libtheora
   --enable-libopenh264
   --enable-libkvazaar
-  --enable-libsvtav1
+  # SVT-AV1 不启用：MSYS2 的 4.x 接口和 ffmpeg 8.0 对不上，AV1 编码交给 libaom
+  --enable-libaom
   --enable-libdav1d
   # 明确关掉 GPL / 非自由组件，保持 LGPL
   --disable-gpl --disable-nonfree
@@ -134,12 +142,22 @@ echo "==> 收集到 vendor/ffmpeg"
 cp -f "$PREFIX/bin/ffmpeg.exe" "$PREFIX/bin/ffprobe.exe" "$OUT/"
 cp -f "$PREFIX"/bin/av*.dll "$PREFIX"/bin/sw*.dll "$OUT/" 2>/dev/null || true
 
-# 动态链接时，依赖库的 DLL 也得跟着走
-for dll in libgsm.dll libvo-amrwbenc.dll libilbc.dll liblc3.dll libcodec2.dll \
-           libmp3lame.dll libopus-0.dll libvorbis-0.dll libvorbisenc-2.dll \
-           libogg-0.dll libvpx.dll libtheora-0.dll openh264-2.dll libkvazaar.dll \
-           libdav1d.dll SvtAv1Enc.dll libwinpthread-1.dll libgcc_s_seh-1.dll; do
-  if [ -f "$PREFIX/bin/$dll" ]; then cp -f "$PREFIX/bin/$dll" "$OUT/"; fi
+# 依赖库的 DLL 用 ldd 解析（MSYS2 的库在 /ucrt64/bin，不在私有前缀里），
+# 但**必须过滤掉系统 DLL**（kernel32 之类不能随包分发）
+echo "==> 收集依赖 DLL"
+ldd "$PREFIX/bin/ffmpeg.exe" "$PREFIX/bin/ffprobe.exe" 2>/dev/null \
+  | awk '/=> \//{print $3}' | grep -i '\.dll$' | sort -u | while read -r d; do
+      base=$(basename "$d")
+      case "$base" in
+        # MSYS2 运行时库，从 /ucrt64/bin 取；其余是 Windows 自带的，跳过
+        lib*.dll) cp -f "$d" "$OUT/" ;;
+      esac
+    done
+
+# 旧版本 DLL 留着会让 exe 找不到正确的库，顺手清掉
+for f in avcodec-63.dll avformat-63.dll avutil-61.dll avfilter-12.dll \
+         avdevice-63.dll swresample-7.dll swscale-10.dll; do
+  rm -f "$OUT/$f"
 done
 
 # 许可证
