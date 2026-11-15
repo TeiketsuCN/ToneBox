@@ -3,10 +3,12 @@
 一个"格式顾问"，不是很正经的格式转换工具。转换只是入口。
 顺带能管理音乐库、试听、记住你几套常用配置。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.0
+Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 2.0
  · 建议所有操作备份 · 慎防设备损坏，请自己负责
 
 ## 下载（Windows x64）
+
+> beta 2.0 的安装包还没构建，下面这条仍是 beta 1.0 的构建，可以直接用。
 
 - [ToneBox-beta1.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.0.0-beta.1/ToneBox-beta1.0-win64.zip)（约 67 MB，含 ffmpeg）
 - SHA256：`FDE77FF76956E5A243D08E37E8690F2285C8E40DBE856E82A14080197A516CEB`
