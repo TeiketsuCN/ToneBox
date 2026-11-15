@@ -301,7 +301,8 @@ impl App {
                 | fc_core::Knob::Ac3Bitrate
                 | fc_core::Knob::Eac3Bitrate
                 | fc_core::Knob::WmaBitrate
-                | fc_core::Knob::Atrac3Bitrate => &[
+                | fc_core::Knob::Atrac3Bitrate
+                | fc_core::Knob::SpeechBitrate => &[
                     fc_core::WarningKind::Lossy,
                     fc_core::WarningKind::LowerBitrate,
                     fc_core::WarningKind::HigherBitrate,
@@ -1121,6 +1122,26 @@ impl App {
             Knob::WmaBitrate => changed |= bitrate_row(ui, "wma", &mut self.cfg.opts.wma_bitrate),
             Knob::Atrac3Bitrate => {
                 changed |= bitrate_row(ui, "atrac3", &mut self.cfg.opts.atrac3_bitrate)
+            }
+            Knob::SpeechBitrate => {
+                // 语音编码共用一份「码率」，档位表按当前格式取；
+                // 换格式时旧值可能不在新档位里，先吸附再画，否则一个都不高亮
+                let id = self.target.id;
+                let mut v = self.cfg.opts.speech_bitrate;
+                let choices = fc_core::bitrate_choices(id);
+                if !choices.is_empty() && !choices.contains(&v) {
+                    if let Some(&near) = choices.iter().min_by_key(|c| c.abs_diff(v)) {
+                        v = near;
+                        self.cfg.opts.speech_bitrate = near;
+                        changed = true;
+                    }
+                }
+                let before = v;
+                changed |= bitrate_row(ui, id, &mut v);
+                if v != before {
+                    self.cfg.opts.speech_bitrate = v;
+                    changed = true;
+                }
             }
             Knob::SampleRate => changed |= self.sample_rate_row(ui),
             // ── 视频容器 ──

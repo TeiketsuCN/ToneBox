@@ -354,4 +354,23 @@ mod tests {
         // 单后缀的格式不能凭空变多
         assert_eq!(ext_choices(by_id("flac").unwrap()), vec!["flac"]);
         assert_eq!(ext_choices(by_id("mp3").unwrap()), vec!["mp3"]);
+    }
+    /// 语音码率旋钮要真的落到 ffmpeg 参数上（单位是 bps，不是 kbps）。
+    #[test]
+    fn speech_bitrate_reaches_args() {
+        use crate::format::{args_for, by_id, ConvertOptions};
+        let mut o = ConvertOptions::default();
+        o.speech_bitrate = 16;
+        let a = args_for(by_id("g726").unwrap(), &o).join(" ");
+        assert!(a.contains("-b:a 16000"), "{a}");
+        o.speech_bitrate = 5;
+        let a = args_for(by_id("g723_1").unwrap(), &o).join(" ");
+        assert!(a.contains("-b:a 5300"), "{a}");
+        o.speech_bitrate = 12;
+        let a = args_for(by_id("amr_nb").unwrap(), &o).join(" ");
+        assert!(a.contains("-b:a 12200"), "{a}");
+        // 无损的新格式也要能选位深
+        o.bit_depth = crate::format::BitDepth::Int24;
+        let a = args_for(by_id("ogg_flac").unwrap(), &o).join(" ");
+        assert!(a.contains("-sample_fmt s32"), "{a}");
     }}

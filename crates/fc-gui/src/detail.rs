@@ -596,6 +596,12 @@ impl App {
                 Knob::Eac3Bitrate => parts.push(format!("{}k", o.eac3_bitrate)),
                 Knob::WmaBitrate => parts.push(format!("{}k", o.wma_bitrate)),
                 Knob::Atrac3Bitrate => parts.push(format!("{}k", o.atrac3_bitrate)),
+                Knob::SpeechBitrate => parts.push(
+                    match fc_core::bitrate_of(self.target, o) {
+                        Some(k) => format!("{k}k"),
+                        None => format!("{}k", o.speech_bitrate),
+                    },
+                ),
                 // 声道不进标题摘要：标题行放不下，下面旋钮自己写得很清楚
                 Knob::Channels => {}
                 Knob::SampleRate => match fc_core::output_rate(self.target, o) {

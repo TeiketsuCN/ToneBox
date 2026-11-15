@@ -476,7 +476,10 @@ pub fn quality_warnings(
     // 位深只有无损格式的旋钮能改；压缩型无损最高 24 bit，选「自动」时不比较。
     // 有损源和 DSD 的 bits 没有比较意义。
     let pcm_knob = matches!(spec.id, "wav" | "caf" | "w64" | "aiff" | "pcm");
-    let compressed_knob = matches!(spec.id, "flac" | "alac" | "wavpack" | "tta");
+    let compressed_knob = matches!(
+        spec.id,
+        "flac" | "alac" | "wavpack" | "tta" | "ogg_flac" | "mlp"
+    );
     if let (Some(src_bits), true) = (
         src.bits,
         !src_dsd
@@ -1157,6 +1160,9 @@ pub struct ConvertOptions {
     pub wma_bitrate: u32,
     /// ATRAC3 码率 kbps（66 = LP4，132 = LP2；走外部的 atracdenc）
     pub atrac3_bitrate: u32,
+    /// 语音编码码率 kbps（AMR-NB / G.723.1 / G.726 共用；各格式的合法档位见
+    /// `bitrate_choices`，换格式时 `snap_bitrate` 会就近吸附）
+    pub speech_bitrate: u32,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -1188,6 +1194,7 @@ impl Default for ConvertOptions {
             eac3_bitrate: 640,
             wma_bitrate: 192,
             atrac3_bitrate: 132,
+            speech_bitrate: 32,
             sample_rate: None,
             channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
@@ -1216,9 +1223,17 @@ pub fn bitrate_choices(id: &str) -> &'static [u32] {
         "eac3" => &[192, 384, 640, 1024],
         // 老播放器通常只认到 192；给到 320 是留给新播放器。
         "wma" => &[128, 192, 256, 320],
+        // WMA v1 的合法档位和 v2 一样
+        "wma_v1" => &[128, 192, 256, 320],
         // ATRAC3 在 atracdenc 里是两个编码器名字，不是一个码率参数：
         // LP4 = 66k、LP2 = 132k（105k 只有 RealMedia 容器支持，本项目不做）
         "atrac3" => &[66, 132],
+        // AMR-NB 的 8 个合法档位，这里取常用的 5 个（kbps，实际按 bps 传）
+        "amr_nb" => &[5, 6, 7, 8, 12],
+        // G.723.1 只有两档
+        "g723_1" => &[5, 6],
+        // G.726 四档，都是 8k
+        "g726" => &[16, 24, 32, 40],
         _ => &[],
     }
 }
@@ -1251,6 +1266,8 @@ pub fn bitrate_of(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
             "ac3" => o.ac3_bitrate,
             "eac3" => o.eac3_bitrate,
             "wma" => o.wma_bitrate,
+            "wma_v1" => snap_bitrate("wma", o.wma_bitrate),
+            "amr_nb" | "g723_1" | "g726" => o.speech_bitrate,
             "atrac3" => o.atrac3_bitrate,
             // ATRAC1 只有 292k、ATRAC3+ 的 atracdenc 只支持 352k，都没有旋钮
             "atrac1" => 292,
@@ -1265,6 +1282,10 @@ pub fn bitrate_of(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
 /// 旋钮下面的一行小字：只写「选这个值时要注意什么」，格式介绍放 `blurb` / 百科。
 pub fn knob_note(spec: &FormatSpec) -> Option<&'static str> {
     Some(match spec.id {
+        // 语音档位取整显示，这里把真实码率写清楚
+        "amr_nb" => "档位取整显示：12 实际是 12.2kbps，8 是 7.95kbps。",
+        "g723_1" => "只有两档：5 = 5.3kbps，6 = 6.3kbps。",
+        "g726" => "16/24/32/40kbps 四档，8kHz 单声道。",
         "ac3" => "448k 是 DVD 立体声的默认值；多声道要按声道数另算。",
         "eac3" => "E-AC-3 同码率比 AC-3 省，但老功放、老电视只认 AC-3。",
         "wma" => "老播放器通常只认 128~192k，调高不一定放得动。",
@@ -1354,6 +1375,8 @@ pub enum Knob {
     WmaBitrate,
     /// ATRAC3 的 LP2 / LP4 档（66 / 132 kbps），走外部 atracdenc
     Atrac3Bitrate,
+    /// 语音编码的码率档（AMR-NB / G.723.1 / G.726 共用，档位各看自己的表）
+    SpeechBitrate,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
     /// 输出声道（保持源 / 立体声 / 5.1）
@@ -1385,6 +1408,13 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "ac3" => &[Knob::Ac3Bitrate, Knob::SampleRate, Knob::Channels],
         "eac3" => &[Knob::Eac3Bitrate, Knob::SampleRate, Knob::Channels],
         "wma" => &[Knob::WmaBitrate, Knob::SampleRate],
+        // 老一代 WMA：码率档和 v2 一样
+        "wma_v1" => &[Knob::WmaBitrate],
+        // 语音编码：各自有专属档位表
+        "amr_nb" | "g723_1" | "g726" => &[Knob::SpeechBitrate],
+        // MLP 是无损，能选位深；Ogg FLAC 就是 FLAC，能选压缩等级和位深
+        "mlp" => &[Knob::BitDepth],
+        "ogg_flac" => &[Knob::FlacLevel, Knob::BitDepth],
         "mp2" => &[Knob::SampleRate],
         // ATRAC 的采样率由 atracdenc 固定成 44.1k，只有 ATRAC3 有码率可选
         "atrac3" => &[Knob::Atrac3Bitrate],
@@ -1433,6 +1463,8 @@ pub fn bit_depths_for(spec: &FormatSpec) -> &'static [BitDepth] {
     match spec.id {
         // 压缩型无损：可以降/升，但最高 24；默认跟源
         "flac" | "alac" | "wavpack" | "tta" => &[BitDepth::Auto, BitDepth::Int16, BitDepth::Int24],
+        // Ogg FLAC 就是 FLAC，MLP 支持 16/20/24
+        "ogg_flac" | "mlp" => &[BitDepth::Auto, BitDepth::Int16, BitDepth::Int24],
         "wav" | "caf" | "w64" | "aiff" | "pcm" => {
             &[BitDepth::Int16, BitDepth::Int24, BitDepth::Int32f]
         }
@@ -1549,6 +1581,83 @@ pub fn args_for_with(
             s("-b:a"),
             format!("{}k", snap_bitrate("wma", o.wma_bitrate)),
         ],
+        // 语音编码：码率以 bps 传给 ffmpeg，档位是 kbps
+        "amr_nb" => {
+            let kbps = snap_bitrate("amr_nb", o.speech_bitrate);
+            let bps = match kbps {
+                5 => 4750,
+                6 => 5900,
+                7 => 7400,
+                8 => 7950,
+                _ => 12200,
+            };
+            vec![
+                s("-c:a"),
+                s("libopencore_amrnb"),
+                s("-b:a"),
+                bps.to_string(),
+                s("-ar"),
+                s("8000"),
+                s("-ac"),
+                s("1"),
+            ]
+        }
+        "g723_1" => {
+            let kbps = snap_bitrate("g723_1", o.speech_bitrate);
+            let bps = if kbps <= 5 { 5300 } else { 6300 };
+            vec![
+                s("-c:a"),
+                s("g723_1"),
+                s("-b:a"),
+                bps.to_string(),
+                s("-ar"),
+                s("8000"),
+                s("-ac"),
+                s("1"),
+            ]
+        }
+        "g726" => {
+            let bps = snap_bitrate("g726", o.speech_bitrate) * 1000;
+            vec![
+                s("-c:a"),
+                s("g726"),
+                s("-b:a"),
+                bps.to_string(),
+                s("-ar"),
+                s("8000"),
+                s("-ac"),
+                s("1"),
+            ]
+        }
+        "wma_v1" => vec![
+            s("-c:a"),
+            s("wmav1"),
+            s("-b:a"),
+            format!("{}k", snap_bitrate("wma", o.wma_bitrate)),
+        ],
+        "mlp" => {
+            let mut v = vec![s("-c:a"), s("mlp"), s("-strict"), s("-2")];
+            if let Some(fmt) = o.bit_depth.compressed_fmt("mlp") {
+                v.push(s("-sample_fmt"));
+                v.push(s(fmt));
+            }
+            v
+        }
+        "ogg_flac" => {
+            let mut v = vec![
+                s("-c:a"),
+                s("flac"),
+                s("-compression_level"),
+                o.flac_level.min(12).to_string(),
+                s("-f"),
+                s("ogg"),
+            ];
+            if let Some(fmt) = o.bit_depth.compressed_fmt("flac") {
+                v.push(s("-sample_fmt"));
+                v.push(s(fmt));
+            }
+            v
+        }
         // 没列的格式用表里的默认参数
         _ => spec.args.iter().map(|a| a.to_string()).collect(),
     };
