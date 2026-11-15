@@ -16,6 +16,21 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 
 ---
 
+## beta 2.0 更新了什么
+
+相比 beta 1.0：
+
+- **新增可直接编码的格式**：Speex（随包 `speexenc`，BSD）、AMR-NB、G.711 A-law / μ-law、G.722、MS ADPCM、IMA ADPCM、Nellymoser（FLV）、AAC 5.1（384k）、AU、RF64、BWF
+- **侧栏重组为七组**：无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用；常用格式留在外面，其余收进「更多 ▾」
+- **只读参考格式始终显示**，不再需要那个开关——它们能识别、能解释，但不参与转换
+- **频谱分析更省**：长文件只抽样 60 秒，分析进程降到低于正常优先级；详情页不再每帧起一次 ffmpeg
+- **滚动更顺**：屏幕外的行不排版，音质徽章平时不重绘、只在悬停时跑
+- **自动分析开关真正生效**，关掉后详情页可以手动分析
+- **Vulkan / wgpu 实验已回退**，默认仍是 glow 后端
+- 发布脚本的编码问题修复（Speex 变量解析）
+
+---
+
 ## 当前能力
 
 | 能力 | 状态 |
@@ -33,12 +48,15 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 转 FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM | ✅ |
 | 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
 | 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
+| 转 Speex / AMR-NB / G.711 A·μ / G.722 / MS ADPCM / IMA ADPCM / Nellymoser / AAC 5.1 / AU / RF64 / BWF | ✅ |
+| 侧栏七组分类（无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用）+「更多」折叠 | ✅ |
+| 只读参考格式（能识别、能解释，不参与转换） | ✅ |
 | 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
 | 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
 | 响度归一化（EBU R128）与预览（源/目标包络、峰值余量、限幅提示） | ✅ |
 | 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |
 | 视频容器输出（MKV / MP4 / WEBM / AVI；直接复制或转 H.264/H.265/VP9/AV1；多音轨逐条保留/重编） | ✅ |
-| 格式百科（33 条长文案，可从百科直接设为输出格式） | ✅ |
+| 格式百科（34 条长文案，可从百科直接设为输出格式） | ✅ |
 | 元数据与内嵌封面 | ✅ |
 | 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
 | 音频设备检测（输出/输入、耳机/蓝牙/HDMI/USB，`引擎和设备`页，手绘图标+厂商标记） | ✅ |
@@ -98,7 +116,7 @@ tools/           样本下载、标定、截图脚本
 
 ## 构建
 
-本机没有 MSVC，用的是 **gnu 工具链 + WinLibs binutils**。
+没有 MSVC 的机器用 **gnu 工具链 + WinLibs binutils**；有 MSVC Build Tools 的直接用默认工具链就行——beta 2.0 就是在 MSVC 2022 Build Tools 上用 `cargo build --release --workspace` 编出来的，两种工具链都能过。
 
 ```powershell
 # 一次性准备
@@ -109,6 +127,9 @@ winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e
 .\build.ps1           # debug
 .\build.ps1 release   # release → target\release\format-converter.exe
 ```
+
+> PowerShell 报「无法加载文件…禁止运行脚本」时，用
+> `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 release` 绕过，不用改全局执行策略。
 
 ## 用法
 
