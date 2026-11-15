@@ -219,7 +219,7 @@ impl App {
                                                 .clicked()
                                                 && !is_target
                                             {
-                                                self.target = spec;
+                                                self.set_target(spec);
                                                 self.wiki_open = false;
                                             }
                                             ui.add_space(4.0);

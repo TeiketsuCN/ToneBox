@@ -301,6 +301,9 @@ pub(crate) struct App {
     tasks: Vec<Task>,
     selected: usize,
     target: &'static FormatSpec,
+    /// 输出后缀。和目标格式一起切换，默认是 `target.ext`；
+    /// AAC 这种能出 .m4a / .aac 两种容器的，可以在输出栏里改。
+    ext_sel: &'static str,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -471,6 +474,24 @@ pub(crate) struct App {
 }
 
 impl App {
+    /// 切换全局输出格式。后缀选择跟着回到新格式的默认值，
+    /// 否则从 AAC(.aac) 切到 FLAC 会留下一个 `.aac` 的假后缀。
+    pub(crate) fn set_target(&mut self, spec: &'static FormatSpec) {
+        if self.target.id != spec.id {
+            self.ext_sel = spec.ext;
+        }
+        self.target = spec;
+    }
+
+    /// 这次该用什么后缀：全局目标听用户选的，单文件覆盖用那个格式的默认。
+    pub(crate) fn out_ext(&self, spec: &FormatSpec) -> &'static str {
+        if spec.id == self.target.id {
+            self.ext_sel
+        } else {
+            spec.ext
+        }
+    }
+
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         install_fonts(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style()).clone();
@@ -555,6 +576,7 @@ impl App {
             tasks: Vec::new(),
             selected: 0,
             target,
+            ext_sel: target.ext,
             expanded: Some(target.id),
             rx: None,
             running: false,
@@ -793,13 +815,15 @@ impl App {
                 None => continue,
             };
             // 同一个文件加了两条不同格式的任务时，输出名要错开
-            let mut out = unique_output_in(&self.tasks[i].path, spec.ext, &self.cfg);
+            // 后缀听用户在输出栏里的选择（多后缀格式才有得选）
+            let ext = self.out_ext(spec);
+            let mut out = unique_output_in(&self.tasks[i].path, ext, &self.cfg);
             let mut n = 1;
             while used_out.contains(&out) {
                 n += 1;
                 let stem = out.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                 let base_stem = stem.trim_end_matches(|c: char| c == ')' || c.is_ascii_digit() || c == ' ').to_string();
-                out.set_file_name(format!("{base_stem} ({n}).{}", spec.ext));
+                out.set_file_name(format!("{base_stem} ({n}).{ext}"));
             }
             used_out.push(out.clone());
             let dur = self.tasks[i].dur;

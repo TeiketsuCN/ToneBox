@@ -500,11 +500,38 @@ impl App {
         };
         let text_c = blend(base, accent(), cur);
 
-        let mut label = RichText::new(spec.name).size(11.5).color(text_c);
-        if !enc_ok {
-            label = label.strikethrough();
-        }
-        let mut row = egui::Button::new(label)
+        // 名字 + 后缀：后缀用小一号的暗色跟在后面，一眼看出会输出什么文件
+        let exts = fc_core::ext_choices(spec);
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            spec.name,
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(11.5),
+                color: text_c,
+                strikethrough: if enc_ok {
+                    Stroke::NONE
+                } else {
+                    Stroke::new(1.0, text_c)
+                },
+                ..Default::default()
+            },
+        );
+        let ext_txt = if exts.len() > 1 {
+            format!("  .{}", exts.join(" / ."))
+        } else {
+            format!("  .{}", exts[0])
+        };
+        job.append(
+            &ext_txt,
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(9.5),
+                color: blend(base, tint(TEXT, 110), cur),
+                ..Default::default()
+            },
+        );
+        let mut row = egui::Button::new(job)
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke_c))
             .rounding(Rounding::same(8.0))
@@ -531,7 +558,7 @@ impl App {
         if resp.clicked() {
             // 只读/缺编码器的格式不改输出目标，只展开解释
             if usable {
-                self.target = spec;
+                self.set_target(spec);
             }
             self.expanded = if self.expanded == Some(spec.id) {
                 None

@@ -56,9 +56,14 @@ impl App {
             ui.add_space(6.0);
             ui.add(
                 egui::Label::new(
-                    RichText::new(format!("{} · {}", self.target.name, self.knob_summary()))
-                        .size(12.0)
-                        .color(accent()),
+                    RichText::new(format!(
+                        "{} .{} · {}",
+                        self.target.name,
+                        self.ext_sel,
+                        self.knob_summary()
+                    ))
+                    .size(12.0)
+                    .color(accent()),
                 )
                 .truncate(),
             );
@@ -73,6 +78,26 @@ impl App {
                 }
             });
         });
+        // 多后缀的格式（AAC 能出 .m4a 或裸 .aac）在这里选，只影响文件后缀
+        let exts = fc_core::ext_choices(self.target);
+        if exts.len() > 1 {
+            let cur = self.ext_sel;
+            let mut pick: Option<&'static str> = None;
+            field_row(ui, "后缀", |ui| {
+                for e in exts.iter() {
+                    if seg_button(ui, &format!(".{e}"), cur == *e) {
+                        pick = Some(e);
+                    }
+                    ui.add_space(2.0);
+                }
+            });
+            if let Some(e) = pick {
+                self.ext_sel = e;
+                changed = true;
+            }
+            hint_below(ui, "只改后缀和封装，编码参数不变", DIM);
+        }
+
         // 视频容器：先把「这个容器收什么」说一句，再看下面具体旋钮
         if fc_core::is_video(self.target) {
             out_hint(ui, fc_core::container_note(self.target.id), DIM);
@@ -131,7 +156,7 @@ impl App {
                 .rounding(Rounding::same(7.0));
                 if ui.add(b).on_hover_text(p.note).clicked() {
                     if let Some(f) = fc_core::by_id(p.format) {
-                        self.target = f;
+                        self.set_target(f);
                     }
                     (p.apply)(&mut self.cfg.opts);
                     changed = true;
@@ -226,7 +251,7 @@ impl App {
             if let Some(i) = apply_preset {
                 if let Some(p) = self.cfg.presets.get(i).cloned() {
                     if let Some(f) = fc_core::by_id(&p.format) {
-                        self.target = f;
+                        self.set_target(f);
                     }
                     self.cfg.opts = p.opts;
                     changed = true;

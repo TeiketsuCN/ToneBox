@@ -49,6 +49,7 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 | 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
 | 转 Speex / AMR-NB / G.711 A·μ / G.722 / MS ADPCM / IMA ADPCM / Nellymoser / AAC 5.1 / AU / RF64 / BWF | ✅ |
 | 转 aptX / aptX HD / SBC（蓝牙）、G.723.1 / G.726、Yamaha ADPCM、IMA ADPCM (QT)、RealAudio 1.0 | ✅ |
+| 输出格式菜单显示后缀；多后缀格式可在输出栏切换（AAC .m4a/.aac、Opus .opus/.ogg、Vorbis .ogg/.oga、WMA .wma/.asf、AIFF .aiff/.aif、裸 PCM .pcm/.raw、MKV .mkv/.mka、MP4 .mp4/.m4v） | ✅ |
 | 侧栏七组分类（无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用）+「更多」折叠 | ✅ |
 | 只读参考格式（能识别、能解释，不参与转换） | ✅ |
 | 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |

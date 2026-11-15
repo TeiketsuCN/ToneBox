@@ -29,7 +29,7 @@ pub use wiki::long_blurb;
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
 pub use format::{
     all, args_for, args_for_with, audio_plan, bit_depths_for, bitrate_choices, bitrate_of, browsable,
-    by_id, channel_note, channels_for, container_note, copy_video_ok, default_target,
+    by_id, channel_note, channels_for, container_note, copy_video_ok, default_target, ext_choices,
     effective_video_codec, estimate_size, output_channels, ChannelMode,
     estimate_video_size, external_encoder, is_video, knob_note, knobs_for, output_dims, output_rate,
     quality_warnings, rate_choices, rate_note, resolve_video_encoder, split_group, targets_for,

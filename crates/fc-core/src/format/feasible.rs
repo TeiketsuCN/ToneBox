@@ -268,4 +268,20 @@ mod tests {
             assert!(!f.args.is_empty(), "{id} 没有编码参数");
         }
     }
-}
+
+    /// 多后缀只放 ffmpeg 认得的别名，改错会直接转不出来。
+    #[test]
+    fn ext_choices_are_the_verified_ones() {
+        use crate::format::{by_id, ext_choices};
+        assert_eq!(ext_choices(by_id("aac").unwrap()), vec!["m4a", "aac"]);
+        assert_eq!(ext_choices(by_id("opus").unwrap()), vec!["opus", "ogg"]);
+        assert_eq!(ext_choices(by_id("vorbis").unwrap()), vec!["ogg", "oga"]);
+        assert_eq!(ext_choices(by_id("wma").unwrap()), vec!["wma", "asf"]);
+        assert_eq!(ext_choices(by_id("aiff").unwrap()), vec!["aiff", "aif"]);
+        assert_eq!(ext_choices(by_id("mkv").unwrap()), vec!["mkv", "mka"]);
+        assert_eq!(ext_choices(by_id("mp4").unwrap()), vec!["mp4", "m4v"]);
+        assert_eq!(ext_choices(by_id("pcm").unwrap()), vec!["pcm", "raw"]);
+        // 单后缀的格式不能凭空变多
+        assert_eq!(ext_choices(by_id("flac").unwrap()), vec!["flac"]);
+        assert_eq!(ext_choices(by_id("mp3").unwrap()), vec!["mp3"]);
+    }}

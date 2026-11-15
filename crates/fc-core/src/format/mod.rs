@@ -1310,6 +1310,26 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
     }
 }
 
+/// 这个格式能用的文件后缀，第一个是默认。
+///
+/// 只放 **ffmpeg 按后缀就能选对封装器** 的别名，所以列表里既有同容器换名
+/// （`.aiff` / `.aif`），也有换封装的（AAC 的 `.m4a` 和裸 `.aac`、Opus 的
+/// `.opus` 和 `.ogg`）。凡是需要额外 `-f` 才能写出来的组合都不放进来——
+/// 那得改编码参数，不是换个后缀就能解决的事。
+pub fn ext_choices(spec: &FormatSpec) -> Vec<&'static str> {
+    match spec.id {
+        "aac" => vec!["m4a", "aac"],
+        "opus" => vec!["opus", "ogg"],
+        "vorbis" => vec!["ogg", "oga"],
+        "wma" => vec!["wma", "asf"],
+        "aiff" => vec!["aiff", "aif"],
+        "mkv" => vec!["mkv", "mka"],
+        "mp4" => vec!["mp4", "m4v"],
+        "pcm" => vec!["pcm", "raw"],
+        _ => vec![spec.ext],
+    }
+}
+
 /// 某个格式能选哪些位深。空数组 = 这个格式不该显示位深旋钮。
 pub fn bit_depths_for(spec: &FormatSpec) -> &'static [BitDepth] {
     match spec.id {
