@@ -27,6 +27,8 @@ pub(crate) struct Boot {
     started: Instant,
     data: Option<BootData>,
     logo: Option<egui::TextureHandle>,
+    /// 过场底图（照片）
+    shot: Option<egui::TextureHandle>,
 }
 
 /// 过场停留时长。
@@ -56,6 +58,7 @@ impl Boot {
             started: Instant::now(),
             data: None,
             logo: None,
+            shot: None,
         }
     }
 
@@ -114,89 +117,157 @@ impl Boot {
             egui::Id::new("boot-splash"),
         ));
 
-        // 底色 + 中间一团很淡的强调色光晕（呼应主界面的极光壁纸）
+        // ── 底图：铺满整个窗口（cover），不留黑边 ──
         p.rect_filled(area, egui::Rounding::ZERO, BG);
-        let c = area.center();
-        let glow_r = area.width().min(area.height()) * 0.62;
-        // 用顶点渐变画，不是画一圈圈实心圆——叠加实心圆会出现明显的同心色阶
-        const SEG: usize = 72;
-        let mut mesh = egui::epaint::Mesh::default();
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: c,
-            uv: egui::Pos2::ZERO,
-            color: tint(accent(), 15),
-        });
-        for i in 0..=SEG {
-            let ang = std::f32::consts::TAU * i as f32 / SEG as f32;
-            mesh.vertices.push(egui::epaint::Vertex {
-                pos: c + Vec2::new(ang.cos(), ang.sin()) * glow_r,
-                uv: egui::Pos2::ZERO,
-                color: Color32::TRANSPARENT,
-            });
-            if i > 0 {
-                mesh.add_triangle(0, i as u32, i as u32 + 1);
-            }
-        }
-        p.add(egui::Shape::mesh(mesh));
+        let shot = self.shot.get_or_insert_with(|| load_shot(ctx));
+        let [sw, sh] = shot.size();
+        let ts = Vec2::new(sw as f32, sh as f32);
+        let k = (area.width() / ts.x).max(area.height() / ts.y);
+        p.image(
+            shot.id(),
+            Rect::from_center_size(area.center(), ts * k),
+            Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
 
-        // logo
+        // 左边压暗（标题要读得清），底部再压一道（许可小字）
+        hgrad(&p, area, tint(BG, 178), tint(BG, 0));
+        vgrad(&p, area, tint(BG, 0), tint(BG, 150));
+
+        let margin = 46.0;
+
+        // ── 左上角：logo + 名字 ──
         let logo = self.logo.get_or_insert_with(|| load_logo(ctx));
-        let logo_rect = Rect::from_center_size(c - Vec2::new(0.0, 78.0), Vec2::splat(84.0));
+        let logo_rect = Rect::from_min_size(
+            area.min + Vec2::new(margin, margin - 6.0),
+            Vec2::splat(40.0),
+        );
         p.image(
             logo.id(),
             logo_rect,
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
-
-        // 名字 / 版本
         p.text(
-            c - Vec2::new(0.0, 22.0),
-            Align2::CENTER_CENTER,
+            egui::pos2(logo_rect.right() + 13.0, logo_rect.center().y),
+            Align2::LEFT_CENTER,
             APP_NAME,
-            FontId::proportional(23.0),
+            FontId::proportional(18.0),
+            tint(TEXT, 225),
+        );
+
+        // ── 大标题压在照片左侧（达芬奇那种排法）──
+        let ty = area.top() + area.height() * 0.52;
+        p.text(
+            egui::pos2(area.left() + margin, ty),
+            Align2::LEFT_CENTER,
+            APP_NAME,
+            FontId::proportional(46.0),
             TEXT,
         );
         p.text(
-            c - Vec2::new(0.0, 0.0),
-            Align2::CENTER_CENTER,
-            format!("v{VERSION}"),
-            FontId::proportional(11.0),
-            tint(TEXT, 110),
+            egui::pos2(area.left() + margin + 2.0, ty + 38.0),
+            Align2::LEFT_CENTER,
+            format!("FORMAT WORKBENCH · v{VERSION}"),
+            FontId::proportional(12.0),
+            tint(TEXT, 150),
         );
 
-        // 进度条
-        let bar_w = 240.0;
-        let bar_h = 2.0;
-        let bar = Rect::from_center_size(c + Vec2::new(0.0, 34.0), Vec2::new(bar_w, bar_h));
-        p.rect_filled(bar, egui::Rounding::same(1.0), tint(Color32::WHITE, 20));
+        // ── 进度条 + 状态：跟着标题往下排 ──
+        let bar_w = 250.0;
+        let bar = Rect::from_min_size(
+            egui::pos2(area.left() + margin + 2.0, ty + 68.0),
+            Vec2::new(bar_w, 2.0),
+        );
+        p.rect_filled(bar, egui::Rounding::same(1.0), tint(Color32::WHITE, 28));
         let w = bar_w * self.progress().clamp(0.0, 1.0);
         if w > 0.5 {
             p.rect_filled(
-                Rect::from_min_size(bar.min, Vec2::new(w, bar_h)),
+                Rect::from_min_size(bar.min, Vec2::new(w, 2.0)),
                 egui::Rounding::same(1.0),
                 accent(),
             );
         }
         p.text(
-            c + Vec2::new(0.0, 52.0),
-            Align2::CENTER_CENTER,
+            egui::pos2(bar.left(), bar.bottom() + 11.0),
+            Align2::LEFT_TOP,
             self.status(),
             FontId::proportional(11.0),
-            tint(TEXT, 130),
+            tint(TEXT, 140),
         );
 
-        // 底部小字
+        // ── 左下角：免责 + 许可（达芬奇左下那块小字的位置）──
         p.text(
-            egui::pos2(c.x, area.bottom() - 34.0),
-            Align2::CENTER_CENTER,
+            egui::pos2(area.left() + margin, area.bottom() - margin - 9.0),
+            Align2::LEFT_BOTTOM,
             "建议所有操作备份 · 慎防设备损坏，请自己负责",
-            FontId::proportional(10.0),
-            tint(TEXT, 70),
+            FontId::proportional(9.5),
+            tint(TEXT, 80),
+        );
+        p.text(
+            egui::pos2(area.left() + margin, area.bottom() - margin + 8.0),
+            Align2::LEFT_BOTTOM,
+            "© 2026 ToneBox · MIT License · 随包 FFmpeg 为 LGPL 构建",
+            FontId::proportional(9.5),
+            tint(TEXT, 100),
         );
     }
 }
 
+/// 水平渐变：左 → 右。
+fn hgrad(p: &egui::Painter, r: Rect, left: Color32, right: Color32) {
+    let mut m = egui::epaint::Mesh::default();
+    for (pos, color) in [
+        (r.left_top(), left),
+        (r.right_top(), right),
+        (r.right_bottom(), right),
+        (r.left_bottom(), left),
+    ] {
+        m.vertices.push(egui::epaint::Vertex {
+            pos,
+            uv: egui::Pos2::ZERO,
+            color,
+        });
+    }
+    m.add_triangle(0, 1, 2);
+    m.add_triangle(0, 2, 3);
+    p.add(egui::Shape::mesh(m));
+}
+
+/// 垂直渐变：上 → 下。
+fn vgrad(p: &egui::Painter, r: Rect, top: Color32, bottom: Color32) {
+    let mut m = egui::epaint::Mesh::default();
+    for (pos, color) in [
+        (r.left_top(), top),
+        (r.right_top(), top),
+        (r.right_bottom(), bottom),
+        (r.left_bottom(), bottom),
+    ] {
+        m.vertices.push(egui::epaint::Vertex {
+            pos,
+            uv: egui::Pos2::ZERO,
+            color,
+        });
+    }
+    m.add_triangle(0, 1, 2);
+    m.add_triangle(0, 2, 3);
+    p.add(egui::Shape::mesh(m));
+}
+
+/// 过场底图。要换照片就替换 `assets/splash.jpg`，代码一个字都不用动。
+///
+/// 现在的图是程序生成的占位（暗房 + 双屏波形 + 人形剪影）：DeepSeek 这边
+/// 拉不到 Unsplash/Pexels 那类素材站，而且把人家的照片塞进发行版还有肖像权
+/// 问题。正式图最好用自己的照片，或者明确写明授权来源。
+fn load_shot(ctx: &egui::Context) -> egui::TextureHandle {
+    const JPG: &[u8] = include_bytes!("../assets/splash.jpg");
+    let img = image::load_from_memory(JPG)
+        .expect("内置 splash.jpg 读不出来")
+        .to_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+    ctx.load_texture("boot-shot", ci, egui::TextureOptions::LINEAR)
+}
 fn load_logo(ctx: &egui::Context) -> egui::TextureHandle {
     const PNG: &[u8] = include_bytes!("../assets/icon.png");
     let img = image::load_from_memory(PNG)
