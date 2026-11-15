@@ -169,6 +169,30 @@ ffmpeg 查找顺序：程序同目录 → 同目录 `ffmpeg\` → WinGet Links �
 
 ---
 
+## 自己构建随包 ffmpeg（带语音编码器）
+
+随包的 ffmpeg 是 LGPL v3 构建，**没有**编进 `libgsm` / `libvo_amrwbenc` / `libilbc` /
+`liblc3` / `libcodec2`，所以 GSM、AMR-WB、iLBC、LC3、Codec2 这五个格式在发布版里是灰的。
+
+想把这五个也变成可输出，重新编一次随包 ffmpeg：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build-ffmpeg.ps1
+```
+
+脚本会：
+
+1. 检查 MSYS2（没有就用 winget 装），在 UCRT64 环境里装依赖包
+2. 编一个 MSYS2 没打包的 `liblc3`
+3. 用**固定的 configure 开关**编 ffmpeg：音频编码器（lame / opus / vorbis / opencore-amr /
+   gsm / amrwbenc / ilbc / lc3 / codec2）+ 视频编码器（vpx / theora / openh264 / kvazaar /
+   svt-av1 / dav1d），`--disable-gpl --disable-nonfree` 保持 LGPL
+4. 产物写进 `vendor\ffmpeg\`，并自检新编码器在不在
+
+首次运行要下载 MSYS2 和工具链（约 1~2 GB），编译 20~40 分钟；之后复用缓存会快很多。
+产物沿用同一套 LGPL v3 许可，记得同步更新 `THIRD_PARTY_NOTICES.md`。
+
+---
 ## 许可证
 
 ToneBox 以 **MIT** 许可发布（见 `LICENSE`）——可以免费使用、修改、再分发，也可以商用；
