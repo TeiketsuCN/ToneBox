@@ -602,6 +602,7 @@ impl App {
                         None => format!("{}k", o.speech_bitrate),
                     },
                 ),
+                Knob::WavpackBitrate => parts.push(format!("{}k", o.wavpack_bitrate)),
                 // 声道不进标题摘要：标题行放不下，下面旋钮自己写得很清楚
                 Knob::Channels => {}
                 Knob::SampleRate => match fc_core::output_rate(self.target, o) {

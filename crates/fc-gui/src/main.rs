@@ -273,6 +273,14 @@ pub(crate) enum Job {
         out: PathBuf,
         dur: f64,
     },
+    /// 外部 wavpack CLI：hybrid 有损（ffmpeg 的 wavpack 编码器不支持这个模式）
+    Wavpack {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        kbps: u32,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -418,6 +426,8 @@ pub(crate) struct App {
     atracdenc: Option<PathBuf>,
     /// 随包的 Speex 编码器（vendor\speex\speexenc.exe）
     speexenc: Option<PathBuf>,
+    /// 外部 WavPack CLI（有损 hybrid 模式必须用它）
+    wavpack: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -491,6 +501,15 @@ impl App {
             self.ext_sel
         } else {
             spec.ext
+        }
+    }
+
+    /// 某个外部工具在不在。名字来自 `fc_core::external_encoder`。
+    pub(crate) fn external_ok(&self, name: &str) -> bool {
+        match name {
+            "wavpack" => self.wavpack.is_some(),
+            // atracdenc 是默认那个（external::NAME）
+            _ => self.atracdenc.is_some(),
         }
     }
 
@@ -655,6 +674,7 @@ impl App {
             encoders: std::collections::HashSet::new(),
             atracdenc: fc_core::find_atracdenc(),
             speexenc: fc_core::find_speexenc(),
+            wavpack: fc_core::find_wavpack(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -806,6 +826,7 @@ impl App {
         let Some(tools) = self.tools.clone() else { return };
         let atracdenc = self.atracdenc.clone();
         let speexenc = self.speexenc.clone();
+        let wavpack = self.wavpack.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -844,9 +865,27 @@ impl App {
                 continue;
             }
 
+            // WavPack 有损走官方 CLI：ffmpeg 的 wavpack 编码器没有 hybrid 模式
+            if spec.id == "wavpack_lossy" {
+                if self.wavpack.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        "找不到 wavpack.exe，WavPack 有损输出不可用（设置页有说明）".to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Wavpack {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                    kbps: self.tasks[i].opts.wavpack_bitrate,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
             // Speex 走随包的 speexenc：ffmpeg 只负责解成 8k WAV
-            if spec.id == "speex" {
-                if self.speexenc.is_none() {
+            if spec.id == "speex" {                if self.speexenc.is_none() {
                     self.tasks[i].state =
                         State::Failed("找不到 speexenc，Speex 输出不可用".to_string());
                     continue;
@@ -951,6 +990,7 @@ impl App {
                     Job::Ffmpeg { idx, out, .. } => (*idx, out.clone()),
                     Job::Atrac { idx, out, .. } => (*idx, out.clone()),
                     Job::Speex { idx, out, .. } => (*idx, out.clone()),
+                    Job::Wavpack { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1040,6 +1080,31 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 speexenc")),
+                        }
+                    }
+                    Job::Wavpack {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        kbps,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match wavpack.as_ref() {
+                            Some(exe) => fc_core::external::wavpack_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                kbps,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 wavpack.exe")),
                         }
                     }
                 };
@@ -1996,6 +2061,7 @@ fn main() -> eframe::Result<()> {
         }
         show("atracdenc", fc_core::find_atracdenc());
         show("speexenc", fc_core::find_speexenc());
+        show("wavpack", fc_core::find_wavpack());
         return Ok(());
     }
 

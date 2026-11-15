@@ -702,6 +702,24 @@ impl App {
                                         });
                                     dep(ui, "speexenc", ok, status, &path);
                                 }
+                                // wavpack：可选，有损 hybrid 模式要靠它
+                                {
+                                    let ok = self.wavpack.is_some();
+                                    let status = if ok {
+                                        "已找到 · WavPack 有损可输出"
+                                    } else {
+                                        "未找到（可选）· 只有无损 WavPack"
+                                    };
+                                    let path = self
+                                        .wavpack
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| {
+                                            "ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损"
+                                                .to_string()
+                                        });
+                                    dep(ui, "wavpack", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {

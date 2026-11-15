@@ -47,8 +47,6 @@ pub static REFERENCE: &[FormatSpec] = &[
         "RK Audio 无损压缩。\n只读；没有可用编码器。"),
     ro!("bonk", "Bonk", "bonk", Group::Lossless, Kind::Lossless, Patent::Free,
         "Bonk 有损/无损混合编码。\n只读；没有可用编码器。"),
-    ro!("wavpack_lossy", "WavPack Lossy", "wv", Group::Lossy, Kind::Lossy, Patent::Free,
-        "WavPack 的混合有损模式。\n当前只开放了无损 WavPack，这个只读。"),
     // ── DSD 容器 ──
     ro!("dsdiff", "DSDIFF", "dff", Group::Container, Kind::Lossless, Patent::Free,
         "DSD 的 DFF 容器（DSDIFF）。\n当前只能读/分析，不写 DSD。"),

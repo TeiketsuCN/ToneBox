@@ -1163,6 +1163,8 @@ pub struct ConvertOptions {
     /// 语音编码码率 kbps（AMR-NB / G.723.1 / G.726 共用；各格式的合法档位见
     /// `bitrate_choices`，换格式时 `snap_bitrate` 会就近吸附）
     pub speech_bitrate: u32,
+    /// WavPack 有损（hybrid）码率 kbps
+    pub wavpack_bitrate: u32,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -1195,6 +1197,7 @@ impl Default for ConvertOptions {
             wma_bitrate: 192,
             atrac3_bitrate: 132,
             speech_bitrate: 32,
+            wavpack_bitrate: 384,
             sample_rate: None,
             channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
@@ -1234,6 +1237,8 @@ pub fn bitrate_choices(id: &str) -> &'static [u32] {
         "g723_1" => &[5, 6],
         // G.726 四档，都是 8k
         "g726" => &[16, 24, 32, 40],
+        // WavPack 有损：hybrid 模式常用档位
+        "wavpack_lossy" => &[256, 384, 512, 768, 1024],
         _ => &[],
     }
 }
@@ -1268,6 +1273,7 @@ pub fn bitrate_of(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
             "wma" => o.wma_bitrate,
             "wma_v1" => snap_bitrate("wma", o.wma_bitrate),
             "amr_nb" | "g723_1" | "g726" => o.speech_bitrate,
+            "wavpack_lossy" => o.wavpack_bitrate,
             "atrac3" => o.atrac3_bitrate,
             // ATRAC1 只有 292k、ATRAC3+ 的 atracdenc 只支持 352k，都没有旋钮
             "atrac1" => 292,
@@ -1377,6 +1383,8 @@ pub enum Knob {
     Atrac3Bitrate,
     /// 语音编码的码率档（AMR-NB / G.723.1 / G.726 共用，档位各看自己的表）
     SpeechBitrate,
+    /// WavPack 有损（hybrid）的目标码率，走外部 wavpack.exe
+    WavpackBitrate,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
     /// 输出声道（保持源 / 立体声 / 5.1）
@@ -1412,6 +1420,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "wma_v1" => &[Knob::WmaBitrate],
         // 语音编码：各自有专属档位表
         "amr_nb" | "g723_1" | "g726" => &[Knob::SpeechBitrate],
+        // WavPack 有损走外部 CLI，码率是它的 -b 参数
+        "wavpack_lossy" => &[Knob::WavpackBitrate],
         // MLP 是无损，能选位深；Ogg FLAC 就是 FLAC，能选压缩等级和位深
         "mlp" => &[Knob::BitDepth],
         "ogg_flac" => &[Knob::FlacLevel, Knob::BitDepth],
@@ -1478,6 +1488,8 @@ pub fn bit_depths_for(spec: &FormatSpec) -> &'static [BitDepth] {
 pub fn external_encoder(id: &str) -> Option<&'static str> {
     match id {
         "atrac1" | "atrac3" | "atrac3p" => Some(crate::external::NAME),
+        // WavPack 的有损（hybrid）模式只有官方 CLI 有，ffmpeg 编码器不支持
+        "wavpack_lossy" => Some("wavpack"),
         _ => None,
     }
 }

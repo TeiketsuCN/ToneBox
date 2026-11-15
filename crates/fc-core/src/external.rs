@@ -258,3 +258,89 @@ pub fn speex_convert(
     on_progress(1.0);
     Ok(size)
 }
+/// 找 WavPack 官方 CLI（wavpack.exe）。
+///
+/// 为什么需要它：ffmpeg 的 `wavpack` 编码器只有无损，**没有 hybrid 有损模式**
+/// （`-h encoder=wavpack` 里只有 joint_stereo / optimize_mono 两个选项），
+/// 而有损 WavPack 必须用官方 CLI 的 `-b` 参数。所以走和 atracdenc 一样的
+/// "外部工具" 路线：用户自己装，程序只负责调用。
+pub fn find_wavpack() -> Option<std::path::PathBuf> {
+    let exe = if cfg!(windows) { "wavpack.exe" } else { "wavpack" };
+    let mut cands: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("wavpack").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 wavpack CLI 编有损（hybrid）：ffmpeg 先解成 WAV，再交给它带 `-b<kbps>` 压。
+///
+/// hybrid 模式会同时写出一个 `.wvc` 校正文件（默认行为是写），这里加 `-c`
+/// 命令行里不加校正文件相关参数不行——所以显式传 `-c` 关掉它，
+/// 不然输出目录里会莫名其妙多一个 .wvc。
+pub fn wavpack_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    kbps: u32,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_wv_{tag}.wav"));
+    let tmp_wv = std::env::temp_dir().join(format!("fc_wv_{tag}.wv"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（WavPack 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.55);
+
+    let mut enc = Command::new(exe);
+    enc.arg("-y")
+        .arg("-q")
+        // 注意：-b 的数值必须**连写**（-b384），拆成 "-b 384" 会被当成参数错误
+        .arg(format!("-b{kbps}"))
+        .arg(&tmp_wav)
+        .arg("-o")
+        .arg(&tmp_wv)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 wavpack 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_wv);
+        return Err(anyhow!("wavpack 编码失败（检查 -b 码率是否合法）"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_wv, output).context("复制 WavPack 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_wv);
+    // 校正文件如果被写出来，顺手清掉，别在输出目录里留垃圾
+    let _ = std::fs::remove_file(output.with_extension("wvc"));
+    on_progress(1.0);
+    Ok(size)
+}

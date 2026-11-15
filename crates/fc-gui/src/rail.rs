@@ -471,7 +471,7 @@ impl App {
         let external = fc_core::external_encoder(spec.id);
         let enc = fc_core::encoder_for(spec.id);
         let enc_ok = match external {
-            Some(_) => self.atracdenc.is_some(),
+            Some(name) => self.external_ok(name),
             None => enc.map(|e| self.encoders.contains(e)).unwrap_or(true),
         };
         let selectable = spec.can_encode;
@@ -589,7 +589,7 @@ impl App {
             return false;
         }
         match fc_core::external_encoder(spec.id) {
-            Some(_) => self.atracdenc.is_some(),
+            Some(name) => self.external_ok(name),
             None => fc_core::encoder_for(spec.id)
                 .map(|e| self.encoders.contains(e))
                 .unwrap_or(true),

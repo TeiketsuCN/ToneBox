@@ -1123,6 +1123,9 @@ impl App {
             Knob::Atrac3Bitrate => {
                 changed |= bitrate_row(ui, "atrac3", &mut self.cfg.opts.atrac3_bitrate)
             }
+            Knob::WavpackBitrate => {
+                changed |= bitrate_row(ui, "wavpack_lossy", &mut self.cfg.opts.wavpack_bitrate)
+            }
             Knob::SpeechBitrate => {
                 // 语音编码共用一份「码率」，档位表按当前格式取；
                 // 换格式时旧值可能不在新档位里，先吸附再画，否则一个都不高亮

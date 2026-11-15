@@ -23,6 +23,7 @@ pub use encoders::{list_decoders, list_encoders, version as ffmpeg_version};
 /// 外部 ATRAC 编码器（atracdenc）：检测 + 调用。我们不随包分发它。
 pub use external::find as find_atracdenc;
 pub use external::find_speexenc;
+pub use external::find_wavpack;
 pub use identify::{identify, Encrypted};
 pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;
