@@ -48,14 +48,19 @@ enum Msg {
 }
 
 /// 检查项。加一项就在这里加一行，线程里对应加一段。
-const LABELS: [&str; 7] = [
+const LABELS: [&str; 12] = [
     "定位 ffmpeg / ffprobe",
     "读取 ffmpeg 版本",
     "读取编码器表",
     "读取解码器表",
     "检查开源解码库",
+    "检查无损编码器",
+    "检查有损编码器",
+    "检查视频编码器",
+    "检查音频输出设备",
     "检查 ATRAC 编码器",
     "检查 Speex 编码器",
+    "读取配置与音乐库",
 ];
 
 pub(crate) struct Boot {
@@ -84,7 +89,7 @@ impl Boot {
                 // 每项开跑前停一下：一行一行往下走才看得清，
                 // 否则 7 项会在几十毫秒里闪过去
                 if s == Step::Running {
-                    std::thread::sleep(Duration::from_millis(140));
+                    std::thread::sleep(Duration::from_millis(200));
                 }
             };
 
@@ -173,19 +178,109 @@ impl Boot {
                 detail,
             );
 
-            // 5 ATRAC 编码器（可选）
+            // 5 无损编码器：这三种齐了，界面上的"转无损"才算真有路
             send(5, Step::Running, String::new());
-            match fc_core::find_atracdenc() {
-                Some(_) => send(5, Step::Ok, "已安装".to_string()),
-                None => send(5, Step::Skip, "未安装（可选）".to_string()),
+            let lossless = ["flac", "alac", "pcm_s24le"];
+            let miss: Vec<&str> = lossless
+                .iter()
+                .copied()
+                .filter(|n| !encoders.contains(*n))
+                .collect();
+            send(
+                5,
+                if miss.is_empty() {
+                    Step::Ok
+                } else if miss.len() == lossless.len() {
+                    Step::Warn
+                } else {
+                    Step::Skip
+                },
+                if miss.is_empty() {
+                    "FLAC / ALAC / PCM 可用".to_string()
+                } else {
+                    format!("缺 {}", miss.join(" / "))
+                },
+            );
+
+            // 6 有损编码器
+            send(6, Step::Running, String::new());
+            let lossy = ["libmp3lame", "libopus", "libvorbis"];
+            let have: Vec<&str> = lossy
+                .iter()
+                .copied()
+                .filter(|n| encoders.contains(*n))
+                .collect();
+            send(
+                6,
+                if have.is_empty() {
+                    Step::Warn
+                } else {
+                    Step::Ok
+                },
+                if have.is_empty() {
+                    "没有 MP3 / Opus / Vorbis 编码器".to_string()
+                } else {
+                    format!("{} 个可用", have.len())
+                },
+            );
+
+            // 7 视频编码器。LGPL 构建通常没有 x264/x265，缺了只记一条，不当故障
+            send(7, Step::Running, String::new());
+            let video = ["libx264", "libx265", "libvpx-vp9", "libaom-av1"];
+            let vhave: Vec<&str> = video
+                .iter()
+                .copied()
+                .filter(|n| encoders.contains(*n))
+                .collect();
+            send(
+                7,
+                if vhave.is_empty() {
+                    Step::Skip
+                } else {
+                    Step::Ok
+                },
+                if vhave.is_empty() {
+                    "这个构建没有外挂视频编码器".to_string()
+                } else {
+                    format!("{} / 共 {} 个", vhave.join(" / "), vhave.len())
+                },
+            );
+
+            // 8 音频输出设备：cpal 真去问系统，能问出来说明声卡链路通
+            send(8, Step::Running, String::new());
+            match fc_player::devices::list() {
+                Ok(list) if !list.is_empty() => {
+                    send(8, Step::Ok, format!("{} 个设备", list.len()))
+                }
+                _ => send(8, Step::Skip, "枚举不到".to_string()),
             }
 
-            // 6 Speex 编码器
-            send(6, Step::Running, String::new());
-            match fc_core::find_speexenc() {
-                Some(_) => send(6, Step::Ok, "已找到".to_string()),
-                None => send(6, Step::Skip, "未找到".to_string()),
+            // 9 ATRAC 编码器（可选）
+            send(9, Step::Running, String::new());
+            match fc_core::find_atracdenc() {
+                Some(_) => send(9, Step::Ok, "已安装".to_string()),
+                None => send(9, Step::Skip, "未安装（可选）".to_string()),
             }
+
+            // 10 Speex 编码器
+            send(10, Step::Running, String::new());
+            match fc_core::find_speexenc() {
+                Some(_) => send(10, Step::Ok, "已找到".to_string()),
+                None => send(10, Step::Skip, "未找到".to_string()),
+            }
+
+            // 11 配置与音乐库缓存
+            send(11, Step::Running, String::new());
+            let cfg = crate::settings::Settings::load();
+            send(
+                11,
+                Step::Ok,
+                if cfg.library_cache.is_empty() {
+                    "配置就绪，音乐库还没扫".to_string()
+                } else {
+                    format!("音乐库 {} 首", cfg.library_cache.len())
+                },
+            );
 
             let _ = tx.send(Msg::Done(BootData { tools, encoders }));
         });
@@ -248,16 +343,25 @@ impl Boot {
             .count()
     }
 
-    /// 当前这一行：检查阶段显示正在跑的那项，检查完显示「正在加载项目」。
+    /// 当前这一行。
+    ///
+    /// 显示的是「最近完成的那一项 + 它的结果」，而不是正在跑的那项：
+    /// 结果只闪一下根本看不清。这一行会一直挂着，等下一项完成时被顶掉，
+    /// 所以看起来像清单在逐行往下走。
     fn current(&self) -> (String, String, Step) {
         if self.data.is_some() {
             return ("正在加载项目…".to_string(), String::new(), Step::Running);
         }
-        if let Some(it) = self.items.iter().find(|i| i.state == Step::Running) {
-            return (it.label.to_string(), it.detail.clone(), Step::Running);
-        }
-        if let Some(it) = self.items.iter().rev().find(|i| i.state != Step::Todo) {
+        if let Some(it) = self
+            .items
+            .iter()
+            .rev()
+            .find(|i| matches!(i.state, Step::Ok | Step::Skip | Step::Warn))
+        {
             return (it.label.to_string(), it.detail.clone(), it.state);
+        }
+        if let Some(it) = self.items.iter().find(|i| i.state == Step::Running) {
+            return (it.label.to_string(), String::new(), Step::Running);
         }
         ("准备中…".to_string(), String::new(), Step::Running)
     }
@@ -292,8 +396,8 @@ impl Boot {
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
-        // 小窗口里字更密，压得比全屏版狠一点
-        p.rect_filled(area, egui::Rounding::ZERO, tint(BG, 226));
+        // 小窗口里字更密，压得比全屏版狠一点；但留点余地让底图看得出来
+        p.rect_filled(area, egui::Rounding::ZERO, tint(BG, 202));
 
         let m = 24.0;
 
