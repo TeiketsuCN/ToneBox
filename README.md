@@ -1,77 +1,106 @@
-# 声箱ToneBox
+# 声箱 ToneBox
 
-一个"格式顾问"，不是很正经的格式转换工具。转换只是入口。
-顺带能管理音乐库、试听、记住你几套常用配置。
+> 一个讲道理的音频格式转换器：先告诉你"这么转会损失什么"，再让你决定。
 
-Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-analyze` / `fc-player` / `fc-gui`）。测试版 beta 1.3
- · 建议所有操作备份 · 慎防设备损坏，请自己负责
+![版本](https://img.shields.io/badge/版本-1.3-2ea44f)
+![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
+![许可](https://img.shields.io/badge/许可-MIT-blue)
+![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
 
-## 下载（Windows x64）
-
-- [ToneBox-beta1.3-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.0-beta.1/ToneBox-beta1.3-win64.zip)（27.8 MB，含 ffmpeg、speexenc、wavpack）
-- SHA256：`DC131E30AD997F7CAF77E971D680FD33EA4744B2C5960C3D43AC23022DF930B4`
-- 解压后双击 `format-converter.exe`；不要单独移动或删除 `ffmpeg\` / `speex\` / `wavpack\` 目录。
+![界面截图](docs/screenshot.jpg)
 
 ---
 
-## beta 1.3 更新了什么
+## 下载
 
-相比 beta 1.2，**可输出格式从 43 个涨到 68 个**：
+| 版本 | 安装包 | 大小 | SHA256 |
+|---|---|---|---|
+| **1.3** | [ToneBox-1.3-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.0/ToneBox-1.3-win64.zip) | 27.8 MB | `8CA8657748CE71B563847F2AE445678E098301380DDBE3391B5809DA288E1585` |
 
-- **视频容器从 8 个扩到 13 个**：新增 MPEG-PS(.mpg) / VOB / OGV(Theora) / WMV2 / 3GP；画面可选 MPEG-2 / MPEG-4 / Theora / WMV2，音频按容器自动选 MP2 / AC-3 / Vorbis / WMA / AAC
-- **新增语音编码输出**：GSM 06.10、AMR-WB、iLBC、LC3、Codec2、DFPWM
-- **WavPack 有损（hybrid）**：ffmpeg 的 wavpack 编码器只做无损，有损走随包的官方 `wavpack.exe`（BSD）
-- **IEC 61937（S/PDIF 直通）**、**SND**（`.au` 的 `.snd` 后缀）也能输出了
-- **随包 ffmpeg 换成自己构建的 8.0**：LGPL v3，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2；体积 152 MB → 59.6 MB
-- **分组理顺**：空间音频组收进 AC-3 / E-AC-3 / AC-4 / DTS，语音组收进 Speex / AMR
-- **设置页新增「依赖 / 外部工具」**：ffmpeg（版本 + 编码器数）、ffprobe、atracdenc、speexenc、wavpack 逐项显示路径与状态
-- **格式徽章按运行时可用性着色**：表里能编但这台机器的 ffmpeg 缺库（比如没编 libgsm）也会变灰，不再骗人
-- **新格式补上参数旋钮**：AMR-NB / G.723.1 / G.726 码率、WMA v1 码率、MLP 位深、Ogg FLAC 压缩等级、WavPack 有损码率
-- **只读格式**用灰色徽章显示，能识别、能解释，但不参与转换
+- Windows 10 / 11 x64，解压即用，**不需要安装**
+- 解压后双击 `format-converter.exe`
+- 不要单独移动或删除 `ffmpeg\`、`speex\`、`wavpack\` 三个目录
+- 卸载＝删掉这个文件夹：不写注册表、不装服务
 
-更早的 beta 1.2 主要是格式扩容（Speex / AMR-NB / G.711 / G.722 / ADPCM 系列 / AU / RF64 / BWF）和侧栏七组重组。
+> 这是测试性质的软件。转换前请备份原文件；设备和文件损坏请自己负责。
 
 ---
 
-## 当前能力
+## 它做什么
 
-| 能力 | 状态 |
+- **转格式**：一次拖多个文件，统一目标格式，也可以给单个文件单独指定
+- **讲清楚代价**：转之前就告诉你"降采样会切掉多少高频""升位深只是补零""有损转无损不会变好"
+- **给出参数**：码率、位深、采样率、声道、压缩等级，每个格式只列它真正支持的
+- **管理音乐库**：歌曲/专辑/风格/艺术家，只读扫描，不碰你的文件
+
+**它不做什么**：不解 DRM、不联网、不上传文件、不做流媒体下载。全部本地处理。
+
+---
+
+## 支持的格式
+
+当前**可输出格式 68 个**，另有约 50 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+
+| 类别 | 可输出 |
 |---|---|
-| 多文件拖拽 / 队列 | ✅ |
-| 启动过场（logo / 版本 / 进度条 / 状态）+ 默认全屏，F11 或 Esc 退回原来的窗口尺寸 | ✅ |
-| 视频容器输入（MKV / MP4 / MOV / AVI / WEBM…，第一条画面 + 全部音轨） | ✅ |
-| 音乐库（歌曲 / 专辑 / 风格 / 艺术家 / 自选文件夹，只读扫描） | ✅ |
-| 用户配置（多套切换 / 重命名 / 导出导入）+ 用户自设预设 | ✅ |
-| 播放栏频谱（按钮 / F2） | ✅ |
-| 可拉伸播放栏（拖顶部改高度，波形跟着变；高度记配置） | ✅ |
-| 全局输出格式 + 单文件覆盖 | ✅ |
-| 输出格式侧栏（点开显示该格式的解释） | ✅ |
-| ffprobe 读真实参数 | ✅ |
-| 有损源警告（转无损不会增加信息量） | ✅ |
-| 转 FLAC / WAV / ALAC / AIFF / WavPack / TTA / CAF / W64 / 裸 PCM | ✅ |
-| 转 MP3 / Opus / Vorbis / MP2 / AAC / AC-3 / E-AC-3 / WMA | ✅ |
-| 转 ATRAC1 / ATRAC3 / ATRAC3+（需自装 [atracdenc](https://github.com/dcherednik/atracdenc)，不随包） | ✅ |
-| 转 Speex / AMR-NB / G.711 A·μ / G.722 / MS ADPCM / IMA ADPCM / Nellymoser / AAC 5.1 / AU / RF64 / BWF | ✅ |
-| 转 aptX / aptX HD / SBC（蓝牙）、G.723.1 / G.726、Yamaha ADPCM、IMA ADPCM (QT)、RealAudio 1.0、ADX、MLP、DFPWM | ✅ |
-| 只读格式也在侧栏列出（徽章灰色），点开说明"为什么不能输出成它"；装了 atracdenc 后 ATRAC1/3/3+ 自动变成可选 | ✅ |
-| 输出格式菜单显示后缀；多后缀格式可在输出栏切换（AAC .m4a/.aac、Opus .opus/.ogg、Vorbis .ogg/.oga、WMA .wma/.asf、AIFF .aiff/.aif、裸 PCM .pcm/.raw、MKV .mkv/.mka、MP4 .mp4/.m4v） | ✅ |
-| 侧栏七组分类（无损 / 有损 / 语音·电话 / DTS·空间 / 音频容器 / 视频容器 / 设备专用）+「更多」折叠 | ✅ |
-| 只读参考格式（能识别、能解释，不参与转换） | ✅ |
-| 码率、压缩等级、位深可调（档位表在 core，不在界面） | ✅ |
-| 采样率可调（自动 / 44.1k / 48k / 96k / 192k，按格式给档位） | ✅ |
-| 响度归一化（EBU R128）与预览（源/目标包络、峰值余量、限幅提示） | ✅ |
-| 转换前的质量风险提示（降码率、无损转有损、升采样、抄大容器） | ✅ |
-| 视频容器输出（MKV / MP4 / WEBM / MOV / TS / M2TS / FLV / AVI；直接复制或转 H.264/H.265/VP9/AV1；多音轨逐条保留/重编） | ✅ |
-| 老一代视频容器（MPEG-PS / VOB / OGV / WMV / 3GP；画面 MPEG-2/MPEG-4/Theora/WMV2，声音 MP2/AC-3/Vorbis/WMA/AAC） | ✅ |
-| 格式百科（34 条长文案，可从百科直接设为输出格式） | ✅ |
-| 元数据与内嵌封面 | ✅ |
-| 试听（ffmpeg 解码 → 声卡，支持 ATRAC/OMA） | ✅ |
-| 音频设备检测（输出/输入、耳机/蓝牙/HDMI/USB，`引擎和设备`页，手绘图标+厂商标记） | ✅ |
-| 播放输出设备选择、WASAPI 独占直通（按源采样率） | ✅ |
-| 播放时 ReplayGain（读 gain 标签） | ✅ |
-| 加密文件识别 + 解释（不解密） | ✅ |
-| 频谱质量评估（标定集 60/60，ATRAC 结论偏保守；DSD 不做有损判定） | ✅ |
-| 命令行 `--convert` | ✅ |
+| 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF |
+| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损 |
+| 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
+| 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
+| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF |
+| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、**MPEG-PS、VOB、OGV、WMV、3GP** |
+| 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需自行安装 atracdenc） |
+
+视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
+
+**只读格式**（能解析、能解释为什么不能输出）：APE、TAK、OptimFROG、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
+
+---
+
+## 外部工具
+
+| 工具 | 是否随包 | 用途 |
+|---|---|---|
+| `ffmpeg` / `ffprobe` | ✅ 随包 | 解码、编码、探测（LGPL v3 自建，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2） |
+| `speexenc` | ✅ 随包 | Speex 输出（BSD） |
+| `wavpack` | ✅ 随包 | WavPack **有损**输出（hybrid 模式，ffmpeg 自带的编码器只做无损） |
+| `atracdenc` | ❌ 需自装 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL，不随包分发） |
+
+程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。装了新的工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
+
+---
+
+## 界面
+
+- 左侧：输出格式（按类别折叠，只读格式灰显）+ 格式说明
+- 中间：文件队列（拖进来就行），批量进度、失败原因逐条显示
+- 右侧：选中文件的真实参数、质量警告、输出参数
+- 顶部：设置、任务活动、转换进度；F11 / Esc 切换全屏
+- 支持多套配置切换、导出导入；内置常用预设（MD 归档 / 车载 / 手机 / 再编辑）
+
+---
+
+## 构建
+
+需要 Rust 的 MSVC 或 GNU 工具链（1.75+）。仓库不含二进制依赖，首次构建前先抓取随包工具：
+
+```powershell
+# 1. 抓依赖（ffmpeg / speex / wavpack / 测试样本）
+powershell -ExecutionPolicy Bypass -File tools\fetch-ffmpeg.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-speex.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-wavpack.ps1
+
+# 2. 编译
+cargo build --release -p fc-gui
+
+# 3. 跑测试（格式表、参数映射、警告逻辑）
+cargo test -p fc-core --lib
+
+# 4. 打包（版本号从 Cargo.toml 读）
+powershell -ExecutionPolicy Bypass -File tools\package-release.ps1
+```
+
+想自己重新构建随包 ffmpeg（比如加别的编码库）：见 [`tools/build-ffmpeg.sh`](tools/build-ffmpeg.sh) 与 README 末尾的说明；首次约 20~40 分钟。
 
 ---
 
@@ -79,138 +108,62 @@ Rust + egui，FFmpeg 子进程，cargo workspace 四个 crate（`fc-core` / `fc-
 
 ```
 crates/
-├── fc-core/      格式表 + probe + convert + 标签/元数据/百科   【引擎】
-├── fc-analyze/   频谱分析（标定 60/60）                      【引擎】
-├── fc-player/    试听（ffmpeg + cpal）                       【本机管】
-└── fc-gui/       四栏界面 + 队列状态机                        【界面，本机管】
-docs/
-├── 契约.md               并行开发的归属表与冻结 API
-├── 机器B-接入指南.md      另一台机器怎么接进来
-├── 样本清单.md            44 个对照样本 + 实测标定数据
-├── 音频格式总览.md        209 种格式的分级清单
-└── 法律边界-重新评估.md   风险地图
-tools/           样本下载、标定、截图脚本
+  fc-core/      格式表、参数、警告、ffmpeg/外部工具调用（纯逻辑，可测）
+  fc-analyze/   频谱、响度、波形分析
+  fc-player/    播放（rodio/cpal）
+  fc-gui/       egui/eframe 界面（三栏 + 过场 + 播放器）
+tools/          抓取、构建、打包、安装脚本
+docs/           设计笔记、格式总览、法律边界等
 ```
 
 ---
 
-## 一条设计红线
+## 设计红线
 
-**遇到加密文件，只识别、只解释、不解密。**
-
-代码里不允许出现任何 OpenMG / MagicGate / NCM / QMC 相关的解密逻辑。
-
----
-
-## 布局规范（改 UI 前先读这一节）
-
-踩过的坑：右栏文字被窗口边缘切掉、队列行撑破中央面板。原因是**没有锁宽度**。
-
-规则：
-
-1. **面板宽度是常量**：`LEFT_W = 216`、`RIGHT_W = 300`，不要写魔法数字。
-2. **每个面板开头 `ui.set_width(ui.available_width())`**，把内容宽度锁死。
-3. **长文本必须显式 wrap**：用 `para()` 助手（`TextWrapMode::Wrap`）。
-4. **单行文本必须显式截断**：文件名用 `TextWrapMode::Truncate`，
-   并给左栏留出右侧控件宽度（`row_w - 168.0`）。
-5. **不要在 `Frame` 内部再 `set_width`**——会和 `inner_margin` 叠加，反向溢出。
-6. 详情面板用**键值栅格**而不是一排 chip，chip 多了必然溢出。
-
-窗口默认 1380×760，设置里可切小/中/大/超大（1160×660 / 1260×700 / 1380×760 / 1580×880，逻辑点，再乘界面缩放）；
-最小 1120×600（四栏：216 格式 + 中央队列 + 300 详情 + 300 输出）。
-`RIGHT_W` / `OUT_W` 等宽度都是 `main.rs` 顶部的常量，改布局先改那几个数。
-
----
-
-## 构建
-
-没有 MSVC 的机器用 **gnu 工具链 + WinLibs binutils**；有 MSVC Build Tools 的直接用默认工具链就行——beta 1.2 就是在 MSVC 2022 Build Tools 上用 `cargo build --release --workspace` 编出来的，两种工具链都能过。
-
-```powershell
-# 一次性准备
-rustup toolchain install stable-x86_64-pc-windows-gnu
-winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e
-
-# 平时构建
-.\build.ps1           # debug
-.\build.ps1 release   # release → target\release\format-converter.exe
-```
-
-> PowerShell 报「无法加载文件…禁止运行脚本」时，用
-> `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 release` 绕过，不用改全局执行策略。
-
-## 用法
-
-```powershell
-format-converter.exe                      # 空白启动
-format-converter.exe a.mp3 b.oma          # 直接载入多个文件
-format-converter.exe --convert in.mp3 out.flac
-format-converter.exe --convert in.wav out.aptx --to aptx   # 指定输出格式
-format-converter.exe --formats            # 列出所有可输出的格式 id
-format-converter.exe --tools              # 报告 ffmpeg / atracdenc / speexenc 的探测结果
-format-converter.exe --play in.oma 5      # 试听 5 秒，验证声卡链路
-```
-
-ffmpeg 查找顺序：程序同目录 → 同目录 `ffmpeg\` → WinGet Links → `C:\ffmpeg\bin` → PATH。
+- **只做本地处理**：不联网、不上传、不解 DRM、不绕过任何版权保护
+- **不假装**：没有编码器的格式就灰着并说明原因，不给假的可用状态
+- **不改你的文件**：除非你明确选择「删除源文件」，否则只写新文件
+- **许可干净**：程序本体 MIT，随包 ffmpeg 是 LGPL v3（不含 GPL 组件）
 
 ---
 
 ## 已知问题
 
-1. **半透明在本机渲染为不透明**
-   `DWMWA_SYSTEMBACKDROP_TYPE`、`ACCENT_ENABLE_ACRYLICBLURBEHIND`、
-   `DwmExtendFrameIntoClientArea(-1)` 三者任意一个都会覆盖 winit 的 per-pixel alpha。
-   当前策略：只设深色标题栏，其余全部禁用。要毛玻璃得换 Tauri + WebView2。
-
-2. **eframe 0.29 的 glow 后端对 `from_rgba_unmultiplied` 会二次 gamma**
-   alpha=10 实测渲染成 55% 白。所有半透明色必须走 `from_rgba_premultiplied`，见 `tint()`。
-
-3. **ffmpeg 9.0.1 + 24bit FLAC + `-ss`/滤镜 → `invalid block size: 8`**
-   解法：两段式，先截成 WAV 再从 WAV 编码。
-
-4. **PowerShell 5.1 读无 BOM 的 UTF-8 脚本会当 ANSI**，中文乱码导致解析失败。
-   仓库里的 `.ps1` 一律带 BOM。
+- FLAC + 24bit + 截取/滤镜的组合，随包 ffmpeg 可能报 `invalid block size`：程序已内置两段式（先截成 WAV 再编码）规避
+- 部分 Android 手机的录音（.amr）时长元数据不规范，显示可能偏短
+- ATRAC9 只读：atracdenc 不支持，专利也在保护期
+- 视频容器输出会保留第一条画面；多画面（多角度）不处理
 
 ---
 
-## 自己构建随包 ffmpeg（带语音编码器）
+## 许可与第三方
 
-随包的 ffmpeg 是 LGPL v3 构建，**没有**编进 `libgsm` / `libvo_amrwbenc` / `libilbc` /
-`liblc3` / `libcodec2`，所以 GSM、AMR-WB、iLBC、LC3、Codec2 这五个格式在发布版里是灰的。
-
-想把这五个也变成可输出，重新编一次随包 ffmpeg：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tools\build-ffmpeg.ps1
-```
-
-脚本会：
-
-1. 检查 MSYS2（没有就用 winget 装），在 UCRT64 环境里装依赖包
-2. 编一个 MSYS2 没打包的 `liblc3`
-3. 用**固定的 configure 开关**编 ffmpeg：音频编码器（lame / opus / vorbis / opencore-amr /
-   gsm / amrwbenc / ilbc / lc3 / codec2）+ 视频编码器（vpx / theora / openh264 / kvazaar /
-   svt-av1 / dav1d），`--disable-gpl --disable-nonfree` 保持 LGPL
-4. 产物写进 `vendor\ffmpeg\`，并自检新编码器在不在
-
-首次运行要下载 MSYS2 和工具链（约 1~2 GB），编译 20~40 分钟；之后复用缓存会快很多。
-产物沿用同一套 LGPL v3 许可，记得同步更新 `THIRD_PARTY_NOTICES.md`。
+- 程序本体：**MIT**（见 [`LICENSE`](LICENSE)）
+- 随包 ffmpeg：**LGPL-2.1-or-later**，按 LGPL 要求保留许可文件、允许替换 DLL、提供构建脚本
+- 其他随包组件（Speex / WavPack / 各编解码库）的许可与来源见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 
 ---
-## 许可证
 
-ToneBox 以 **MIT** 许可发布（见 `LICENSE`）——可以免费使用、修改、再分发，也可以商用；
-保留版权声明即可，不要求开源你的修改。
+## 更新日志
 
-随包 FFmpeg 是 **LGPL v3** 构建（未启用 GPL），遵守它自己的许可：保留许可文件、允许替换 DLL、
-提供对应源码。详见 `THIRD_PARTY_NOTICES.md` 和 `docs/FFmpeg-LGPL.md`。
+### 1.3（2026-11）
+- 可输出格式 **43 → 68**：视频容器 8 → 13（MPEG-PS / VOB / OGV / WMV / 3GP）、新增 GSM / AMR-WB / iLBC / LC3 / Codec2 / DFPWM、WavPack 有损、IEC 61937、SND
+- 随包 ffmpeg 换成自建 8.0（LGPL v3，152 MB → 59.6 MB）
+- 分组理顺（空间音频 / 语音）、设置页新增依赖面板、徽章按运行时可用性着色
+- 新格式补齐参数旋钮（AMR/G.723/G.726/WMA v1 码率、MLP 位深、Ogg FLAC 压缩等级、WavPack 有损码率）
+
+### 1.2
+- 格式扩容（Speex / AMR-NB / G.711 / G.722 / ADPCM / AU / RF64 / BWF）
+- 侧栏七组重组、只读格式常驻显示、频谱分析省电优化
+
+### 1.0
+- 首个公开测试版：三栏界面、队列转换、格式百科、音乐库
+
+---
 
 ## 赞助
 
 项目免费开源，接受自愿赞助，不影响任何人在 MIT 下的权利。
-<img width="1080" height="1620" alt="1794159094116" src="https://github.com/user-attachments/assets/f53df0ad-01b1-4a4a-a9c2-c7db07b8cd3e" />
-<img width="1242" height="1692" alt="mm_facetoface_collect_qrcode_1794159073731" src="https://github.com/user-attachments/assets/9647d9f2-6607-46c3-93e8-423f9ebdf1c1" />
 
-
-
-> 测试版：建议所有操作备份，慎防设备损坏，请自己负责。
+<img width="1080" height="1620" alt="微信" src="https://github.com/user-attachments/assets/f53df0ad-01b1-4a4a-a9c2-c7db07b8cd3e" />
+<img width="1242" height="1692" alt="支付宝" src="https://github.com/user-attachments/assets/9647d9f2-6607-46c3-93e8-423f9ebdf1c1" />

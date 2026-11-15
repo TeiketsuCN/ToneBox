@@ -1,4 +1,4 @@
-# Build a Windows release zip (exe + ffmpeg + short readme).
+﻿# Build a Windows release zip (exe + ffmpeg + short readme).
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
 #   powershell ... -Out D:\ToneBox-beta1.2-win64.zip
@@ -18,6 +18,9 @@ if (-not $Ver) {
     $toml = Get-Content (Join-Path $src 'Cargo.toml') -Raw
     if ($toml -match '(?m)^version\s*=\s*"(\d+)\.(\d+)\.\d+-beta\.(\d+)"') {
         $Ver = "beta$($Matches[1]).$($Matches[2])"
+    } elseif ($toml -match '(?m)^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"') {
+        # 正式版：1.3.0 -> 1.3
+        $Ver = "$($Matches[1]).$($Matches[2])"
     } else {
         throw "无法从 Cargo.toml 解析版本号，请用 -Ver 指定"
     }
