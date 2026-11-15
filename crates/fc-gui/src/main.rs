@@ -31,6 +31,7 @@ mod bg;
 mod frame;
 mod settings;
 mod sysstat;
+mod boot;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -132,6 +133,8 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
 pub const APP_NAME: &str = "声箱ToneBox";
+/// 版本号只写这一处：关于页、启动过场都读它，别再多抄几份
+pub(crate) const VERSION: &str = "1.2.0-beta.1";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
@@ -318,6 +321,10 @@ pub(crate) struct App {
     player_volume: f32,
     /// 是否全屏（F11 切换，不写进配置）
     fullscreen: bool,
+    /// 启动过场；`None` 表示已经进主界面
+    boot: Option<boot::Boot>,
+    /// 命令行带上来的待载入文件，等过场把 tools 备好后才能 probe
+    preload: Vec<PathBuf>,
     /// 正在看大图的队列下标（None = 没开）
     cover_view: Option<usize>,
     /// 大图开/关的动画进度 0~1
@@ -511,11 +518,7 @@ impl App {
         let (ltx, lrx) = channel();
         let (cvt, cvr) = channel();
         let (spt, spr) = channel();
-        let tools = fc_core::locate();
-        let encoders = tools
-            .as_ref()
-            .map(|t| fc_core::list_encoders(&t.ffmpeg))
-            .unwrap_or_default();
+        let boot = boot::Boot::start();
         let cfg = settings::Settings::load();
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
@@ -552,7 +555,7 @@ impl App {
             format!("上次扫描：{} 首", cached_lib.len())
         };
         App {
-            tools,
+            tools: None,
             items: Vec::new(),
             tasks: Vec::new(),
             selected: 0,
@@ -572,6 +575,8 @@ impl App {
             play_error: None,
             player_volume: 0.75,
             fullscreen: false,
+            boot: Some(boot),
+            preload: Vec::new(),
             cover_view: None,
             cover_t: 0.0,
             cover_closing: false,
@@ -628,7 +633,7 @@ impl App {
             github_icon: load_qr(&cc.egui_ctx, "github", GITHUB_ICON),
             donate_wechat: load_qr(&cc.egui_ctx, "donate-wechat", DONATE_WECHAT),
             donate_alipay: load_qr(&cc.egui_ctx, "donate-alipay", DONATE_ALIPAY),
-            encoders,
+            encoders: std::collections::HashSet::new(),
             atracdenc: fc_core::find_atracdenc(),
             speexenc: fc_core::find_speexenc(),
             wiki_open: false,
@@ -1434,6 +1439,29 @@ impl eframe::App for App {
             #[cfg(windows)]
             frame::install(APP_NAME);
         }
+
+        // 启动过场：窗口已经开出来了，ffmpeg 探测还在后台跑；这期间只画过场，
+        // 主界面的面板一个都不排版。结束的那一帧顺手铺满工作区（默认全屏）。
+        let mut boot_data = None;
+        if let Some(b) = self.boot.as_mut() {
+            boot_data = b.poll();
+            if boot_data.is_none() {
+                b.paint(ctx);
+                ctx.request_repaint();
+                return;
+            }
+        }
+        if let Some(d) = boot_data {
+            self.boot = None;
+            self.tools = d.tools;
+            self.encoders = d.encoders;
+            // 默认全屏：进主界面这一刻铺满工作区，F11 / Esc 退回原来的窗口尺寸
+            set_fullscreen(&mut self.fullscreen, ctx, self.cfg.window.size_px());
+            let pre = std::mem::take(&mut self.preload);
+            if !pre.is_empty() {
+                self.add_files(pre);
+            }
+        }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
         // 强调色必须先于任何面板计算：这一帧画出去的所有选中条/圆点都用它
         self.refresh_accent(ctx);
@@ -2228,9 +2256,8 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let mut app = App::new(cc);
-            if !preload.is_empty() {
-                app.add_files(preload);
-            }
+            // 队列里每首都要 probe，得等过场把 tools 备好；先存着，过场结束再塞
+            app.preload = preload;
             Ok(Box::new(app))
         }),
     )
