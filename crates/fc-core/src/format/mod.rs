@@ -1464,6 +1464,8 @@ pub fn ext_choices(spec: &FormatSpec) -> Vec<&'static str> {
         "mkv" => vec!["mkv", "mka"],
         "mp4" => vec!["mp4", "m4v"],
         "pcm" => vec!["pcm", "raw"],
+        // Sun/NeXT 的 AU，官方后缀 .au；.snd 是老别名，ffmpeg 要显式 -f au 才认
+        "au" => vec!["au", "snd"],
         _ => vec![spec.ext],
     }
 }
@@ -2634,6 +2636,7 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         "sbc" => "sbc",
         "adpcm_yamaha" => "adpcm_yamaha",
         "adpcm_ima_qt" => "adpcm_ima_qt",
+        "gsm" => "libgsm",
         "g723_1" => "g723_1",
         "g726" => "g726",
         "real_144" => "real_144",

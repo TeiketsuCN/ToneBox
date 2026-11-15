@@ -922,6 +922,23 @@ impl App {
                 );
                 continue;
             }
+            // IEC 61937 是 S/PDIF 上的压缩音频直通：源不是压缩比特流就没东西可装
+            if spec.id == "iec61937"
+                && src_info
+                    .map(|m| {
+                        !matches!(
+                            m.codec.as_str(),
+                            "ac3" | "eac3" | "dts" | "mp2" | "mp3" | "truehd" | "mlp"
+                        )
+                    })
+                    .unwrap_or(true)
+            {
+                self.tasks[i].state = State::Failed(
+                    "IEC 61937 只能直通压缩音频（AC-3 / E-AC-3 / DTS / MPEG），PCM 源没有可直通的比特流。"
+                        .to_string(),
+                );
+                continue;
+            }
             let mut args = fc_core::args_for_with(spec, &self.tasks[i].opts, src_info);
 
             // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢

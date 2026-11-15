@@ -8,6 +8,31 @@ use super::{FormatSpec, Group, Kind, Patent};
 
 pub static FEASIBLE: &[FormatSpec] = &[
     FormatSpec {
+        id: "gsm",
+        name: "GSM 06.10",
+        ext: "gsm",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "GSM 06.10 全速率电话语音：8kHz 单声道、13kbps（33 字节/帧）。\n编码器是 ffmpeg 的 libgsm —— 随包那份没编进去，\n换成带 libgsm 的完整构建（比如 gyan full）后这一行才会亮。",
+        args: &["-c:a", "libgsm", "-ar", "8000", "-ac", "1"],
+        size_ratio: 0.09,
+    },
+    FormatSpec {
+        id: "iec61937",
+        name: "IEC 61937",
+        ext: "spdif",
+        kind: Kind::Container,
+        group: Group::Container,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "S/PDIF 上的压缩音频直通封装（IEC 61937）。\n**只能直通**：源必须是 AC-3 / E-AC-3 / DTS / MPEG 音频，\n普通 PCM 源没有可直通的比特流。",
+        args: &["-c:a", "copy", "-f", "spdif"],
+        size_ratio: 1.0,
+    },    FormatSpec {
         id: "g711_alaw",
         name: "G.711 A-law",
         ext: "wav",

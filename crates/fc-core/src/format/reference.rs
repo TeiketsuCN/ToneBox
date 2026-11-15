@@ -59,8 +59,6 @@ pub static REFERENCE: &[FormatSpec] = &[
         "Qualcomm PureVoice 手机录音容器。\n只读；没有编码器。"),
     ro!("wma_voice", "WMA Voice", "wma", Group::Speech, Kind::Lossy, Patent::Active,
         "WMA 的低码率语音档。\n只读；没有编码器。"),
-    ro!("gsm", "GSM", "gsm", Group::Speech, Kind::Lossy, Patent::Expiring,
-        "GSM 06.10 电话语音。\n只读；没有编码器。"),
     ro!("g729", "G.729", "g729", Group::Speech, Kind::Lossy, Patent::Active,
         "G.729 低码率电话语音。\n只读；没有编码器。"),
     // ── DTS / 空间音频 ──
@@ -104,10 +102,6 @@ pub static REFERENCE: &[FormatSpec] = &[
     ro!("mpeg4_ssc", "MPEG-4 SSC", "mp4", Group::Lossy, Kind::Lossy, Patent::Expiring,
         "MPEG-4 Scalable to Lossless 的编码核心之一。\n只读；没有编码器。"),
     // ── 音频封装 ──
-    ro!("iec61937", "IEC 61937", "spdif", Group::Container, Kind::Container, Patent::Expiring,
-        "S/PDIF 的压缩音频直通封装。\n只读参考；当前不写 SPDIF 流。"),
-    ro!("snd", "SND", "snd", Group::Container, Kind::Container, Patent::Free,
-        "Sun/NeXT 的音频容器。\n只读参考；当前不作为输出。"),
     ro!("bw64", "BW64", "bw64", Group::Container, Kind::Container, Patent::Free,
         "广播 WAV 64-bit 容器。\n只读参考；当前不作为输出。"),
     ro!("aifc", "AIFC", "aifc", Group::Container, Kind::Container, Patent::Free,
