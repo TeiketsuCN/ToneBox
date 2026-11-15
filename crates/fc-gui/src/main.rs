@@ -1977,6 +1977,24 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    // 命令行：报告依赖探测结果（排查"为什么 ATRAC 不能选"用）
+    if args.first().map(|s| s.as_str()) == Some("--tools") {
+        let show = |name: &str, p: Option<std::path::PathBuf>| match p {
+            Some(p) => println!("{name:<10} {}", p.display()),
+            None => println!("{name:<10} 未找到"),
+        };
+        match fc_core::locate() {
+            Some(t) => {
+                show("ffmpeg", Some(t.ffmpeg.clone()));
+                show("ffprobe", Some(t.ffprobe.clone()));
+            }
+            None => println!("{:<10} 未找到", "ffmpeg"),
+        }
+        show("atracdenc", fc_core::find_atracdenc());
+        show("speexenc", fc_core::find_speexenc());
+        return Ok(());
+    }
+
     // 命令行：列出可以当输出的格式 id（配 --convert --to 用）
     if args.first().map(|s| s.as_str()) == Some("--formats") {
         for f in fc_core::all().filter(|f| f.can_encode) {

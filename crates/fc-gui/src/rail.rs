@@ -765,12 +765,17 @@ fn paint_ext_badges(
     text_c: Color32,
 ) {
     let p = ui.painter();
-    let color = match spec.kind {
-        fc_core::Kind::Lossless => accent(),
-        fc_core::Kind::Lossy => Color32::from_rgb(232, 176, 84),
-        fc_core::Kind::Uncompressed => Color32::from_rgb(150, 190, 255),
-        fc_core::Kind::Container => Color32::from_rgb(186, 150, 255),
-        _ => tint(TEXT, 120),
+    // 只读格式的徽章一律灰掉：颜色是"能不能输出"的第一眼信号
+    let color = if !spec.can_encode {
+        tint(TEXT, 90)
+    } else {
+        match spec.kind {
+            fc_core::Kind::Lossless => accent(),
+            fc_core::Kind::Lossy => Color32::from_rgb(232, 176, 84),
+            fc_core::Kind::Uncompressed => Color32::from_rgb(150, 190, 255),
+            fc_core::Kind::Container => Color32::from_rgb(186, 150, 255),
+            _ => tint(TEXT, 120),
+        }
     };
     let font = FontId::proportional(8.5);
     let name_w = p
