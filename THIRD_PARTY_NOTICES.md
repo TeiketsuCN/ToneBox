@@ -74,6 +74,19 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-wavpack` 5.9.0-1
 - 许可证全文：`vendor/wavpack/LICENSE-wavpack.txt`
 
+## OptimFROG（ofr.exe，可选，不随包）
+
+- 项目：OptimFROG / Lossless Audio
+- 作者：Florin Ghido
+- 主页：<http://losslessaudio.org/>
+- 许可：闭源免费软件（个人与商业使用免费）
+- 用途：OptimFROG 无损输出（ffmpeg 连完整解码器都没有）
+- **分发限制**：官方 `license.html` 与 `ofr.exe --help` 均写明
+  "distribution of command-line Encoders with other software may need permission"，
+  所以 **ToneBox 不随包分发 ofr.exe**，只检测用户自己安装的版本。
+- 版本：5.100（Win/x64, 2016-09-02），官方 zip 的 SHA-1：
+  `abf21227c5417c984ee51ba391e2bcb5546d033b`
+
 ## atracdenc（可选，不随包）
 
 - 项目：atracdenc

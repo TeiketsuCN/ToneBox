@@ -1165,6 +1165,8 @@ pub struct ConvertOptions {
     pub speech_bitrate: u32,
     /// WavPack 有损（hybrid）码率 kbps
     pub wavpack_bitrate: u32,
+    /// OptimFROG 压缩预设 0~10（越大越慢越小）
+    pub ofr_preset: u8,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -1198,6 +1200,7 @@ impl Default for ConvertOptions {
             atrac3_bitrate: 132,
             speech_bitrate: 32,
             wavpack_bitrate: 384,
+            ofr_preset: 8,
             sample_rate: None,
             channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
@@ -1385,6 +1388,8 @@ pub enum Knob {
     SpeechBitrate,
     /// WavPack 有损（hybrid）的目标码率，走外部 wavpack.exe
     WavpackBitrate,
+    /// OptimFROG 压缩预设 0~10，走外部 ofr.exe
+    OfrPreset,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
     /// 输出声道（保持源 / 立体声 / 5.1）
@@ -1422,6 +1427,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "amr_nb" | "g723_1" | "g726" => &[Knob::SpeechBitrate],
         // WavPack 有损走外部 CLI，码率是它的 -b 参数
         "wavpack_lossy" => &[Knob::WavpackBitrate],
+        // OptimFROG 走外部 ofr.exe，只有压缩预设可调
+        "optimfrog" => &[Knob::OfrPreset],
         // MLP 是无损，能选位深；Ogg FLAC 就是 FLAC，能选压缩等级和位深
         "mlp" => &[Knob::BitDepth],
         "ogg_flac" => &[Knob::FlacLevel, Knob::BitDepth],
@@ -1494,6 +1501,8 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "atrac1" | "atrac3" | "atrac3p" => Some(crate::external::NAME),
         // WavPack 的有损（hybrid）模式只有官方 CLI 有，ffmpeg 编码器不支持
         "wavpack_lossy" => Some("wavpack"),
+        // OptimFROG：ffmpeg 连解码器都不完整，编码只有官方 ofr.exe
+        "optimfrog" => Some("ofr"),
         _ => None,
     }
 }
@@ -2045,6 +2054,7 @@ mod tests {
             for k in knobs_for(f) {
                 match k {
                     Knob::FlacLevel
+                    | Knob::OfrPreset
                     | Knob::VorbisQuality
                     | Knob::Channels
                     | Knob::BitDepth

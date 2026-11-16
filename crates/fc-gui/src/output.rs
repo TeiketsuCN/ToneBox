@@ -1126,6 +1126,23 @@ impl App {
             Knob::WavpackBitrate => {
                 changed |= bitrate_row(ui, "wavpack_lossy", &mut self.cfg.opts.wavpack_bitrate)
             }
+            Knob::OfrPreset => {
+                field_row(ui, "压缩预设", |ui| {
+                    let mut v = self.cfg.opts.ofr_preset as i32;
+                    if level_slider_inline(ui, &mut v, 0, 10) {
+                        self.cfg.opts.ofr_preset = v as u8;
+                        changed = true;
+                    }
+                });
+                slider_ends(ui, "← 编码快 · 文件大", "编码慢 · 文件小 →");
+                let note = match self.cfg.opts.ofr_preset {
+                    0..=3 => "低预设：编得快，但省不了多少体积。",
+                    4..=7 => "中预设：速度和体积比较平衡。",
+                    8..=9 => "高预设：慢一些，体积更小（默认 8）。",
+                    _ => "最高预设：最慢，体积最小。",
+                };
+                out_hint(ui, note, DIM);
+            }
             Knob::SpeechBitrate => {
                 // 语音编码共用一份「码率」，档位表按当前格式取；
                 // 换格式时旧值可能不在新档位里，先吸附再画，否则一个都不高亮

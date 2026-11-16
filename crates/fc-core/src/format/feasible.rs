@@ -8,6 +8,18 @@ use super::{FormatSpec, Group, Kind, Patent};
 
 pub static FEASIBLE: &[FormatSpec] = &[
     FormatSpec {
+        id: "optimfrog",
+        name: "OptimFROG",
+        ext: "ofr",
+        kind: Kind::Lossless,
+        group: Group::Lossless,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "Romanian 作者 Florin Ghido 的无损压缩，以\"体积最小\"为目标，\n代价是编码慢。编码只有官方 ofr.exe 能做（闭源免费）。\n官方许可：把 CLI 随其他软件分发可能需要授权，所以本程序不随包。",
+        args: &[],
+        size_ratio: 0.55,
+    },    FormatSpec {
         id: "ilbc",
         name: "iLBC",
         ext: "lbc",

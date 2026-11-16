@@ -720,6 +720,24 @@ impl App {
                                         });
                                     dep(ui, "wavpack", ok, status, &path);
                                 }
+                                // ofr：OptimFROG，官方不随包
+                                {
+                                    let ok = self.ofr.is_some();
+                                    let status = if ok {
+                                        "已找到 · OptimFROG 可输出"
+                                    } else {
+                                        "未安装（可选）· 只能解码"
+                                    };
+                                    let path = self
+                                        .ofr
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| {
+                                            "官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录"
+                                                .to_string()
+                                        });
+                                    dep(ui, "ofr", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {

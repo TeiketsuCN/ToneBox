@@ -31,8 +31,6 @@ pub static REFERENCE: &[FormatSpec] = &[
         "Monkey's Audio，老无损格式。\n只读；没有可用编码器。"),
     ro!("tak", "TAK", "tak", Group::Lossless, Kind::Lossless, Patent::Free,
         "Tom's lossless Audio Kompressor。\n只读；没有可用编码器。"),
-    ro!("optimfrog", "OptimFROG", "ofr", Group::Lossless, Kind::Lossless, Patent::Free,
-        "以高压缩率著称的无损格式。\n只读；没有可用编码器。"),
     ro!("shorten", "Shorten", "shn", Group::Lossless, Kind::Lossless, Patent::Free,
         "早期无损压缩，现场录音存档常见。\n只读；没有可用编码器。"),
     ro!("mpeg4_als", "MPEG-4 ALS", "mp4", Group::Lossless, Kind::Lossless, Patent::Expiring,

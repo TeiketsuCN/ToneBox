@@ -39,11 +39,11 @@
 
 ## 支持的格式
 
-当前**可输出格式 68 个**，另有约 50 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 69 个**，另有约 50 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
-| 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF |
+| 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF、**OptimFROG**（需自装 ofr.exe） |
 | 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损 |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
@@ -53,7 +53,7 @@
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
 
-**只读格式**（能解析、能解释为什么不能输出）：APE、TAK、OptimFROG、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
+**只读格式**（能解析、能解释为什么不能输出）：APE、TAK、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
 
 ---
 
@@ -65,6 +65,7 @@
 | `speexenc` | ✅ 随包 | Speex 输出（BSD） |
 | `wavpack` | ✅ 随包 | WavPack **有损**输出（hybrid 模式，ffmpeg 自带的编码器只做无损） |
 | `atracdenc` | ❌ 需自装 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL，不随包分发） |
+| `ofr` | ❌ 需自装 | OptimFROG 输出（官方许可要求分发 CLI 需授权，不随包） |
 
 程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。装了新的工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
 

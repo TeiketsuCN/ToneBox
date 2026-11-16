@@ -90,6 +90,7 @@ ffmpeg is bundled in .\ffmpeg and found automatically. Do not move it.
 Speex encoding uses the bundled .\speex\speexenc (BSD, see THIRD_PARTY_NOTICES.md).
 WavPack lossy (hybrid) uses the bundled .\wavpack\wavpack.exe (BSD).
 ATRAC encoding needs atracdenc (included only if atracdenc\ exists).
+OptimFROG needs your own ofr.exe (not included: official license restricts redistribution).
 
 Uninstall: delete this folder. No registry entries, no services.
 "@

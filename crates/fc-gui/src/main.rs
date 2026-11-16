@@ -281,6 +281,14 @@ pub(crate) enum Job {
         dur: f64,
         kbps: u32,
     },
+    /// 外部 ofr.exe：OptimFROG 无损
+    Ofr {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        preset: u8,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -428,6 +436,8 @@ pub(crate) struct App {
     speexenc: Option<PathBuf>,
     /// 外部 WavPack CLI（有损 hybrid 模式必须用它）
     wavpack: Option<PathBuf>,
+    /// 外部 OptimFROG CLI（ofr.exe，官方不随包，用户自装）
+    ofr: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -508,6 +518,7 @@ impl App {
     pub(crate) fn external_ok(&self, name: &str) -> bool {
         match name {
             "wavpack" => self.wavpack.is_some(),
+            "ofr" => self.ofr.is_some(),
             // atracdenc 是默认那个（external::NAME）
             _ => self.atracdenc.is_some(),
         }
@@ -675,6 +686,7 @@ impl App {
             atracdenc: fc_core::find_atracdenc(),
             speexenc: fc_core::find_speexenc(),
             wavpack: fc_core::find_wavpack(),
+            ofr: fc_core::find_ofr(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -827,6 +839,7 @@ impl App {
         let atracdenc = self.atracdenc.clone();
         let speexenc = self.speexenc.clone();
         let wavpack = self.wavpack.clone();
+        let ofr = self.ofr.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -884,8 +897,29 @@ impl App {
                 continue;
             }
 
+            // OptimFROG 走官方 ofr.exe（不随包：官方许可要求分发 CLI 需授权）
+            if spec.id == "optimfrog" {
+                if self.ofr.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        "找不到 ofr.exe，OptimFROG 输出不可用（losslessaudio.org 下载后放到程序目录）"
+                            .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Ofr {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                    preset: self.tasks[i].opts.ofr_preset,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
             // Speex 走随包的 speexenc：ffmpeg 只负责解成 8k WAV
-            if spec.id == "speex" {                if self.speexenc.is_none() {
+            if spec.id == "speex" {
+                if self.speexenc.is_none() {
                     self.tasks[i].state =
                         State::Failed("找不到 speexenc，Speex 输出不可用".to_string());
                     continue;
@@ -1008,6 +1042,8 @@ impl App {
                     Job::Atrac { idx, out, .. } => (*idx, out.clone()),
                     Job::Speex { idx, out, .. } => (*idx, out.clone()),
                     Job::Wavpack { idx, out, .. } => (*idx, out.clone()),
+                    Job::Ofr { idx, out, .. } => (*idx, out.clone()),
+                    Job::Ofr { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1097,6 +1133,31 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 speexenc")),
+                        }
+                    }
+                    Job::Ofr {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        preset,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match ofr.as_ref() {
+                            Some(exe) => fc_core::external::ofr_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                preset,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 ofr.exe")),
                         }
                     }
                     Job::Wavpack {
@@ -2079,6 +2140,7 @@ fn main() -> eframe::Result<()> {
         show("atracdenc", fc_core::find_atracdenc());
         show("speexenc", fc_core::find_speexenc());
         show("wavpack", fc_core::find_wavpack());
+        show("ofr", fc_core::find_ofr());
         return Ok(());
     }
 
@@ -2129,6 +2191,104 @@ fn main() -> eframe::Result<()> {
             info.sample_rate,
             info.duration_s
         );
+        // 外部编码器（ATRAC / Speex / WavPack 有损 / OptimFROG）走各自的 CLI，
+        // 不能拼 ffmpeg 参数——否则会像以前一样静默走错路径
+        let opts = fc_core::ConvertOptions::default();
+        let mut external_done = false;
+        if let Some(codec) = fc_core::external::codec_for(target.id, opts.atrac3_bitrate) {
+            match fc_core::find_atracdenc() {
+                Some(exe) => {
+                    match fc_core::external::convert(
+                        &tools,
+                        &exe,
+                        Path::new(input),
+                        Path::new(output),
+                        codec,
+                        info.duration_s,
+                        Box::new(|_| {}),
+                    ) {
+                        Ok(_) => external_done = true,
+                        Err(e) => {
+                            eprintln!("转换失败: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("找不到 atracdenc（ATRAC 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "speex" {
+            match fc_core::find_speexenc() {
+                Some(exe) => match fc_core::external::speex_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 speexenc");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "wavpack_lossy" {
+            match fc_core::find_wavpack() {
+                Some(exe) => match fc_core::external::wavpack_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.wavpack_bitrate,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 wavpack.exe");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "optimfrog" {
+            match fc_core::find_ofr() {
+                Some(exe) => match fc_core::external::ofr_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.ofr_preset,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 ofr.exe（OptimFROG 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
+        }
+        if external_done {
+            println!("完成: {output}");
+            return Ok(());
+        }
         // 带上源信息：视频容器要靠它决定"能不能直接 copy"，
         // 否则 CLI 一律按 copy 走，转 mpg/vob 这种会直接失败
         let args = fc_core::args_for_with(target, &fc_core::ConvertOptions::default(), Some(&info));

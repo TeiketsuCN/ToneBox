@@ -344,3 +344,80 @@ pub fn wavpack_convert(
     on_progress(1.0);
     Ok(size)
 }
+/// 找 OptimFROG 的官方 CLI（ofr.exe）。
+///
+/// 注意分发条款：官方 license 写明"把命令行编码器随其他软件分发可能需要授权"，
+/// 所以我们**不随包**，只检测用户自己装的（程序目录 / optimfrog\ 子目录 / PATH）。
+pub fn find_ofr() -> Option<std::path::PathBuf> {
+    let exe = if cfg!(windows) { "ofr.exe" } else { "ofr" };
+    let mut cands: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("optimfrog").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 ofr.exe 编 OptimFROG：ffmpeg 先解成 24bit WAV，再交给它压。
+///
+/// `preset` 是官方 0~10 的压缩预设（8 = 5.1 倍速、省 3.06%；10 最慢最小）。
+pub fn ofr_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    preset: u8,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_ofr_{tag}.wav"));
+    let tmp_ofr = std::env::temp_dir().join(format!("fc_ofr_{tag}.ofr"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（OptimFROG 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg("--encode")
+        .arg(&tmp_wav)
+        .args(["--output", &tmp_ofr.to_string_lossy()])
+        .args(["--preset", &preset.min(10).to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 ofr.exe 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_ofr);
+        return Err(anyhow!("OptimFROG 编码失败（检查输入 WAV 与 preset）"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_ofr, output).context("复制 OptimFROG 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_ofr);
+    on_progress(1.0);
+    Ok(size)
+}
