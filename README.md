@@ -2,7 +2,7 @@
 
 > 一个讲道理的音频格式转换器：先告诉你"这么转会损失什么"，再让你决定。
 
-![版本](https://img.shields.io/badge/版本-1.3-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.3.1-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
@@ -15,11 +15,24 @@
 
 | 版本 | 安装包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.3** | [ToneBox-1.3-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.0/ToneBox-1.3-win64.zip) | 27.8 MB | `8CA8657748CE71B563847F2AE445678E098301380DDBE3391B5809DA288E1585` |
+| **1.3.1** | [ToneBox-1.3.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.1/ToneBox-1.3.1-win64.zip) | 27.9 MB | `1F63CD6E0DFDC9EEDAF76588FE8431D373D56CD204C275517D3F7671FDF5F947` |
+| 1.3.1 可选工具 | [ToneBox-1.3.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.1/ToneBox-1.3.1-extras-win64.zip) | 0.15 MB | `91AAE1390357E4B75AA83768970967DBDC9156C363BD277EA51C75A672A21636` |
 
 - Windows 10 / 11 x64，解压即用，**不需要安装**
 - 解压后双击 `format-converter.exe`
 - 不要单独移动或删除 `ffmpeg\`、`speex\`、`wavpack\` 三个目录
+
+### 可选外部工具包（单独下载）
+
+主包里**不含**两个有分发限制的编码器，需要的另下 `ToneBox-1.3.1-extras-win64.zip`：
+
+| 工具 | 包内形式 | 用途 |
+|---|---|---|
+| **atracdenc** | 直接带 `atracdenc\atracdenc.exe`（LGPL-2.1） | ATRAC1 / ATRAC3 / ATRAC3+ 输出 |
+| **OptimFROG** | 带 `install-ofr.cmd` 一键脚本 | OptimFROG 输出 |
+
+用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），ATRAC 立刻可用；
+OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并用官方 SHA-1 校验（不涉及再分发）。
 - 卸载＝删掉这个文件夹：不写注册表、不装服务
 
 > 这是测试性质的软件。转换前请备份原文件；设备和文件损坏请自己负责。
@@ -64,8 +77,8 @@
 | `ffmpeg` / `ffprobe` | ✅ 随包 | 解码、编码、探测（LGPL v3 自建，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2） |
 | `speexenc` | ✅ 随包 | Speex 输出（BSD） |
 | `wavpack` | ✅ 随包 | WavPack **有损**输出（hybrid 模式，ffmpeg 自带的编码器只做无损） |
-| `atracdenc` | ❌ 需自装 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL，不随包分发） |
-| `ofr` | ❌ 需自装 | OptimFROG 输出（官方许可要求分发 CLI 需授权，不随包） |
+| `atracdenc` | 📦 在 extras 包里 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL-2.1） |
+| `ofr` | 📦 extras 里一键下载 | OptimFROG 输出（官方许可限制再分发，脚本代下载） |
 
 程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。装了新的工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
 
@@ -146,6 +159,11 @@ docs/           设计笔记、格式总览、法律边界等
 ---
 
 ## 更新日志
+
+### 1.3.1（2026-11）
+- 新增 **OptimFROG** 输出（走官方 ofr.exe，压缩预设 0–10 可调）
+- 修复命令行 `--convert` 不支持外部编码器（ATRAC / Speex / WavPack 有损 / OptimFROG）的问题
+- 新增**可选外部工具包**（extras）：atracdenc 直接带，OptimFROG 一键下载脚本
 
 ### 1.3（2026-11）
 - 可输出格式 **43 → 68**：视频容器 8 → 13（MPEG-PS / VOB / OGV / WMV / 3GP）、新增 GSM / AMR-WB / iLBC / LC3 / Codec2 / DFPWM、WavPack 有损、IEC 61937、SND

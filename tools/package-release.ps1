@@ -20,7 +20,7 @@ if (-not $Ver) {
         $Ver = "beta$($Matches[1]).$($Matches[2])"
     } elseif ($toml -match '(?m)^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"') {
         # 正式版：1.3.0 -> 1.3
-        $Ver = "$($Matches[1]).$($Matches[2])"
+        $Ver = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
     } else {
         throw "无法从 Cargo.toml 解析版本号，请用 -Ver 指定"
     }
