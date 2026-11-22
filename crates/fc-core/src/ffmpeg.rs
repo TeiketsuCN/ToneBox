@@ -707,19 +707,39 @@ fn duration_ok(expected_s: f64, actual_s: f64) -> bool {
     (actual_s - expected_s).abs() <= (expected_s * 0.08).max(2.0)
 }
 
-/// 转换后自检：把输出重新 probe 一遍，确认不是 0 字节/坏文件/时长离谱。
+/// 转换后自检：重新 probe + **真解码前 10 秒**，确认不是 0 字节/坏文件/时长离谱。
 ///
-/// 只做“明显不对”的判断，不做逐样本比对（那要再解一遍，太慢）。
+/// 只解前 10 秒是有意的：完整解码长视频会让批量转换慢一倍，而坏文件
+/// 通常在头部或前几帧就暴露了。无损逐样本校验在 `verify_lossless` 里单独做。
 pub fn verify_output(tools: &Tools, path: &Path, expected_s: f64) -> Result<(), String> {
-    let info = probe(tools, path).map_err(|e| format!("输出回读失败：{e:#}"))?;
-    if let Err(why) = std::fs::metadata(path) {
-        return Err(format!("输出文件不存在：{why}"));
+    let meta = std::fs::metadata(path).map_err(|why| format!("输出文件不存在：{why}"))?;
+    if meta.len() == 0 {
+        return Err("输出文件是 0 字节".to_string());
     }
+    let info = probe(tools, path).map_err(|e| format!("输出回读失败：{e:#}"))?;
     if !duration_ok(expected_s, info.duration_s) {
         return Err(format!(
             "时长不符：输出 {:.2}s，输入 {:.2}s",
             info.duration_s, expected_s
         ));
+    }
+
+    // 真解码一小段：probe 只读头部，坏帧/坏索引要到解码才报错
+    let mut cmd = Command::new(&tools.ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"])
+        .arg(path)
+        .args(["-map", "0", "-t", "10", "-f", "null", "-"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("启动 ffmpeg 解码自检失败：{e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("解码失败");
+        return Err(format!("输出无法解码：{why}"));
     }
     Ok(())
 }
