@@ -406,7 +406,7 @@ impl App {
                     };
                     let open = self.group_open[gi];
                     ui.add_space(3.0);
-                    if group_header(ui, group.title(), specs.len(), open) {
+                    if group_header(ui, crate::i18n::tr(group.title()), specs.len(), open) {
                         self.group_open[gi] = !open;
                     }
                     if open {
@@ -503,7 +503,7 @@ impl App {
         // 名字。后缀不排进文字里，画成行尾的徽章（见 paint_ext_badges）
         let mut job = egui::text::LayoutJob::default();
         job.append(
-            spec.name,
+            crate::i18n::tr(spec.name),
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::proportional(11.5),
@@ -564,7 +564,7 @@ impl App {
             // 侧栏用小字说明（三行以内）。`wiki.rs` 的长文案留给以后的百科页，
             // 塞进侧栏会把列表撑得没法看。
             let galley = ui.painter().layout(
-                spec.blurb.to_string(),
+                crate::i18n::tr(spec.blurb).to_string(),
                 egui::FontId::proportional(9.5),
                 MUTED,
                 text_w,
@@ -781,7 +781,7 @@ fn paint_ext_badges(
     };
     let font = FontId::proportional(8.5);
     let name_w = p
-        .layout_no_wrap(spec.name.to_string(), FontId::proportional(11.5), text_c)
+        .layout_no_wrap(crate::i18n::tr(spec.name).to_string(), FontId::proportional(11.5), text_c)
         .size()
         .x;
     let min_left = rect.left() + 10.0 + name_w + 8.0;

@@ -342,7 +342,7 @@ pub fn tr(key: &'static str) -> &'static str {
         "默认档（8 就是 ffmpeg 默认），速度和体积比较均衡" => "Default (8 is ffmpeg's default); balanced speed and size",
         "编码最慢，体积只比默认再小一点点，长文件会慢好几倍" => "Slowest; only marginally smaller, several times slower on long files",
         "无损" => "Lossless",
-        "设备专用" => "Device",
+        "设备专用" => "Device formats",
         "只能读，不能转出" => "Read-only; cannot encode",
         "可以转成这个" => "Can convert to this",
         "要装外部编码器才能转出" => "Requires an external encoder",
@@ -410,6 +410,171 @@ pub fn tr(key: &'static str) -> &'static str {
         "正在算频谱…" => "Computing spectrum…",
         "没有可显示的数据" => "No data to display",
         "全部清除" => "Clear all",
+        "空间音频" => "Spatial audio",
+        "视频容器" => "Video containers",
+        "语音/电话" => "Speech / telephony",
+        "音频容器" => "Audio containers",
+        "AC-4（仅直通）" => "AC-4 (pass-through only)",
+        "H.264 裸流" => "H.264 raw",
+        "H.265 裸流" => "H.265 raw",
+        "MPEG-2 裸流" => "MPEG-2 raw",
+        "MPEG-4 裸流" => "MPEG-4 raw",
+        "WavPack (有损)" => "WavPack (lossy)",
+        "MD 归档" => "MD archive",
+        "再编辑" => "Re-edit",
+        "手机" => "Phone",
+        "车载" => "Car audio",
+        "裸 PCM" => "Raw PCM",
+        "无专利" => "No patent",
+        "专利部分过期" => "Patents partly expired",
+        "专利在保护期" => "Patents active",
+        "自动（跟源）" => "Auto (follow source)",
+        "32-bit 浮点" => "32-bit float",
+        "Romanian 作者 Florin Ghido 的无损压缩，以\"体积最小\"为目标，
+代价是编码慢。编码只有官方 ofr.exe 能做（闭源免费）。
+官方许可：把 CLI 随其他软件分发可能需要授权，所以本程序不随包。" => "Florin Ghido's lossless codec, tuned for the smallest files at the cost of slow encoding.
+Only the official ofr.exe (freeware, closed source) can encode.
+Its license may require permission to redistribute the CLI, so it is not bundled.",
+        "蓝牙 aptX 的编码，固定 352kbps、4:1 压缩。
+CSR 的基础专利多已到期；蓝牙里它是实时流，
+**没有标准文件后缀**，.aptx 只是 ffmpeg muxer 的叫法。" => "Bluetooth aptX: fixed 352 kbps, 4:1 compression.
+Most core CSR patents have expired. In Bluetooth it is a live stream;
+**there is no standard extension**—.aptx is just ffmpeg's muxer name.",
+        "aptX HD：576kbps / 24bit，主打「高解析蓝牙」。
+带宽够了，但仍然是 4:1 压缩，不等于无损。
+.aptxhd 同样是 ffmpeg 自己定的，不是通用后缀。" => "aptX HD: 576 kbps / 24-bit, marketed as hi-res Bluetooth.
+Enough bandwidth, but still 4:1 compression—not lossless.
+.aptxhd is also ffmpeg's own extension, not a standard.",
+        "蓝牙 A2DP 的「最低配」编码，任何蓝牙音频设备都必须支持。
+质量大致相当于 MP3 128kbps，胜在兼容性。
+.sbc 也是 ffmpeg 习惯，蓝牙标准里没有规定文件名。" => "The baseline Bluetooth A2DP codec every audio device must support.
+Roughly MP3 128 kbps quality; its strength is compatibility.
+.sbc is an ffmpeg convention; Bluetooth defines no file extension.",
+        "世嘉 Dreamcast、PS2 时代大量用过的游戏音频（CRI ADX）。
+4-bit ADPCM，文件头是 `80 00`，很多游戏解包工具认这个。
+想听老游戏原声、或者往老引擎里塞音频时用。" => "Game audio used heavily on Dreamcast and PS2 (CRI ADX).
+4-bit ADPCM with an `80 00` header, recognized by many extractors.
+Useful for old game soundtracks or feeding old engines.",
+        "把 FLAC 装进 Ogg 容器里（RFC 5334 里的 `.oga` 涵盖 Ogg FLAC）。
+压缩和原生 FLAC 一样，但认它的播放器少得多。
+除非某个老工具只吃 .oga，否则用原生 FLAC。" => "FLAC inside an Ogg container (RFC 5334 `.oga` covers Ogg FLAC).
+Same compression as native FLAC, but far fewer players accept it.
+Use native FLAC unless an old tool requires .oga.",
+        "Meridian Lossless Packing，Dolby TrueHD 的核心编码。
+无损、支持多声道，DVD-Audio 时代的东西。
+ffmpeg 把它标成实验性，所以固定带 `-strict -2`。" => "Meridian Lossless Packing, the core codec of Dolby TrueHD.
+Lossless, multichannel, from the DVD-Audio era.
+ffmpeg marks it experimental, so `-strict -2` is always added.",
+        "WMA 的第一版（v1），比常见的 v2 更老。
+只有要喂 2003 年前后的老播放器/车机时才需要。" => "The first WMA version (v1), older than the common v2.
+Only needed for players or car stereos from around 2003.",
+        "WavPack 的混合（hybrid）有损模式：出一份有损主文件，
+配上 .wvc 校正文件就能无损还原。
+本程序只写主文件、不生成 .wvc。
+ffmpeg 的 wavpack 编码器不支持 hybrid，所以走官方 wavpack.exe（外部工具）。" => "WavPack hybrid lossy mode: a lossy main file,
+plus an optional .wvc correction file for lossless restore.
+This app writes only the main file, no .wvc.
+ffmpeg's wavpack encoder has no hybrid mode, so the official wavpack.exe is used.",
+        "Westwood Studios 游戏（命令与征服、红警）的 ADPCM 音频。
+老游戏语音/音效常用 .aud，4-bit 差分、单声道居多。
+无损源转过去会掉细节，只适合替换/还原老游戏资源。" => "ADPCM audio from Westwood games (Command & Conquer, Red Alert).
+Old game speech/SFX often use .aud: 4-bit delta, mostly mono.
+Detail is lost; mainly for replacing old game assets.",
+        "Simon & Schuster 的 VAG 容器（.kvag），IMA ADPCM。
+和 PS2 VAG 不是一回事；只对老游戏/老工具链有用。
+这里固定 22.05kHz 单声道。" => "Simon & Schuster's VAG container (.kvag), IMA ADPCM.
+Not the same as PS2 VAG; only useful for old games and tools.
+Fixed 22.05 kHz mono here.",
+        "Argonaut Games 的 ASF 容器（Croc 等游戏用过），ADPCM。
+和微软 ASF/WMA 不是一回事；这里固定 22.05kHz 单声道。
+只对老游戏资源替换有用。" => "Argonaut Games' ASF container (used by Croc and others), ADPCM.
+Not Microsoft ASF/WMA; fixed 22.05 kHz mono here.
+Only useful for replacing old game assets.",
+        "Ubisoft Rayman 2 的音频容器，装的是 IMA ADPCM。
+当年为省空间做的 4-bit 差分，音质一般。
+只对老游戏解包/替换音频有用，日常听歌别选它。" => "Ubisoft Rayman 2's audio container, holding IMA ADPCM.
+A 4-bit delta format made to save space; average quality.
+Only for unpacking or replacing old game audio—not everyday listening.",
+        "无损压缩，体积约为 WAV 的 55~65%。
+解码后与原始 PCM 逐比特一致。
+无专利，任何软件都能放。归档首选。" => "Lossless compression, about 55–65% of WAV size.
+Decodes bit-for-bit identical to the original PCM.
+No patents, plays everywhere. The default for archiving.",
+        "里面装的就是 LPCM（线性 PCM），未压缩。
+体积最大，兼容性最好——任何软件都认。
+适合还要再编辑的素材。" => "Uncompressed LPCM inside.
+Largest files, best compatibility—every tool reads it.
+Good for material that will be edited further.",
+        "Apple 的无损格式，压缩率和 FLAC 相当。
+只在你需要塞进 Apple 生态时才选它。" => "Apple's lossless format, compression comparable to FLAC.
+Choose it when you need to fit into Apple's ecosystem.",
+        "Apple 的未压缩格式，和 WAV 等价。
+区别只是字节序：AIFF 大端，WAV 小端。" => "Apple's uncompressed format, equivalent to WAV.
+The only difference is byte order: AIFF big-endian, WAV little-endian.",
+        "开源无损，压缩率比 FLAC 略好一点。
+小众，播放器支持不如 FLAC 广。" => "Open-source lossless, slightly better compression than FLAC.
+Niche; fewer players support it than FLAC.",
+        "True Audio，结构极简的无损格式。
+编码速度慢，压缩率一般。" => "True Audio, a minimal lossless format.
+Slow encoding, average compression.",
+        "Apple 的 Core Audio Format，未压缩。
+比 WAV 更耐大文件，Mac 录音常用。" => "Apple's Core Audio Format, uncompressed.
+Handles huge files better than WAV; common for Mac recording.",
+        "Sony Wave64，未压缩。
+WAV 超过 4GB 会坏，长时间录音必须用它。" => "Sony Wave64, uncompressed.
+WAV breaks past 4 GB; use this for long recordings.",
+        "没有文件头，采样数据裸奔。
+参数（位深/声道/采样率）全靠约定，
+播放器大概率认不出来，是喂硬件用的。" => "No file header, just raw samples.
+Bit depth/channels/sample rate are by convention only;
+most players cannot guess them—this is for feeding hardware.",
+        "杜比的无损音频（蓝光常用）。
+用 ffmpeg 的 truehd 编码器输出 .thd；
+不携带 Atmos 对象元数据，只是无损声道。" => "Dolby's lossless audio (common on Blu-ray).
+Uses ffmpeg's truehd encoder to write .thd;
+no Atmos object metadata, just lossless channels.",
+        "1993 年的有损格式，专利 2017 年全部到期。
+兼容性无敌，音质全看码率。" => "The 1993 lossy format; all patents expired by 2017.
+Unbeatable compatibility; quality depends on bitrate.",
+        "2012 年的开源有损格式。
+64kbps 就能打平 MP3 128kbps。
+新项目首选，但老播放器可能不认。" => "Open-source lossy format from 2012.
+64 kbps roughly matches MP3 at 128 kbps.
+First choice for new projects, but old players may not support it.",
+        "Ogg 里装的老牌开源有损格式。
+游戏行业用得多，现在基本被 Opus 取代。" => "The veteran open-source lossy format in Ogg.
+Common in games, now largely replaced by Opus.",
+        "MP3 的前身，MPEG-1 Layer II。
+广播和早期 DVD 用，现在几乎没人用。" => "MP3's predecessor, MPEG-1 Layer II.
+Used in broadcasting and early DVD; rarely seen now.",
+        "比 MP3 更高效，同码率通常更好听。
+车载和手机兼容性比 Opus 好。" => "More efficient than MP3, usually better at the same bitrate.
+Better car/phone compatibility than Opus.",
+        "Windows Media Audio，2000 年代 Windows 自带。
+本项目可编码（wmav2，默认 192kbps）；
+兼容性不如 MP3，新项目建议 Opus。" => "Windows Media Audio, bundled with Windows in the 2000s.
+This app can encode it (wmav2, default 192 kbps);
+less compatible than MP3—prefer Opus for new projects.",
+        "WMA 的多声道/高码率分支。
+微软推过一阵，没成主流，只解码。" => "WMA's multichannel/high-bitrate branch.
+Microsoft pushed it for a while; never mainstream. Decode only.",
+        "1999 年的有损格式，以\"透明\"著称（180kbps 档常被盲听当成无损）。
+2000 年代败给 MP3，现在只有官方 mpcenc 还能编。" => "A 1999 lossy format famous for transparency (180 kbps often passes blind tests as lossless).
+Lost to MP3 in the 2000s; only the official mpcenc still encodes it.",
+        "1997 年 RealPlayer 的流媒体音频。
+老 .ra/.rm 文件常见，只解码。" => "RealPlayer streaming audio from 1997.
+Common in old .ra/.rm files. Decode only.",
+        "AAC + SBR，低码率靠频带复制保留高频。
+频谱截止法对它失效，只解码。" => "AAC + SBR: spectral band replication preserves highs at low bitrates.
+The cutoff heuristic does not apply. Decode only.",
+        "AAC 系最新一代（USAC），流媒体/广播用。
+低码率仍保留全带宽，只解码。" => "The newest AAC generation (USAC), used for streaming/broadcast.
+Keeps full bandwidth at low bitrates. Decode only.",
+        "Quite OK Audio（QOA）：4-bit LMS 有损编码，约 3.5 bit/样本。
+解码极快、实现只有几百行，适合独立游戏和嵌入式；
+不是高保真格式，认它的播放器还很少。" => "Quite OK Audio: 4-bit LMS lossy coding, about 3.5 bits/sample.
+Very fast to decode and only a few hundred lines, good for indie games and embedded;
+not hi-fi, and few players support it.",
         _ => key,
     }
 }

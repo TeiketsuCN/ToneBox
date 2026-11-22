@@ -156,7 +156,7 @@ impl App {
                                             return;
                                         };
                                         ui.label(
-                                            RichText::new(spec.name).size(20.0).color(TEXT).strong(),
+                                            RichText::new(crate::i18n::tr(spec.name)).size(20.0).color(TEXT).strong(),
                                         );
                                         ui.add_space(6.0);
                                         ui.horizontal(|ui| {
@@ -244,7 +244,7 @@ impl App {
                                         ui.add_space(6.0);
 
                                         let text = fc_core::long_blurb(spec.id)
-                                            .unwrap_or(spec.blurb);
+                                            .unwrap_or_else(|| crate::i18n::tr(spec.blurb));
                                         ui.add(
                                             egui::Label::new(
                                                 RichText::new(text).size(11.0).color(MUTED),

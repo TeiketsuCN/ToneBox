@@ -3146,6 +3146,30 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
     // 诊断/脚本用：在资源管理器里定位文件（和库里按钮同一条路径）
+    // 诊断：英文词典覆盖率（格式说明 / 分组标题）
+    if args.first().map(|s| s.as_str()) == Some("--i18n-check") {
+        i18n::set_lang("en");
+        let all: Vec<_> = fc_core::all().collect();
+        let missing: Vec<&str> = all
+            .iter()
+            .filter(|f| crate::i18n::tr(f.blurb) == f.blurb)
+            .map(|f| f.id)
+            .collect();
+        println!(
+            "blurbs: {}/{} translated; missing {}",
+            all.len() - missing.len(),
+            all.len(),
+            missing.join(", ")
+        );
+        let mut group_missing = Vec::new();
+        for g in fc_core::Group::all() {
+            if crate::i18n::tr(g.title()) == g.title() {
+                group_missing.push(g.title());
+            }
+        }
+        println!("groups missing: {:?}", group_missing);
+        return Ok(());
+    }
     if args.first().map(|s| s.as_str()) == Some("--reveal") {
         if let Some(p) = args.get(1) {
             library::reveal_in_explorer(Path::new(p));
