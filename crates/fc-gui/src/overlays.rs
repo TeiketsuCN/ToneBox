@@ -1060,6 +1060,33 @@ impl App {
                                 );
                             }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let failed = self
+                                    .tasks
+                                    .iter()
+                                    .filter(|t| matches!(t.state, State::Failed(_)))
+                                    .count();
+                                if failed > 0 && !self.running {
+                                    let rb = egui::Button::new(
+                                        RichText::new(crate::fmt2!(
+                                            "重试失败 ({failed})",
+                                            "Retry failed ({failed})"
+                                        ))
+                                        .size(9.5)
+                                        .color(MUTED),
+                                    )
+                                    .fill(Color32::TRANSPARENT)
+                                    .stroke(line(Color32::WHITE, 20))
+                                    .rounding(Rounding::same(8.0));
+                                    if ui.add(rb).clicked() {
+                                        for t in &mut self.tasks {
+                                            if matches!(t.state, State::Failed(_)) {
+                                                t.state = State::Pending;
+                                            }
+                                        }
+                                        self.start_batch(ui.ctx());
+                                    }
+                                    ui.add_space(6.0);
+                                }
                                 let can = !self.running
                                     && self.tools.is_some()
                                     && pending > 0;

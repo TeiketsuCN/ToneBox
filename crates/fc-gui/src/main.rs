@@ -1576,7 +1576,8 @@ impl App {
                         let _ = tx.send(Msg::Done(idx, out, size));
                     }
                     Err(e) => {
-                        let _ = tx.send(Msg::Failed(idx, format!("{e:#}")));
+                        let msg = format!("{e:#}");
+                        let _ = tx.send(Msg::Failed(idx, format!("[{}] {msg}", classify_error(&msg))));
                     }
                 }
                 ctx2.request_repaint();
@@ -3509,5 +3510,37 @@ mod output_policy_tests {
         assert_eq!(p.file_name().unwrap(), "song.flac");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+/// 失败原因的大类，给任务列表一个一眼能懂的前缀。
+fn classify_error(msg: &str) -> &'static str {
+    let m = msg.to_ascii_lowercase();
+    if msg.contains("找不到") || m.contains("not found") || m.contains("no such file") {
+        crate::tr2!("缺少外部工具", "Missing tool")
+    } else if msg.contains("解码") || m.contains("decode") || m.contains("invalid data") {
+        crate::tr2!("输入解码失败", "Input decode")
+    } else if m.contains("no space") || msg.contains("磁盘") {
+        crate::tr2!("磁盘空间不足", "Disk full")
+    } else if msg.contains("自检") || m.contains("verify") {
+        crate::tr2!("输出自检失败", "Output self-check")
+    } else if m.contains("encoder") || msg.contains("编码") {
+        crate::tr2!("编码失败", "Encoder")
+    } else {
+        crate::tr2!("转换失败", "Conversion")
+    }
+}
+
+#[cfg(test)]
+mod error_classify_tests {
+    use super::classify_error;
+
+    #[test]
+    fn classifies_common_failures() {
+        assert_eq!(classify_error("找不到 atracdenc"), "缺少外部工具");
+        assert_eq!(classify_error("ffmpeg 解码失败"), "输入解码失败");
+        assert_eq!(classify_error("磁盘空间不足"), "磁盘空间不足");
+        assert_eq!(classify_error("输出自检没通过"), "输出自检失败");
+        assert_eq!(classify_error("encoder not found"), "缺少外部工具");
+        assert_eq!(classify_error("something weird"), "转换失败");
     }
 }
