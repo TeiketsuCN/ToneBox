@@ -278,6 +278,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - **转换后自检**：每个输出都重新 probe，坏文件/时长离谱直接标失败，不假装成功
 - **ReplayGain 标签写入**：源文件的 `replaygain_track_gain` 会带进 FLAC / MP3 等输出
 - **CUE 分轨**：`--split-cue album.cue --to flac --out-dir out`，或设置页「CUE 分轨」按钮；按 TRACK/INDEX 切轨并写轨号/标题/艺术家
+- **English UI**：设置页 Language 切换中英，或 `--lang en`；界面、格式说明、内容体检、质量提示、百科长文均已英文化
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）

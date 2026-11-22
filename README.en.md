@@ -1,4 +1,4 @@
-# ToneBox — an audio format advisor and converter
+﻿# ToneBox — an audio format advisor and converter
 
 > A converter that tells you what a conversion will cost **before** you commit.
 >
@@ -296,6 +296,8 @@ the first build takes roughly 20–40 minutes.
 - **ReplayGain tag writing**: source `replaygain_track_gain` is carried into FLAC / MP3 outputs
 - **CUE splitting**: `--split-cue album.cue --to flac --out-dir out`, or the Settings button; writes
   track number / title / artist
+- **English UI**: switch language in Settings, or launch with `--lang en`; the interface, format blurbs,
+  content-health checks, quality warnings and encyclopedia articles are all available in English
 
 ### 1.6.1 (2026-11)
 - Output targets **106 → 107**: N64 VADPCM (`.aifc`, external vadpcm, MPL-2.0)

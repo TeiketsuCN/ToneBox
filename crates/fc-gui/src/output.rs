@@ -1083,7 +1083,7 @@ impl App {
                         }
                     }
                 });
-                out_hint(ui, fc_core::channel_note(self.target), DIM);
+                out_hint(ui, crate::i18n::tr(fc_core::channel_note(self.target)), DIM);
             }
             Knob::BitDepth => {
                 let depths = fc_core::bit_depths_for(self.target);

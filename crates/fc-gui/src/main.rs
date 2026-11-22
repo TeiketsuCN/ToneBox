@@ -647,6 +647,7 @@ impl App {
         }
         fc_analyze::health::set_en(i18n::is_en());
         fc_core::format::set_en(i18n::is_en());
+        fc_core::wiki::set_en(i18n::is_en());
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
         // 注意：窗口尺寸这里不能再动。
@@ -2589,6 +2590,7 @@ fn main() -> eframe::Result<()> {
         i18n::set_lang(&lang);
         fc_analyze::health::set_en(i18n::is_en());
         fc_core::format::set_en(i18n::is_en());
+        fc_core::wiki::set_en(i18n::is_en());
     }
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
@@ -3199,6 +3201,7 @@ fn main() -> eframe::Result<()> {
             }
         }
         println!("groups missing: {:?}", group_missing);
+        println!("wiki en entries: {}", fc_core::wiki_en::TABLE.len());
         return Ok(());
     }
     if args.first().map(|s| s.as_str()) == Some("--reveal") {

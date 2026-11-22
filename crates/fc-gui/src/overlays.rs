@@ -899,6 +899,7 @@ impl App {
                                         crate::i18n::set_lang("zh");
                                         fc_analyze::health::set_en(false);
                                         fc_core::format::set_en(false);
+                                        fc_core::wiki::set_en(false);
                                         self.cfg.save();
                                         ui.ctx().request_repaint();
                                     }
@@ -910,6 +911,7 @@ impl App {
                                         crate::i18n::set_lang("en");
                                         fc_analyze::health::set_en(true);
                                         fc_core::format::set_en(true);
+                                        fc_core::wiki::set_en(true);
                                         self.cfg.save();
                                         ui.ctx().request_repaint();
                                     }

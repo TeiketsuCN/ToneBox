@@ -8,7 +8,17 @@
 //! `can_encode` 是产品开关，不是技术能力；文案里可以说明“ffmpeg 能编但本工具不提供”。
 
 /// 查一个格式的长文案。没有就返回 `None`，界面回退到 `FormatSpec.blurb`。
+use std::sync::atomic::{AtomicBool, Ordering};
+static EN: AtomicBool = AtomicBool::new(false);
+pub fn set_en(v: bool) { EN.store(v, Ordering::Relaxed); }
+fn en() -> bool { EN.load(Ordering::Relaxed) }
+
 pub fn long_blurb(id: &str) -> Option<&'static str> {
+    if en() {
+        if let Some((_, v)) = crate::wiki_en::TABLE.iter().find(|(k, _)| *k == id) {
+            return Some(*v);
+        }
+    }
     TABLE.iter().find(|(k, _)| *k == id).map(|(_, v)| *v)
 }
 

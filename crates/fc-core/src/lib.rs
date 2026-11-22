@@ -11,6 +11,7 @@ pub mod identify;
 pub mod tags;
 pub mod metadata;
 pub mod wiki;
+pub mod wiki_en;
 pub mod dsd;
 pub mod loudness;
 pub mod ncm;
