@@ -6,7 +6,7 @@
 
 [English (short)](README.en.md) · [English (full)](#english) · [简体中文](README.md)
 
-![版本](https://img.shields.io/badge/版本-1.7.1-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.8.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL--2.1%20(随包)-orange)
@@ -52,8 +52,8 @@
 
 | 版本 | 包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.7.1** | [ToneBox-1.7.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-win64.zip) | 28.3 MB | `CB3069E9EB6B59B22907CA481D3CB934F0B3C1C912EB2EC4BBCAAD7C05A74A5C` |
-| 1.7.1 可选工具 | [ToneBox-1.7.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-extras-win64.zip) | 13.1 MB | `DFFB7C923DF042B1FF13BA082C1B2ED7C93BB6BB7279C7E12E4367BC71DACF67` |
+| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
+| 1.8.0 可选工具 | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
 
 - **Windows 10 / 11 x64**，解压即用，不需要安装
 - 解压后双击 `format-converter.exe`；不要单独移动 `ffmpeg\`、`speex\`、`wavpack\`、`musepack\` 四个目录
@@ -66,7 +66,7 @@
 
 ### 可选外部工具包（单独下载）
 
-主包不带分发受限或体积较大的工具，需要时另下 `ToneBox-1.7.1-extras-win64.zip`：
+主包不带分发受限或体积较大的工具，需要时另下 `ToneBox-1.8.0-extras-win64.zip`：
 
 | 工具 | 许可 | 用途 |
 |---|---|---|
@@ -188,7 +188,7 @@ format-converter.exe <文件>                     打开并直接试听（双击
 - **校验 SHA256**（PowerShell）：
 
   ```powershell
-  Get-FileHash .\ToneBox-1.7.1-win64.zip -Algorithm SHA256
+  Get-FileHash .\ToneBox-1.8.0-win64.zip -Algorithm SHA256
   ```
 
   和上面的值逐字比对。
@@ -268,6 +268,12 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 ---
 
 ## 更新日志
+
+### 1.8.0（2026-11）
+- 1.8 可靠性：合成测试资产 + 10 例真实编码矩阵、自检真解码、无损 PCM 校验、同名策略、临时清理、错误分类/重试、原子输出
+- 1.9 顾问：Tags 扩展、容器标签能力表与丢失警告、Rule/Prediction 分级、场景推荐（归档/手机/车载/语音）+ 多方案
+- 音乐库：自建歌单（新建/删除/加歌/持久化）
+- 设置页：Display/Behavior/Tools/About 标签，About 独立（版本、GitHub、二维码、许可）；输出摘要不再截断
 
 ### 1.7.1（2026-11）
 - 修复「元数据」折叠区内容不在标题下方：歌词设置移到 Metadata 上方，展开项紧跟标题
@@ -397,8 +403,8 @@ typical use. Read-only formats are greyed out on the left, with a reason on hove
 
 | Version | Package | Size | SHA256 |
 |---|---|---|---|
-| **1.7.1** | [ToneBox-1.7.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-win64.zip) | 28.3 MB | `CB3069E9EB6B59B22907CA481D3CB934F0B3C1C912EB2EC4BBCAAD7C05A74A5C` |
-| 1.7.1 extras | [ToneBox-1.7.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-extras-win64.zip) | 13.1 MB | `DFFB7C923DF042B1FF13BA082C1B2ED7C93BB6BB7279C7E12E4367BC71DACF67` |
+| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
+| 1.7.1 extras | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
 
 - **Windows 10 / 11 x64**, portable, no installation
 - Unzip and run `format-converter.exe`; do not move `ffmpeg\`, `speex\`, `wavpack\`, `musepack\` separately
@@ -413,7 +419,7 @@ change. macOS / Linux are on the roadmap with no ETA; the CLI can theoretically 
 ### Optional extras package
 
 The main package omits tools that are large or have redistribution limits. Grab
-`ToneBox-1.7.1-extras-win64.zip` if you need them:
+`ToneBox-1.8.0-extras-win64.zip` if you need them:
 
 | Tool | License | Purpose |
 |---|---|---|
@@ -540,7 +546,7 @@ Format ids come from `--formats`; `--convert` dispatches to ffmpeg or the matchi
 - **Check SHA256** (PowerShell):
 
   ```powershell
-  Get-FileHash .\ToneBox-1.7.1-win64.zip -Algorithm SHA256
+  Get-FileHash .\ToneBox-1.8.0-win64.zip -Algorithm SHA256
   ```
 
   Compare it with the value above, character by character.

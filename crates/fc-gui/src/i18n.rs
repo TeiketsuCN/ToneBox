@@ -36,7 +36,7 @@ pub fn tr(key: &'static str) -> &'static str {
     }
     match key {
         "声箱ToneBox" => "ToneBox",
-        "版本 1.7.1 · 建议先备份你的文件" => "v1.7.1 · back up your files first",
+        "版本 1.8.0 · 建议先备份你的文件" => "v1.8.0 · back up your files first",
         "建议所有操作备份 · 慎防设备损坏 请自己负责" => "Back up everything; device damage is your own risk",
         "音乐库" => "Library",
         "编解码" => "Encoding",

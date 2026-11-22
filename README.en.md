@@ -6,7 +6,7 @@
 
 [简体中文](README.md) · English
 
-![version](https://img.shields.io/badge/version-1.7.1-2ea44f)
+![version](https://img.shields.io/badge/version-1.8.0-2ea44f)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL--2.1%20(bundled)-orange)
@@ -57,8 +57,8 @@ typical use. Read-only formats are greyed out on the left, with a reason on hove
 
 | Version | Package | Size | SHA256 |
 |---|---|---|---|
-| **1.7.1** | [ToneBox-1.7.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-win64.zip) | 28.3 MB | `CB3069E9EB6B59B22907CA481D3CB934F0B3C1C912EB2EC4BBCAAD7C05A74A5C` |
-| 1.7.1 extras | [ToneBox-1.7.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.1/ToneBox-1.7.1-extras-win64.zip) | 13.1 MB | `DFFB7C923DF042B1FF13BA082C1B2ED7C93BB6BB7279C7E12E4367BC71DACF67` |
+| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
+| 1.8.0 extras | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
 
 - **Windows 10 / 11 x64**, portable, no installation
 - Unzip and run `format-converter.exe`; do not move `ffmpeg\`, `speex\`, `wavpack\`, `musepack\` separately
@@ -73,7 +73,7 @@ change. macOS / Linux are on the roadmap with no ETA; the CLI can theoretically 
 ### Optional extras package
 
 The main package omits tools that are large or have redistribution limits. Grab
-`ToneBox-1.7.1-extras-win64.zip` if you need them:
+`ToneBox-1.8.0-extras-win64.zip` if you need them:
 
 | Tool | License | Purpose |
 |---|---|---|
@@ -200,7 +200,7 @@ Format ids come from `--formats`; `--convert` dispatches to ffmpeg or the matchi
 - **Check SHA256** (PowerShell):
 
   ```powershell
-  Get-FileHash .\ToneBox-1.7.1-win64.zip -Algorithm SHA256
+  Get-FileHash .\ToneBox-1.8.0-win64.zip -Algorithm SHA256
   ```
 
   Compare it with the value above, character by character.
@@ -284,6 +284,12 @@ the first build takes roughly 20–40 minutes.
 ---
 
 ## Changelog
+
+### 1.8.0 (2026-11)
+- 1.8 reliability: synthetic test assets + 10-case conversion matrix, decode self-check, lossless PCM verification, collision policy, temp cleanup, error classification/retry, atomic output
+- 1.9 advisor: extended tags, container tag capability table and loss warnings, Rule/Prediction labels, scenarios (archive/phone/car/voice) with alternatives
+- Library: user playlists (create/delete/add tracks/persisted)
+- Settings: Display/Behavior/Tools/About tabs; About is standalone (version, GitHub, QR codes, license); output summary no longer truncates
 
 ### 1.7.1 (2026-11)
 - Fixed Metadata content not sitting under its header: lyrics moved above Metadata, expanded fields now follow the header
