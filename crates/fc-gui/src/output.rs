@@ -46,6 +46,39 @@ pub(crate) fn hint_below(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
 impl App {
 
     /// 最右一列：输出设置。不属于某个文件，是全局的。
+    /// 场景推荐：归档 / 手机 / 车载 / 语音。
+    fn apply_scenario(&mut self, id: &str) {
+        let fmt = match id {
+            "archive" => "flac",
+            "phone" => "opus",
+            "car" => "mp3",
+            "voice" => "opus",
+            _ => return,
+        };
+        if let Some(spec) = fc_core::by_id(fmt) {
+            self.target = spec;
+            self.ext_sel = spec.ext;
+        }
+        match id {
+            "archive" => {
+                self.cfg.opts.bit_depth = fc_core::BitDepth::Auto;
+                self.cfg.opts.flac_level = 8;
+            }
+            "phone" => {
+                self.cfg.opts.opus_bitrate = 128;
+                self.cfg.opts.channels = fc_core::ChannelMode::Stereo;
+            }
+            "car" => {
+                self.cfg.opts.mp3_bitrate = 320;
+                self.cfg.opts.channels = fc_core::ChannelMode::Stereo;
+            }
+            "voice" => {
+                self.cfg.opts.opus_bitrate = 32;
+            }
+            _ => {}
+        }
+    }
+
     pub(crate) fn output_panel(&mut self, ui: &mut egui::Ui) -> bool {
         ui.set_width(ui.available_width());
         let mut changed = false;
@@ -120,7 +153,7 @@ impl App {
             .iter()
             .filter(|w| w.kind == fc_core::WarningKind::Container)
         {
-            out_hint(ui, &w.body, WARN);
+            out_hint(ui, &format!("[{}] {}", crate::i18n::tr(w.kind.certainty()), w.body), WARN);
         }
         ui.add_space(12.0);
 
@@ -129,6 +162,33 @@ impl App {
         }
 
         ui.add_space(6.0);
+
+        // 场景：先问“拿去干嘛”，再落到格式，而不是让用户先猜格式
+        ui.label(RichText::new(crate::tr!("场景")).size(9.0).color(DIM));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+            for (id, label) in [
+                ("archive", crate::tr2!("归档", "Archive")),
+                ("phone", crate::tr2!("手机", "Phone")),
+                ("car", crate::tr2!("车载", "Car")),
+                ("voice", crate::tr2!("语音", "Voice")),
+            ] {
+                if seg_button(ui, label, false) {
+                    self.apply_scenario(id);
+                    changed = true;
+                }
+            }
+        });
+        hint_below(
+            ui,
+            crate::tr2!(
+                "场景会套用推荐格式和参数；设备兼容性仍需自己确认。",
+                "Scenarios apply a recommended format and settings; verify device support yourself."
+            ),
+            DIM,
+        );
+        ui.add_space(10.0);
 
         // 预设
         ui.label(RichText::new(crate::tr!("预设")).size(9.0).color(DIM));
@@ -313,7 +373,7 @@ impl App {
             };
             for kind in here {
                 for w in warnings.iter().filter(|w| w.kind == *kind) {
-                    hint_below(ui, &w.body, WARN);
+                    hint_below(ui, &format!("[{}] {}", crate::i18n::tr(w.kind.certainty()), w.body), WARN);
                 }
             }
             // 采样率方向已经有具体提示了，就别再重复一行通用说明
@@ -331,7 +391,7 @@ impl App {
         }
         // 兜底：这个格式没有对应旋钮时，别把提示悄悄吞掉
         for w in warnings.iter().filter(|w| !shown.contains(&w.kind)) {
-            hint_below(ui, &w.body, WARN);
+            hint_below(ui, &format!("[{}] {}", crate::i18n::tr(w.kind.certainty()), w.body), WARN);
         }
         if fc_core::is_video(self.target) {
             hint_below(ui, crate::i18n::tr(fc_core::video_knob_note(self.target.id)), DIM);

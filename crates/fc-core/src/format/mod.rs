@@ -392,6 +392,16 @@ pub enum WarningKind {
     BitDepthUp,
 }
 
+impl WarningKind {
+    /// 这条提示是“确定规则”还是“预测/经验”。
+    pub fn certainty(self) -> &'static str {
+        match self {
+            WarningKind::Container | WarningKind::Lossy => "规则",
+            _ => "预测",
+        }
+    }
+}
+
 /// 源文件 → 目标格式 的质量风险。
 ///
 /// 只依赖「有没有损 + 码率 + 采样率」，不判断内容：与其猜"掉多少细节"，

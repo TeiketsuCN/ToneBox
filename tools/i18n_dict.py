@@ -755,6 +755,9 @@ D.update({
 
 D.update({
     "目标已存在": "If output exists",
+    "场景": "Scenario",
+    "规则": "Rule",
+    "预测": "Prediction",
     "输出已存在（设置为跳过）": "Output exists (set to skip)",
 })
 
