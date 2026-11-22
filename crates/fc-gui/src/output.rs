@@ -54,7 +54,9 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(RichText::new(crate::tr!("输出")).size(11.0).color(DIM));
             ui.add_space(6.0);
-            ui.add(
+            let summary_w = (ui.available_width() - 96.0).max(60.0);
+            ui.add_sized(
+                [summary_w, 18.0],
                 egui::Label::new(
                     RichText::new(format!(
                         "{} .{} · {}",
@@ -505,6 +507,33 @@ impl App {
             para(ui, crate::tr!("删了就找不回来了，谨慎。"), 8.5, DANGER);
         }
 
+        // 歌词 sidecar：和「元数据」同级，始终露出，不藏在展开区里；默认不生成
+        ui.add_space(8.0);
+        ui.label(RichText::new(crate::tr!("歌词文件")).size(9.5).color(MUTED));
+        ui.horizontal(|ui| {
+            if radio_dot_inline(ui, crate::tr!("不生成"), self.cfg.lyric_mode == crate::settings::LyricMode::None) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::None;
+                changed = true;
+            }
+            ui.add_space(8.0);
+            if radio_dot_inline(ui, crate::tr!("同名空白 .lyc"), self.cfg.lyric_mode == crate::settings::LyricMode::Lyc) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::Lyc;
+                changed = true;
+            }
+            ui.add_space(8.0);
+            if radio_dot_inline(ui, crate::tr!("同名空白 .txt"), self.cfg.lyric_mode == crate::settings::LyricMode::Txt) {
+                self.cfg.lyric_mode = crate::settings::LyricMode::Txt;
+                changed = true;
+            }
+        });
+        para(
+            ui,
+            crate::tr!("在输出文件旁生成同名空文件；已有同名不覆盖。"),
+            8.5,
+            DIM,
+        );
+        ui.add_space(4.0);
+
         ui.add_space(14.0);
         // 折叠头：整行可点，右侧画三角
         let (hrect, hresp) = ui.allocate_exact_size(
@@ -563,33 +592,6 @@ impl App {
             self.meta_open = !self.meta_open;
         }
         ui.add_space(2.0);
-
-        // 歌词 sidecar：和「元数据」同级，始终露出，不藏在展开区里；默认不生成
-        ui.add_space(8.0);
-        ui.label(RichText::new(crate::tr!("歌词文件")).size(9.5).color(MUTED));
-        ui.horizontal(|ui| {
-            if radio_dot_inline(ui, crate::tr!("不生成"), self.cfg.lyric_mode == crate::settings::LyricMode::None) {
-                self.cfg.lyric_mode = crate::settings::LyricMode::None;
-                changed = true;
-            }
-            ui.add_space(8.0);
-            if radio_dot_inline(ui, crate::tr!("同名空白 .lyc"), self.cfg.lyric_mode == crate::settings::LyricMode::Lyc) {
-                self.cfg.lyric_mode = crate::settings::LyricMode::Lyc;
-                changed = true;
-            }
-            ui.add_space(8.0);
-            if radio_dot_inline(ui, crate::tr!("同名空白 .txt"), self.cfg.lyric_mode == crate::settings::LyricMode::Txt) {
-                self.cfg.lyric_mode = crate::settings::LyricMode::Txt;
-                changed = true;
-            }
-        });
-        para(
-            ui,
-            crate::tr!("在输出文件旁生成同名空文件；已有同名不覆盖。"),
-            8.5,
-            DIM,
-        );
-        ui.add_space(4.0);
 
         if self.meta_open {
             ui.horizontal(|ui| {
@@ -710,11 +712,19 @@ impl App {
                     .unwrap_or_else(|| crate::tr!("沿用源文件").into());
                 ui.label(RichText::new(name).size(9.0).color(DIM));
             });
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                let pick = egui::Button::new(RichText::new(crate::tr!("选图片…")).size(9.5))
+                    .fill(tint(Color32::WHITE, 10))
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(7.0));
+                let clear = egui::Button::new(RichText::new(crate::tr!("清除")).size(9.0))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(7.0));
                 if ui
                     .add_sized(
-                        [(ui.available_width() - 46.0).max(50.0), 22.0],
-                        egui::Button::new(RichText::new(crate::tr!("选图片…")).size(9.5)),
+                        [(ui.available_width() - 64.0).max(60.0), 22.0],
+                        pick,
                     )
                     .clicked()
                 {
@@ -726,10 +736,7 @@ impl App {
                         changed = true;
                     }
                 }
-                if ui
-                    .add_sized([42.0, 22.0], egui::Button::new(RichText::new(crate::tr!("清除")).size(9.0)))
-                    .clicked()
-                {
+                if ui.add_sized([56.0, 22.0], clear).clicked() {
                     self.cfg.meta_cover.clear();
                     changed = true;
                 }

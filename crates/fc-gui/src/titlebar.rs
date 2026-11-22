@@ -101,7 +101,7 @@ impl App {
             TEXT,
         );
         // 版本与风险提示（测试版，所有操作请自行备份）
-        let beta_text = crate::i18n::tr("版本 1.7.0 · 建议先备份你的文件");
+        let beta_text = crate::i18n::tr("版本 1.7.1 · 建议先备份你的文件");
         let beta_font = egui::FontId::proportional(9.0);
         let beta_x = logo.right() + 10.0 + name_w + 16.0;
         ui.painter().text(

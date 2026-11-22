@@ -15,7 +15,7 @@ $src = Split-Path -Parent $PSScriptRoot
 # D 盘没有就装到用户目录（新机器可能只有 C:）
 $AppDir = if (Test-Path 'D:\') { 'D:\Apps\FormatConverter' } else { Join-Path $env:LOCALAPPDATA 'Programs\FormatConverter' }
 
-$Version  = '1.7.0'
+$Version  = '1.7.1'
 $ExeName  = 'format-converter.exe'
 $Display  = 'ToneBox'
 # 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
