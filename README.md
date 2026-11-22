@@ -1,4 +1,4 @@
-﻿# 声箱 ToneBox
+# 声箱 ToneBox
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -123,6 +123,9 @@ format-converter.exe --tools                   探测 ffmpeg / 各外部编码�
 format-converter.exe --devices                 列出音频设备
 format-converter.exe --play <file> [秒数]       直接试听
 format-converter.exe --health <file>           内容体检
+format-converter.exe --register                注册到「打开方式」
+format-converter.exe --unregister              移除注册
+format-converter.exe <文件>                     打开并直接试听（双击文件的效果）
 ```
 
 格式 id 见 `--formats`；`--convert` 会自动分派给 ffmpeg 或对应的外部编码器。
@@ -206,8 +209,10 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 ## 更新日志
 
 ### 1.7（开发中）
-- 可输出格式 **107 → 110**：新增 **Argonaut ASF**（老游戏语音）、**AMV**（老国产 MP4 播放器）、**SWF**（Flash 动画）
-- vgmstream 输入、双击播放、转换后自检正在做
+- 可输出格式 **107 → 112**：Argonaut ASF、AMV、SWF、GIF、APNG；MOV/MKV/MXF/WebM/AVI 新增 ProRes / FFV1 / DNxHR / VP8 / MJPEG 编码
+- **双击文件直接播放**：带文件路径启动会入队并自动试听
+- **注册到「打开方式」**：`--register` / 设置页按钮；不静默抢默认（Windows 要求用户确认）
+- vgmstream 输入、转换后自检正在做
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）

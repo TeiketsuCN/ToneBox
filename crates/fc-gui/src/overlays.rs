@@ -852,6 +852,42 @@ impl App {
                                     DIM,
                                 );
 
+                                ui.add_space(16.0);
+                                section(ui, "文件关联");
+                                para(
+                                    ui,
+                                    "注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。",
+                                    8.5,
+                                    DIM,
+                                );
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    let mk = |label: &str| {
+                                        egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
+                                            .fill(tint(Color32::WHITE, 10))
+                                            .stroke(line(Color32::WHITE, 18))
+                                            .rounding(Rounding::same(7.0))
+                                    };
+                                    if ui.add(mk("注册到打开方式")).clicked() {
+                                        self.assoc_msg = Some(match crate::assoc::register() {
+                                            Ok(()) => "已注册：右键「打开方式」里能看到 ToneBox。".to_string(),
+                                            Err(e) => format!("注册失败：{e}"),
+                                        });
+                                    }
+                                    if ui.add(mk("移除注册")).clicked() {
+                                        self.assoc_msg = Some(match crate::assoc::unregister() {
+                                            Ok(()) => "已移除注册。".to_string(),
+                                            Err(e) => format!("移除失败：{e}"),
+                                        });
+                                    }
+                                    if ui.add(mk("打开默认应用设置")).clicked() {
+                                        crate::assoc::open_default_apps();
+                                    }
+                                });
+                                if let Some(m) = &self.assoc_msg {
+                                    para(ui, m, 8.5, DIM);
+                                }
+
                                 ui.add_space(18.0);
                                 section(ui, "支持开发");
                                 para(

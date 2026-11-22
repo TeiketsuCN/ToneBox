@@ -32,6 +32,7 @@ mod frame;
 mod settings;
 mod sysstat;
 mod boot;
+mod assoc;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -381,6 +382,10 @@ pub(crate) struct App {
     boot: Option<boot::Boot>,
     /// 命令行带上来的待载入文件，等过场把 tools 备好后才能 probe
     preload: Vec<PathBuf>,
+    /// 启动时带了文件：过场结束后直接试听第一首（双击文件打开的场景）
+    autoplay: bool,
+    /// 文件关联注册的最近一条提示
+    assoc_msg: Option<String>,
     /// 正在看大图的队列下标（None = 没开）
     cover_view: Option<usize>,
     /// 大图开/关的动画进度 0~1
@@ -678,6 +683,8 @@ impl App {
             fullscreen: false,
             boot: Some(boot),
             preload: Vec::new(),
+            autoplay: false,
+            assoc_msg: None,
             cover_view: None,
             cover_t: 0.0,
             cover_closing: false,
@@ -1923,7 +1930,16 @@ impl eframe::App for App {
             )));
             let pre = std::mem::take(&mut self.preload);
             if !pre.is_empty() {
+                let first = pre[0].clone();
                 self.add_files(pre);
+                // 双击文件打开：入队后直接播第一首（过场已经把 tools 备好了）
+                if self.autoplay {
+                    self.autoplay = false;
+                    if let Some(idx) = self.items.iter().position(|i| i.path == first) {
+                        self.selected = idx;
+                        self.start_play(idx);
+                    }
+                }
             }
         }
         self.dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.05);
@@ -2407,6 +2423,8 @@ fn print_usage() {
     println!("  format-converter.exe --warnings <文件>        各格式的质量提示");
     println!("  format-converter.exe --version                显示版本");
     println!("  format-converter.exe --help                   显示本帮助");
+    println!("  format-converter.exe --register               注册到「打开方式」");
+    println!("  format-converter.exe --unregister             移除注册");
 }
 
 fn main() -> eframe::Result<()> {
@@ -2423,7 +2441,9 @@ fn main() -> eframe::Result<()> {
         .first()
         .map(|s| s.starts_with("--") || s == "-h" || s == "-V")
         .unwrap_or(false);
-    if !cli_mode && single::already_running() {
+    // 带文件路径启动（双击/「打开方式」）时不要被已有窗口吞掉：开新窗口播它
+    let has_path_arg = args.iter().any(|a| !a.starts_with('-'));
+    if !cli_mode && !has_path_arg && single::already_running() {
         single::activate_existing();
         return Ok(());
     }
@@ -2436,6 +2456,31 @@ fn main() -> eframe::Result<()> {
     if matches!(args.first().map(|s| s.as_str()), Some("--help") | Some("-h")) {
         print_usage();
         return Ok(());
+    }
+    // 文件关联：给安装脚本/高级用户用，不弹界面
+    if matches!(args.first().map(|s| s.as_str()), Some("--register") | Some("--assoc")) {
+        match assoc::register() {
+            Ok(()) => {
+                println!("已注册到「打开方式」；到系统设置里可以设为默认。");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("注册失败：{e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    if args.first().map(|s| s.as_str()) == Some("--unregister") {
+        match assoc::unregister() {
+            Ok(()) => {
+                println!("已移除 ToneBox 的打开方式注册。");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("移除失败：{e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // 命令行：报告依赖探测结果（排查"为什么 ATRAC 不能选"用）
@@ -3057,6 +3102,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             let mut app = App::new(cc);
             // 队列里每首都要 probe，得等过场把 tools 备好；先存着，过场结束再塞
+            app.autoplay = !preload.is_empty();
             app.preload = preload;
             Ok(Box::new(app))
         }),
