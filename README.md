@@ -1,4 +1,4 @@
-﻿# ToneLore 声识 — 音频格式顾问与转换器
+# ToneLore 声识 — 音频格式顾问与转换器
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -6,7 +6,7 @@
 
 [English (short)](README.en.md) · [English (full)](#english) · [简体中文](README.md)
 
-![版本](https://img.shields.io/badge/版本-2.0.0-2ea44f)
+![版本](https://img.shields.io/badge/版本-2.0.1-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL--2.1%20(随包)-orange)
@@ -52,7 +52,9 @@
 
 | 版本 | 包 | 大小 | SHA256 |
 |---|---|---|---|
-| **2.0.0** | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `60ECA25205AF649CC8EAFAB28DE335305BE7F0ABEE5BBD4A92C60DC95D290B0F` |
+| **2.0.1** | [ToneLore-2.0.1-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.1/ToneLore-2.0.1-win64.zip) | 28.4 MB | `18075D5C078DCEFE98B8728B9312BD5FEB7043B779825C992B8150889249B2EC` |
+| 2.0.1 可选工具 | [ToneLore-2.0.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.1/ToneLore-2.0.1-extras-win64.zip) | 13.1 MB | `D99D9EFFBCE1172EB6B9CDE8A2468180ED50DC231FF15D575C69B691704FC1E0` |
+| 2.0.0 | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `60ECA25205AF649CC8EAFAB28DE335305BE7F0ABEE5BBD4A92C60DC95D290B0F` |
 | 2.0.0 可选工具 | [ToneLore-2.0.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-extras-win64.zip) | 13.1 MB | `AFEF0CECFD63720F1BC0E715BC6011DCE94A20D02A820FB408A283792EF0E405` |
 | **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
 | 1.8.0 可选工具 | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
@@ -271,6 +273,13 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 
 ## 更新日志
 
+### 2.0.1（2026-11）
+- 设置页真正分栏：显示 / 行为 / 依赖工具 / 产出与存储 / 关于各自独立单页
+  （以前点前三个标签都是同一整页，「产出与存储」甚至打不开）
+- 5.1 声道源转 WMA / LC3 / ADX / VOC / Musepack / QOA / OptimFROG 不再失败，自动下混成立体声
+- 验证补齐：112 个输出格式全部通过真实音乐验证；全库 26 首真实歌曲跑核心格式 931/943 通过，
+  12 个失败都是 96k / 单声道 / 5.1 等属性上限（已在 `docs/验证-全库属性矩阵-2026-11-23.md` 记录）
+
 ### 2.0.0（2026-11）
 - 品牌统一为 **ToneLore（声识）**：窗口、启动进度条、关于页、exe、配置目录、文件关联、安装包
 - 旧 `%APPDATA%\FormatConverter` 配置自动迁移到 `%APPDATA%\ToneLore`（歌单/预设不丢）
@@ -410,7 +419,9 @@ typical use. Read-only formats are greyed out on the left, with a reason on hove
 
 | Version | Package | Size | SHA256 |
 |---|---|---|---|
-| **2.0.0** | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `60ECA25205AF649CC8EAFAB28DE335305BE7F0ABEE5BBD4A92C60DC95D290B0F` |
+| **2.0.1** | [ToneLore-2.0.1-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.1/ToneLore-2.0.1-win64.zip) | 28.4 MB | `18075D5C078DCEFE98B8728B9312BD5FEB7043B779825C992B8150889249B2EC` |
+| 2.0.1 可选工具 | [ToneLore-2.0.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.1/ToneLore-2.0.1-extras-win64.zip) | 13.1 MB | `D99D9EFFBCE1172EB6B9CDE8A2468180ED50DC231FF15D575C69B691704FC1E0` |
+| 2.0.0 | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `60ECA25205AF649CC8EAFAB28DE335305BE7F0ABEE5BBD4A92C60DC95D290B0F` |
 | 2.0.0 可选工具 | [ToneLore-2.0.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-extras-win64.zip) | 13.1 MB | `AFEF0CECFD63720F1BC0E715BC6011DCE94A20D02A820FB408A283792EF0E405` |
 | **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
 | 1.7.1 extras | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |

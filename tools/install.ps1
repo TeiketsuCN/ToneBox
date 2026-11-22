@@ -15,7 +15,7 @@ $src = Split-Path -Parent $PSScriptRoot
 # D 盘没有就装到用户目录（新机器可能只有 C:）
 $AppDir = if (Test-Path 'D:\') { 'D:\Apps\ToneLore' } else { Join-Path $env:LOCALAPPDATA 'Programs\ToneLore' }
 
-$Version  = '1.8.0'
+$Version  = '2.0.1'
 $ExeName  = 'ToneLore.exe'
 $Display  = 'ToneLore'
 # 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
