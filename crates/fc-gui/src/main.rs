@@ -860,7 +860,7 @@ impl App {
                             probe_path = tmp.clone();
                             media = Some(tmp);
                         }
-                        Err(e) => eprintln!("vgmstream 解码失败：{e:#}"),
+                        Err(e) => crate::err2!("vgmstream 解码失败：{e:#}", "vgmstream decode failed: {e:#}"),
                     }
                 }
             } else if fc_core::is_module_ext(&p) {
@@ -871,7 +871,7 @@ impl App {
                             probe_path = tmp.clone();
                             media = Some(tmp);
                         }
-                        Err(e) => eprintln!("openmpt123 渲染失败：{e:#}"),
+                        Err(e) => crate::err2!("openmpt123 渲染失败：{e:#}", "openmpt123 render failed: {e:#}"),
                     }
                 }
             }
@@ -2616,11 +2616,11 @@ fn main() -> eframe::Result<()> {
     if matches!(args.first().map(|s| s.as_str()), Some("--register") | Some("--assoc")) {
         match assoc::register() {
             Ok(()) => {
-                println!("已注册到「打开方式」；到系统设置里可以设为默认。");
+                crate::say2!("已注册到「打开方式」；到系统设置里可以设为默认。", "Registered under \"Open with\"; set it as default in Windows Settings.");
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("注册失败：{e}");
+                crate::err2!("注册失败：{e}", "Registration failed: {e}");
                 std::process::exit(1);
             }
         }
@@ -2628,11 +2628,11 @@ fn main() -> eframe::Result<()> {
     if args.first().map(|s| s.as_str()) == Some("--unregister") {
         match assoc::unregister() {
             Ok(()) => {
-                println!("已移除 ToneBox 的打开方式注册。");
+                crate::say2!("已移除 ToneBox 的打开方式注册。", "ToneBox registration removed.");
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("移除失败：{e}");
+                crate::err2!("移除失败：{e}", "Removal failed: {e}");
                 std::process::exit(1);
             }
         }
@@ -2716,15 +2716,15 @@ fn main() -> eframe::Result<()> {
                             args[1] = tmp.to_string_lossy().into_owned();
                             vgm_tmp = Some(tmp);
                         }
-                        Err(e) => eprintln!("输入解码失败，继续用 ffmpeg 试：{e:#}"),
+                        Err(e) => crate::err2!("输入解码失败，继续用 ffmpeg 试：{e:#}", "Input decode failed; falling back to ffmpeg: {e:#}"),
                     }
                 }
             }
         }
         let _vgm_cleanup = TempCleanup(vgm_tmp);
         let (Some(input), Some(output)) = (args.get(1), args.get(2)) else {
-            eprintln!("用法: format-converter --convert <输入> <输出> [--to <格式id>]");
-            eprintln!("例:   format-converter --convert a.flac b.aptx --to aptx");
+            crate::say2!("用法: format-converter --convert <输入> <输出> [--to <格式id>]", "Usage: format-converter --convert <in> <out> [--to <format-id>]");
+            crate::say2!("例:   format-converter --convert a.flac b.aptx --to aptx", "e.g.  format-converter --convert a.flac b.aptx --to aptx");
             std::process::exit(2);
         };
         // --to 可选：不写就是默认目标（FLAC）。id 见左侧输出格式列表。
@@ -2734,11 +2734,11 @@ fn main() -> eframe::Result<()> {
                 match fc_core::by_id(id) {
                     Some(f) if f.can_encode => f,
                     Some(_) => {
-                        eprintln!("{id} 只能读，不能作为输出格式");
+                        crate::err2!("{id} 只能读，不能作为输出格式", "{id} is read-only and cannot be an output target");
                         std::process::exit(2);
                     }
                     None => {
-                        eprintln!("未知格式 id: {id}（试 --formats 看列表）");
+                        crate::err2!("未知格式 id: {id}（试 --formats 看列表）", "Unknown format id: {id} (see --formats)");
                         std::process::exit(2);
                     }
                 }
@@ -2749,12 +2749,13 @@ fn main() -> eframe::Result<()> {
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
             Err(e) => {
-                eprintln!("无法读取: {e:#}");
+                crate::err2!("无法读取: {e:#}", "Cannot read: {e:#}");
                 std::process::exit(1);
             }
         };
-        println!(
+        crate::say2!(
             "输入: {} / {} kbps / {} Hz / {:.1}s",
+            "Input: {} / {} kbps / {} Hz / {:.1}s",
             info.codec_label(),
             info.bitrate_kbps,
             info.sample_rate,
@@ -2778,13 +2779,13 @@ fn main() -> eframe::Result<()> {
                     ) {
                         Ok(_) => external_done = true,
                         Err(e) => {
-                            eprintln!("转换失败: {e:#}");
+                            crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                             std::process::exit(1);
                         }
                     }
                 }
                 None => {
-                    eprintln!("找不到 atracdenc（ATRAC 输出需要它）");
+                    crate::err2!("找不到 atracdenc（ATRAC 输出需要它）", "atracdenc not found (required for ATRAC output)");
                     std::process::exit(1);
                 }
             }
@@ -2800,12 +2801,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 speexenc");
+                    crate::err2!("找不到 speexenc", "speexenc not found");
                     std::process::exit(1);
                 }
             }
@@ -2822,12 +2823,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 wavpack.exe");
+                    crate::err2!("找不到 wavpack.exe", "wavpack.exe not found");
                     std::process::exit(1);
                 }
             }
@@ -2844,12 +2845,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 mpcenc.exe");
+                    crate::err2!("找不到 mpcenc.exe", "mpcenc.exe not found");
                     std::process::exit(1);
                 }
             }
@@ -2866,12 +2867,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 ofr.exe（OptimFROG 输出需要它）");
+                    crate::err2!("找不到 ofr.exe（OptimFROG 输出需要它）", "ofr.exe not found (required for OptimFROG output)");
                     std::process::exit(1);
                 }
             }
@@ -2888,12 +2889,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 psxavenc.exe（PS1 XA / PS2 VAG 输出需要它）");
+                    crate::err2!("找不到 psxavenc.exe（PS1 XA / PS2 VAG 输出需要它）", "psxavenc.exe not found (required for PS1 XA / PS2 VAG output)");
                     std::process::exit(1);
                 }
             }
@@ -2909,12 +2910,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 qoaconv.exe（QOA 输出需要它）");
+                    crate::err2!("找不到 qoaconv.exe（QOA 输出需要它）", "qoaconv.exe not found (required for QOA output)");
                     std::process::exit(1);
                 }
             }
@@ -2930,12 +2931,12 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 VGAudioCli.exe（BRSTM/BCSTM/BFSTM/DSP/IDSP 输出需要它）");
+                    crate::err2!("找不到 VGAudioCli.exe（BRSTM/BCSTM/BFSTM/DSP/IDSP 输出需要它）", "VGAudioCli.exe not found (required for BRSTM/BCSTM/BFSTM/DSP/IDSP output)");
                     std::process::exit(1);
                 }
             }
@@ -2951,18 +2952,18 @@ fn main() -> eframe::Result<()> {
                 ) {
                     Ok(_) => external_done = true,
                     Err(e) => {
-                        eprintln!("转换失败: {e:#}");
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
                         std::process::exit(1);
                     }
                 },
                 None => {
-                    eprintln!("找不到 vadpcm.exe（N64 VADPCM 输出需要它）");
+                    crate::err2!("找不到 vadpcm.exe（N64 VADPCM 输出需要它）", "vadpcm.exe not found (required for N64 VADPCM output)");
                     std::process::exit(1);
                 }
             }
         }
         if external_done {
-            println!("完成: {output}");
+            crate::say2!("完成: {output}", "Done: {output}");
             return Ok(());
         }
         // 带上源信息：视频容器要靠它决定"能不能直接 copy"，
@@ -2995,7 +2996,7 @@ fn main() -> eframe::Result<()> {
                     "gif" => fc_core::VideoCodec::Gif,
                     "apng" => fc_core::VideoCodec::Apng,
                     other => {
-                        eprintln!("未知视频编码: {other}");
+                        crate::err2!("未知视频编码: {other}", "Unknown video codec: {other}");
                         std::process::exit(2);
                     }
                 };
@@ -3024,14 +3025,14 @@ fn main() -> eframe::Result<()> {
             info.duration_s,
             Box::new(|_| {}),
         ) {
-            eprintln!("转换失败: {e:#}");
+            crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
             std::process::exit(1);
         }
         if let Err(why) = fc_core::verify_output(&tools, Path::new(output), info.duration_s) {
-            eprintln!("文件已生成，但自检没通过：{why}");
+            crate::err2!("文件已生成，但自检没通过：{why}", "File written, but self-check failed: {why}");
             std::process::exit(1);
         }
-        println!("完成: {output}");
+        crate::say2!("完成: {output}", "Done: {output}");
         return Ok(());
     }
 
@@ -3040,7 +3041,7 @@ fn main() -> eframe::Result<()> {
         match fc_player::devices::list() {
             Ok(list) => {
                 if list.is_empty() {
-                    println!("没有检测到音频设备");
+                    crate::say2!("没有检测到音频设备", "No audio devices detected");
                 }
                 for d in list {
                     println!(
@@ -3056,7 +3057,7 @@ fn main() -> eframe::Result<()> {
                     );
                 }
             }
-            Err(e) => eprintln!("枚举设备失败: {e:#}"),
+            Err(e) => crate::err2!("枚举设备失败: {e:#}", "Device enumeration failed: {e:#}"),
         }
         return Ok(());
     }
@@ -3076,9 +3077,9 @@ fn main() -> eframe::Result<()> {
         #[cfg(windows)]
         print!("{}", fc_player::asio::describe());
         println!("Core Audio：{}", fc_player::core_audio::status_line());
-        println!("自研引擎：可用（自己的重采样 + 环形缓冲 + WASAPI 共享）");
+        crate::say2!("自研引擎：可用（自己的重采样 + 环形缓冲 + WASAPI 共享）", "Custom engine: available (own resampler + ring buffer + WASAPI shared)");
         let cfg_e = settings::Settings::load();
-        println!("当前配置的引擎：{}", cfg_e.engine_enum().label());
+        crate::say2!("当前配置的引擎：{}", "Configured engine: {}", cfg_e.engine_enum().label());
         return Ok(());
     }
     if args.first().map(|s| s.as_str()) == Some("--tools") {
@@ -3087,11 +3088,11 @@ fn main() -> eframe::Result<()> {
                 println!("ffmpeg : {}", t.ffmpeg.display());
                 println!("ffprobe: {}", t.ffprobe.display());
             }
-            None => println!("没找到 ffmpeg（需要 ffmpeg.exe + ffprobe.exe）"),
+            None => crate::say2!("没找到 ffmpeg（需要 ffmpeg.exe + ffprobe.exe）", "ffmpeg not found (ffmpeg.exe + ffprobe.exe required)"),
         }
         match fc_core::find_atracdenc() {
             Some(p) => println!("atracdenc: {}", p.display()),
-            None => println!("atracdenc: 未安装（ATRAC 输出需要它，见设置页说明）"),
+            None => crate::say2!("atracdenc: 未安装（ATRAC 输出需要它，见设置页说明）", "atracdenc: not installed (required for ATRAC output; see Settings)"),
         }
         return Ok(());
     }
@@ -3099,7 +3100,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：打印标签与封面信息（调试用）
     if args.first().map(|s| s.as_str()) == Some("--tags") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter --tags <文件>");
+            crate::say2!("用法: format-converter --tags <文件>", "Usage: format-converter --tags <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffprobe"));
@@ -3118,7 +3119,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：只做加密识别，不开界面
     if args.first().map(|s| s.as_str()) == Some("--identify") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter --identify <文件>");
+            crate::say2!("用法: format-converter --identify <文件>", "Usage: format-converter --identify <file>");
             std::process::exit(2);
         };
         let path = Path::new(input);
@@ -3128,7 +3129,7 @@ fn main() -> eframe::Result<()> {
                 println!();
                 println!("{}", e.full_text());
             }
-            None => println!("不是加密文件（或不在已知格式库里）"),
+            None => crate::say2!("不是加密文件（或不在已知格式库里）", "Not encrypted (or not in the known-format database)"),
         }
         return Ok(());
     }
@@ -3136,11 +3137,11 @@ fn main() -> eframe::Result<()> {
     // 命令行：内容体检（测试用，也方便脚本批跑）
     if args.first().map(|s| s.as_str()) == Some("--wave") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter.exe --wave <文件>");
+            crate::say2!("用法: format-converter.exe --wave <文件>", "Usage: format-converter.exe --wave <file>");
             std::process::exit(2);
         };
         let Some(tools) = fc_core::locate() else {
-            eprintln!("找不到 ffmpeg");
+            crate::err2!("找不到 ffmpeg", "ffmpeg not found");
             std::process::exit(1);
         };
         match fc_analyze::waveform(&tools.ffmpeg, Path::new(input), 480) {
@@ -3165,7 +3166,7 @@ fn main() -> eframe::Result<()> {
                 }
             }
             Err(e) => {
-                eprintln!("波形失败: {e:#}");
+                crate::err2!("波形失败: {e:#}", "Waveform failed: {e:#}");
                 std::process::exit(1);
             }
         }
@@ -3204,7 +3205,7 @@ fn main() -> eframe::Result<()> {
     }
     if args.first().map(|s| s.as_str()) == Some("--split-cue") {
         let Some(cue) = args.get(1) else {
-            eprintln!("用法: format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]");
+            crate::say2!("用法: format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]", "Usage: format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
             std::process::exit(2);
         };
         let mut target = "flac";
@@ -3226,11 +3227,11 @@ fn main() -> eframe::Result<()> {
                 .to_path_buf()
         });
         let Some(tools) = fc_core::locate() else {
-            eprintln!("找不到 ffmpeg");
+            crate::err2!("找不到 ffmpeg", "ffmpeg not found");
             std::process::exit(1);
         };
         match fc_core::cue::split(&tools, Path::new(cue), &out_dir, target, |done, total| {
-            println!("  分轨 {done}/{total}");
+            crate::say2!("  分轨 {done}/{total}", "  Splitting {done}/{total}");
         }) {
             Ok(files) => {
                 for f in &files {
@@ -3239,14 +3240,14 @@ fn main() -> eframe::Result<()> {
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("分轨失败: {e:#}");
+                crate::err2!("分轨失败: {e:#}", "Split failed: {e:#}");
                 std::process::exit(1);
             }
         }
     }
     if args.first().map(|s| s.as_str()) == Some("--health") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter --health <文件>");
+            crate::say2!("用法: format-converter --health <文件>", "Usage: format-converter --health <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
@@ -3276,7 +3277,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：列出所有格式在当前源文件上的质量提示（测试用）
     if args.first().map(|s| s.as_str()) == Some("--warnings") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter --warnings <文件>");
+            crate::say2!("用法: format-converter --warnings <文件>", "Usage: format-converter --warnings <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
@@ -3297,7 +3298,7 @@ fn main() -> eframe::Result<()> {
 
     if args.first().map(|s| s.as_str()) == Some("--play") {
         let Some(input) = args.get(1) else {
-            eprintln!("用法: format-converter --play <文件> [秒数]");
+            crate::say2!("用法: format-converter --play <文件> [秒数]", "Usage: format-converter --play <file> [seconds]");
             std::process::exit(2);
         };
         let secs: f64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(4.0);
@@ -3305,7 +3306,7 @@ fn main() -> eframe::Result<()> {
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
             Err(e) => {
-                eprintln!("无法读取: {e:#}");
+                crate::err2!("无法读取: {e:#}", "Cannot read: {e:#}");
                 std::process::exit(1);
             }
         };
@@ -3354,15 +3355,15 @@ fn main() -> eframe::Result<()> {
         ) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("打开音频输出失败: {e:#}");
+                crate::err2!("打开音频输出失败: {e:#}", "Failed to open audio output: {e:#}");
                 std::process::exit(1);
             }
         };
-        println!("输出: {}", pl.output_label());
+        crate::say2!("输出: {}", "Output: {}", pl.output_label());
         let t0 = std::time::Instant::now();
         while t0.elapsed().as_secs_f64() < secs {
             std::thread::sleep(std::time::Duration::from_millis(500));
-            println!("  位置 {:.2}s / {:.2}s", pl.position_s(), info.duration_s);
+            crate::say2!("  位置 {:.2}s / {:.2}s", "  Position {:.2}s / {:.2}s", pl.position_s(), info.duration_s);
         }
         pl.pause();
         println!("ok");

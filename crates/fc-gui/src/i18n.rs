@@ -1129,3 +1129,19 @@ macro_rules! fmt2 {
         }
     };
 }
+
+/// 双语 println：`say2!("中文 {}", "English {}", x)`
+#[macro_export]
+macro_rules! say2 {
+    ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        println!("{}", $crate::fmt2!($zh, $en $(, $arg)*))
+    };
+}
+
+/// 双语 eprintln
+#[macro_export]
+macro_rules! err2 {
+    ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        eprintln!("{}", $crate::fmt2!($zh, $en $(, $arg)*))
+    };
+}
