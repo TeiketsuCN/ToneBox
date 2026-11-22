@@ -53,6 +53,12 @@ impl App {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
+        // 双击标题栏：最大化 / 还原
+        if resp.double_clicked() {
+            let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
+        }
 
         // 左边：logo + 名字（原来的两行文字去掉）
         let logo = egui::Rect::from_min_size(
@@ -152,6 +158,17 @@ impl App {
         // 从右往左排：关闭、最大化、最小化、图钉
         if title_button(ui, rect, TitleBtn::Close, false) {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+        if title_button(
+            ui,
+            rect,
+            if maximized { TitleBtn::Restore } else { TitleBtn::Maximize },
+            false,
+        ) {
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
         }
         rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
         if title_button(ui, rect, TitleBtn::Minimize, false) {
