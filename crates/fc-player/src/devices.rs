@@ -12,7 +12,6 @@
 use anyhow::Result;
 
 #[cfg(windows)]
-use std::sync::Once;
 #[cfg(windows)]
 use wasapi::{DeviceEnumerator, DeviceState, Direction};
 
@@ -210,11 +209,10 @@ pub fn list() -> Result<Vec<AudioDevice>> {
 
 #[cfg(windows)]
 fn list_windows() -> Result<Vec<AudioDevice>> {
-    static INIT: Once = Once::new();
-    // COM 只初始化一次；GUI 线程可能已经初始化过（模式不同会返回错误，忽略即可）
-    INIT.call_once(|| {
-        let _ = wasapi::initialize_mta();
-    });
+    // COM 是**按线程**的：不能用进程级 Once，否则第一个调用的线程初始化之后，
+    // 其它线程（比如 GUI 线程）再枚举设备就会报「尚未调用 CoInitialize」。
+    // 每次进来都给本线程初始化一次，重复初始化返回的错误忽略即可。
+    let _ = wasapi::initialize_mta();
     let enumerator = DeviceEnumerator::new()?;
     let mut out = Vec::new();
 

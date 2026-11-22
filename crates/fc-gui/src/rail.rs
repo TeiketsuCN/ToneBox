@@ -81,13 +81,8 @@ impl App {
                 }
             }
         }
-        // 第四个大项：歌词管理
-        if rail_big(ui, crate::i18n::tr("歌词管理"), self.page == Page::Lyrics) {
-            if self.page != Page::Lyrics {
-                self.page_t = 0.0;
-            }
-            self.page = Page::Lyrics;
-        }
+        // 歌词不再是左侧大项：它跟着播放栏走（播放栏上的「词」），
+        // 编辑器从歌词面板的「编辑」或歌曲右键进入。
         ui.add_space(10.0);
 
         // 百科固定在最下面（用户要求从「输出格式」标题右边挪下来）：

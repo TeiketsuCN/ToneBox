@@ -278,6 +278,10 @@ impl App {
                 Ok(()) => {
                     self.lyr_dirty = false;
                     self.lyr_msg = crate::fmt2!("已保存 {}", "Saved {}", lrc.display().to_string());
+                    // 播放区歌词面板缓存要丢掉，否则还显示旧内容
+                    self.lyrics_cache = None;
+                    self.lyrics_scroll_to = None;
+                    self.lyrics_last_line = None;
                     if let Some(e) = self.lib_entries.iter_mut().find(|e| e.path == song) {
                         e.has_lyrics = lrc.exists();
                     }

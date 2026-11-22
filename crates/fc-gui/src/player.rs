@@ -37,6 +37,8 @@ pub(crate) struct BarAction {
     pub volume: Option<f32>,
     pub open_spec: bool,
     pub open_cover: bool,
+    /// 播放栏上的「词」：打开/关闭播放区歌词面板
+    pub open_lyrics: bool,
     pub prev: bool,
     pub next: bool,
 }
@@ -48,6 +50,7 @@ impl BarAction {
         self.volume = o.volume.or(self.volume);
         self.open_spec |= o.open_spec;
         self.open_cover |= o.open_cover;
+        self.open_lyrics |= o.open_lyrics;
         self.prev |= o.prev;
         self.next |= o.next;
         if o.seek.is_some() {
@@ -137,6 +140,25 @@ impl App {
                         .size(9.0)
                         .color(DIM),
                 );
+                // 歌词面板开关：贴着时间左边，不抢进度条的宽度
+                ui.add_space(6.0);
+                let lyr_on = self.lyrics_panel;
+                let lb = egui::Button::new(
+                    RichText::new(crate::tr2!("词", "LRC"))
+                        .size(8.5)
+                        .color(if lyr_on { on_accent() } else { MUTED }),
+                )
+                .fill(if lyr_on { accent() } else { Color32::TRANSPARENT })
+                .stroke(line(Color32::WHITE, 16))
+                .rounding(Rounding::same(6.0))
+                .min_size(egui::vec2(28.0, 20.0));
+                if ui
+                    .add(lb)
+                    .on_hover_text(crate::tr2!("显示 / 隐藏当前歌词", "Show / hide lyrics"))
+                    .clicked()
+                {
+                    act.open_lyrics = true;
+                }
                 ui.add_space(6.0);
                 let w = (ui.available_width() - 4.0).clamp(90.0, 520.0);
                 let (rect, resp) =
@@ -393,8 +415,193 @@ impl App {
         animating
     }
 
+    /// 播放区歌词面板：贴在播放栏上方。
+    ///
+    /// 以前歌词是左侧一个独立大页，和「正在放什么」是脱节的；现在跟着播放栏走：
+    /// 按时间轴高亮、点一行直接跳、右上角可以进编辑器。
+    pub(crate) fn lyrics_dock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.lyrics_panel {
+            return false;
+        }
+
+        let display = self.display_item();
+        let title = display
+            .map(|i| self.items[i].tags.display_title(&self.items[i].name()))
+            .unwrap_or_else(|| crate::tr!("没有在播放").to_string());
+        let path = display.map(|i| self.items[i].path.clone());
+        let lrc = path.as_ref().map(|p| p.with_extension("lrc"));
+        let (_, pos, _) = self.play_state();
+
+        // 换歌才重新读 .lrc；编辑保存后会把缓存清掉
+        let need_reload = match (&self.lyrics_cache, &path) {
+            (Some((p, _)), Some(cur)) => p != cur,
+            (None, _) => true,
+            _ => false,
+        };
+        if need_reload {
+            let lines = lrc
+                .as_ref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .map(|t| crate::lyrics::parse_lrc(&t))
+                .unwrap_or_default();
+            self.lyrics_cache = path.clone().map(|p| (p, lines));
+            self.lyrics_scroll_to = None;
+            self.lyrics_last_line = None;
+        }
+        let lines = self
+            .lyrics_cache
+            .as_ref()
+            .map(|(_, l)| l.clone())
+            .unwrap_or_default();
+        let cur = lines.iter().rposition(|(t, _)| *t <= pos + 0.15);
+        if cur != self.lyrics_last_line {
+            self.lyrics_last_line = cur;
+            self.lyrics_scroll_to = cur;
+        }
+
+        let w = 460.0f32;
+        let h = 330.0f32;
+        let screen = ctx.screen_rect();
+        let bar_top = if self.bar_rect.top().is_finite() && self.bar_rect.top() < screen.bottom() {
+            self.bar_rect.top()
+        } else {
+            screen.bottom() - 56.0
+        };
+        let win_pos = egui::pos2(
+            (screen.right() - w - 24.0).max(screen.left() + 24.0),
+            (bar_top - h - 12.0).max(screen.top() + TITLEBAR_H + 12.0),
+        );
+
+        let mut open = true;
+        let mut edit = false;
+        let mut seek: Option<f64> = None;
+        let mut scroll_to = self.lyrics_scroll_to;
+        let has_lrc = lrc.as_ref().map(|p| p.exists()).unwrap_or(false);
+
+        egui::Window::new(crate::tr!("歌词"))
+            .id(egui::Id::new("lyrics_dock"))
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .fixed_pos(win_pos)
+            .fixed_size(egui::vec2(w, h))
+            .frame(
+                egui::Frame::none()
+                    .fill(tint(BG, 246))
+                    .stroke(Stroke::new(1.0, tint(Color32::WHITE, 26)))
+                    .rounding(Rounding::same(14.0))
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 6.0),
+                        blur: 20.0,
+                        spread: 0.0,
+                        color: Color32::from_black_alpha(120),
+                    })
+                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+            )
+            .show(ctx, |ui| {
+                ui.set_min_size(egui::vec2(w - 28.0, h - 24.0));
+                ui.set_max_size(egui::vec2(w - 28.0, h - 24.0));
+                ui.spacing_mut().item_spacing.y = 6.0;
+
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(crate::tr!("歌词")).size(11.5).color(TEXT).strong());
+                    ui.add_space(6.0);
+                    ui.add(
+                        egui::Label::new(RichText::new(&title).size(9.0).color(MUTED)).truncate(),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let ghost = |label: &str| {
+                            egui::Button::new(RichText::new(label).size(8.5).color(MUTED))
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(line(Color32::WHITE, 16))
+                                .rounding(Rounding::same(6.0))
+                                .min_size(egui::vec2(24.0, 20.0))
+                        };
+                        if ui.add(ghost("×")).clicked() {
+                            open = false;
+                        }
+                        if ui
+                            .add(ghost(crate::tr2!("编辑", "Edit")))
+                            .on_hover_text(crate::tr2!("打开 .lrc 编辑器", "Open the .lrc editor"))
+                            .clicked()
+                        {
+                            edit = true;
+                        }
+                    });
+                });
+                ui.separator();
+
+                if lines.is_empty() {
+                    crate::para(
+                        ui,
+                        if has_lrc {
+                            crate::tr!("这个 .lrc 里还没有时间轴行，点「编辑」加几行。")
+                        } else {
+                            crate::tr!("这首歌还没有 .lrc 歌词，点「编辑」新建一个。")
+                        },
+                        9.5,
+                        DIM,
+                    );
+                }
+
+                egui::ScrollArea::vertical()
+                    .id_salt("lyrics_dock_scroll")
+                    .auto_shrink([false, false])
+                    .max_height(h - 96.0)
+                    .show(ui, |ui| {
+                        for (idx, (t, text)) in lines.iter().enumerate() {
+                            let on = Some(idx) == cur;
+                            let body = if text.trim().is_empty() { "·" } else { text.as_str() };
+                            let resp = ui.add(
+                                egui::Label::new(
+                                    RichText::new(body)
+                                        .size(if on { 14.5 } else { 12.0 })
+                                        .color(if on { accent() } else { MUTED }),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+                            if resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            }
+                            if on && scroll_to == Some(idx) {
+                                ui.scroll_to_rect(resp.rect, Some(Align::Center));
+                                scroll_to = None;
+                            }
+                            if resp.clicked() {
+                                seek = Some(*t);
+                            }
+                        }
+                    });
+            });
+
+        self.lyrics_scroll_to = scroll_to;
+        if !open {
+            self.lyrics_panel = false;
+        }
+        if let Some(t) = seek {
+            if let Some(p) = self.player.as_mut() {
+                p.seek(t);
+            }
+        }
+        if edit {
+            if let (Some(p), Some(l)) = (&path, &lrc) {
+                self.lyr_sel = Some(p.clone());
+                self.lyr_text = std::fs::read_to_string(l).unwrap_or_default();
+                self.lyr_dirty = false;
+                self.lyr_msg.clear();
+                self.page = Page::Lyrics;
+            }
+            self.lyrics_panel = false;
+        }
+        true
+    }
+
     /// 把播放栏这一帧攒下的动作落到播放器/界面状态上
     fn apply_bar_action(&mut self, act: BarAction) {
+        if act.open_lyrics {
+            self.lyrics_panel = !self.lyrics_panel;
+            self.lyrics_scroll_to = None;
+        }
         if act.open_spec {
             self.open_spectrum();
         }

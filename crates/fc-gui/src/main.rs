@@ -402,6 +402,14 @@ pub(crate) struct App {
     pub(crate) lyr_dirty: bool,
     pub(crate) lyr_msg: String,
     pub(crate) detail_lyrics: Option<(PathBuf, Vec<(f64, String)>)>,
+    /// 播放区歌词面板（贴底播放栏上方）：是否打开
+    pub(crate) lyrics_panel: bool,
+    /// 面板缓存：当前歌的 .lrc 解析结果
+    pub(crate) lyrics_cache: Option<(PathBuf, Vec<(f64, String)>)>,
+    /// 需要自动滚到第几行（换行时用一次）
+    pub(crate) lyrics_scroll_to: Option<usize>,
+    /// 上一帧高亮的行，用来判断要不要自动滚动
+    pub(crate) lyrics_last_line: Option<usize>,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -737,6 +745,10 @@ impl App {
             lyr_dirty: false,
             lyr_msg: String::new(),
             detail_lyrics: None,
+            lyrics_panel: false,
+            lyrics_cache: None,
+            lyrics_scroll_to: None,
+            lyrics_last_line: None,
             log_path: { 
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
                 let p = std::env::var_os("APPDATA")
@@ -1342,6 +1354,19 @@ impl App {
                     | Job::Vgaudio { dur, .. }
                     | Job::Vadpcm { dur, .. } => *dur,
                 };
+                // 自检用哪种校验取决于目标：外部编码器 ffmpeg 不一定读得回来
+                let job_target = match &job {
+                    Job::Ffmpeg { .. } => "",
+                    Job::Atrac { .. } => "atrac",
+                    Job::Speex { .. } => "speex",
+                    Job::Wavpack { .. } => "wavpack_lossy",
+                    Job::Ofr { .. } => "optimfrog",
+                    Job::Mpc { .. } => "musepack",
+                    Job::Psx { kind, .. } => *kind,
+                    Job::Qoa { .. } => "qoa",
+                    Job::Vgaudio { .. } => "vgaudio",
+                    Job::Vadpcm { .. } => "vadpcm",
+                };
                 let res = match job {
                     Job::Ffmpeg {
                         idx,
@@ -1602,9 +1627,17 @@ impl App {
                         }
                     }
                 };
-                // 转换后自检：回读输出，坏文件/时长离谱直接报出来，不假装成功
+                // 转换后自检：回读输出，坏文件/时长离谱直接报出来，不假装成功。
+                // 外部编码器（XA / DSP / VADPCM / OptimFROG …）ffmpeg 读不了，
+                // 交给 external::verify_output 按格式用工具回读。
                 let res = res.and_then(|size| {
-                    match fc_core::verify_output(&tools, &out, job_dur) {
+                    let checked = if job_target.is_empty() {
+                        fc_core::verify_output(&tools, &out, job_dur)
+                    } else {
+                        fc_core::external::verify_output(job_target, &out, &tools, job_dur)
+                            .map(|_| ())
+                    };
+                    match checked {
                         Ok(()) => Ok(size),
                         Err(why) => Err(anyhow::anyhow!(
                             "{}: {why}",
@@ -2283,6 +2316,8 @@ impl eframe::App for App {
             // 必须排在右栏之前，这样它横跨「队列 + 详情 + 输出」整条底边，
             // 右栏再从它上方分出去——否则播放栏只能缩在中间那一栏底下。
             animating |= self.player_bar_panel(ctx);
+            // 歌词面板跟着播放栏：打开时贴在播放栏上方
+            animating |= self.lyrics_dock(ctx);
 
             // 输出列只在"输出"页出现；"音乐库"页把整块宽度留给列表
             if self.page == Page::Convert {
@@ -3056,6 +3091,13 @@ fn main() -> eframe::Result<()> {
             }
         }
         if external_done {
+            // 外部编码器也要自检：ffmpeg 读不了的目标（XA / DSP / VADPCM / OFR）用工具回读
+            if let Err(why) =
+                fc_core::external::verify_output(target.id, Path::new(output), &tools, info.duration_s)
+            {
+                crate::err2!("文件已生成，但自检没通过：{why}", "File written, but self-check failed: {why}");
+                std::process::exit(1);
+            }
             crate::say2!("完成: {output}", "Done: {output}");
             return Ok(());
         }

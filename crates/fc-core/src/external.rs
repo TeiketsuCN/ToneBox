@@ -974,3 +974,113 @@ pub fn vadpcm_convert(
     on_progress(1.0);
     Ok(size)
 }
+
+/// 外部编码器的输出自检。ffmpeg 读不了 `.xa/.dsp/.idsp/VADPCM .aifc/.ofr`，
+/// 所以分别用扇区结构 / VGAudioCli / vadpcm / ofr 回读；其余格式直接用 ffmpeg 解 10 秒。
+///
+/// 这里**不比时长**：Musepack 的 SV8 头时长字段本来就偏短（解码出来是对的），
+/// 用时长判断会误杀。返回一句人话说明用了哪种校验。
+pub fn verify_output(id: &str, output: &Path, tools: &Tools, _expected_s: f64) -> Result<String, String> {
+    let meta = std::fs::metadata(output).map_err(|e| format!("输出文件不存在：{e}"))?;
+    if meta.len() == 0 {
+        return Err("输出文件是 0 字节".to_string());
+    }
+
+    // PS1 XA：没有解码器，按 2336 字节/扇区的结构查
+    if id == "xa" {
+        return if meta.len() % 2336 == 0 {
+            Ok(format!("XA 扇区结构检查通过（{} 个扇区）", meta.len() / 2336))
+        } else {
+            Err(format!("XA 文件大小 {} 不是 2336 的整数倍", meta.len()))
+        };
+    }
+
+    // OptimFROG：官方 CLI 自带 --verify
+    if id == "optimfrog" {
+        let exe = find_ofr().ok_or_else(|| "找不到 ofr.exe，无法回读校验".to_string())?;
+        let out = Command::new(&exe)
+            .arg("--verify")
+            .arg(output)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("启动 ofr.exe 失败：{e}"))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr);
+            let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("ofr --verify 失败");
+            return Err(format!("OptimFROG 回读失败：{why}"));
+        }
+        return Ok("ofr --verify 通过".to_string());
+    }
+
+    // 任天堂容器：dsp / idsp ffmpeg 读不了，统一用 VGAudioCli 解回 WAV
+    if matches!(id, "vgaudio" | "dsp" | "idsp" | "brstm" | "bcstm" | "bfstm") {
+        if let Some(exe) = find_vgaudio() {
+            let tag = temp_tag();
+            let tmp = std::env::temp_dir().join(format!("fc_vgv_{tag}.wav"));
+            let res = Command::new(&exe)
+                .arg("-i")
+                .arg(output)
+                .arg("-o")
+                .arg(&tmp)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .output();
+            let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+            let _ = std::fs::remove_file(&tmp);
+            match res {
+                Ok(o) if o.status.success() && size > 44 => {
+                    return Ok("VGAudioCli 回读通过".to_string());
+                }
+                Ok(o) => {
+                    let err = String::from_utf8_lossy(&o.stderr);
+                    let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("回读失败");
+                    return Err(format!("VGAudioCli 回读失败：{why}"));
+                }
+                Err(e) => return Err(format!("启动 VGAudioCli 失败：{e}")),
+            }
+        }
+        // 没有 VGAudioCli 就退回 ffmpeg（brstm/bcstm/bfstm 能读）
+    }
+
+    // N64 VADPCM：vadpcm decode 回 WAV
+    if id == "vadpcm" {
+        let exe = find_vadpcm().ok_or_else(|| "找不到 vadpcm.exe，无法回读校验".to_string())?;
+        let tag = temp_tag();
+        let tmp = std::env::temp_dir().join(format!("fc_vadv_{tag}.wav"));
+        let res = Command::new(&exe)
+            .arg("decode")
+            .arg(output)
+            .arg(&tmp)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output();
+        let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+        let _ = std::fs::remove_file(&tmp);
+        return match res {
+            Ok(o) if o.status.success() && size > 44 => Ok("vadpcm 回读通过".to_string()),
+            Ok(o) => {
+                let err = String::from_utf8_lossy(&o.stderr);
+                let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("回读失败");
+                Err(format!("vadpcm 回读失败：{why}"))
+            }
+            Err(e) => Err(format!("启动 vadpcm 失败：{e}")),
+        };
+    }
+
+    // 其余外部输出 ffmpeg 都能解：解码前 10 秒
+    let out = Command::new(&tools.ffmpeg)
+        .args(["-v", "error", "-nostdin", "-i"])
+        .arg(output)
+        .args(["-map", "0", "-t", "10", "-f", "null", "-"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("启动 ffmpeg 自检失败：{e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("解码失败");
+        return Err(format!("输出无法解码：{why}"));
+    }
+    Ok("ffmpeg 解码自检通过".to_string())
+}

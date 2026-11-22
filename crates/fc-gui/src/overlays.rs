@@ -355,19 +355,7 @@ impl App {
                         });
                         ui.add_space(14.0);
 
-                        // 关于 / 存储是独立整页，不参与滚动布局。
-                        match self.settings_tab {
-                            SettingsTab::About => {
-                                self.about_tab(ui);
-                                return;
-                            }
-                            SettingsTab::Storage => {
-                                self.storage_tab(ui);
-                                return;
-                            }
-                            _ => {}
-                        }
-
+                        // 五个标签都在同一个滚动容器里：窗口再矮也能滚到底部的二维码/缓存按钮
                         egui::ScrollArea::vertical()
                             .id_salt("settings_scroll")
                             .auto_shrink([false, false])
@@ -379,7 +367,8 @@ impl App {
                                     SettingsTab::Display => self.display_tab(ui, &mut changed),
                                     SettingsTab::Behavior => self.behavior_tab(ui, &mut changed),
                                     SettingsTab::Tools => self.tools_tab(ui, &mut changed),
-                                    _ => {}
+                                    SettingsTab::Storage => self.storage_tab(ui),
+                                    SettingsTab::About => self.about_tab(ui),
                                 }
                             });
                     });
