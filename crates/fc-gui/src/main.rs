@@ -645,6 +645,7 @@ impl App {
         if std::env::var_os("TONEBOX_LANG").is_none() {
             i18n::set_lang(&cfg.lang);
         }
+        fc_analyze::health::set_en(i18n::is_en());
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
         // 注意：窗口尺寸这里不能再动。
@@ -2585,6 +2586,7 @@ fn main() -> eframe::Result<()> {
     }
     if let Ok(lang) = std::env::var("TONEBOX_LANG") {
         i18n::set_lang(&lang);
+        fc_analyze::health::set_en(i18n::is_en());
     }
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
@@ -3106,11 +3108,11 @@ fn main() -> eframe::Result<()> {
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffprobe"));
         let path = Path::new(input);
         let t = fc_core::read_tags(&tools.ffprobe, path);
-        println!("标题: {}", t.display_title("(无)"));
-        println!("副标题: {}", if t.display_sub().is_empty() { "(无)".into() } else { t.display_sub() });
-        println!("封面: {}", if fc_core::has_cover(&tools.ffprobe, path) { "有" } else { "无" });
+        crate::say2!("标题: {}", "Title: {}", t.display_title(crate::tr2!("(无)", "(none)")));
+        crate::say2!("副标题: {}", "Subtitle: {}", if t.display_sub().is_empty() { crate::tr2!("(无)", "(none)").to_string() } else { t.display_sub() });
+        crate::say2!("封面: {}", "Cover: {}", if fc_core::has_cover(&tools.ffprobe, path) { crate::tr2!("有", "yes") } else { crate::tr2!("无", "no") });
         if let Some(bytes) = fc_core::extract_cover(&tools.ffmpeg, path) {
-            println!("封面字节: {}（{}）", bytes.len(),
+            crate::say2!("封面字节: {}（{}）", "Cover bytes: {} ({})", bytes.len(),
                 if bytes.starts_with(&[0xFF, 0xD8]) { "JPEG" } else { "PNG" });
         }
         return Ok(());

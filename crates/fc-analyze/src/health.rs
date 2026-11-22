@@ -10,6 +10,10 @@
 
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+static EN: AtomicBool = AtomicBool::new(false);
+pub fn set_en(v: bool) { EN.store(v, Ordering::Relaxed); }
+fn en() -> bool { EN.load(Ordering::Relaxed) }
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
@@ -53,12 +57,12 @@ pub enum Verdict {
 impl Verdict {
     pub fn label(self) -> &'static str {
         match self {
-            Verdict::Normal => "像正常音乐",
-            Verdict::MostlySilent => "内容异常：几乎全是静音",
-            Verdict::Clipped => "内容异常：大比例削波",
-            Verdict::TestTone => "像测试信号（单频/扫频）",
-            Verdict::Noise => "像噪声，不像音乐",
-            Verdict::Uncertain => "无法判断（内容过于简单）",
+            Verdict::Normal => if en() { "Looks like normal music" } else { "像正常音乐" },
+            Verdict::MostlySilent => if en() { "Anomaly: almost entirely silent" } else { "内容异常：几乎全是静音" },
+            Verdict::Clipped => if en() { "Anomaly: heavy clipping" } else { "内容异常：大比例削波" },
+            Verdict::TestTone => if en() { "Looks like a test signal (tone/sweep)" } else { "像测试信号（单频/扫频）" },
+            Verdict::Noise => if en() { "Looks like noise, not music" } else { "像噪声，不像音乐" },
+            Verdict::Uncertain => if en() { "Uncertain (content too simple)" } else { "无法判断（内容过于简单）" },
         }
     }
 }
@@ -301,8 +305,8 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         });
     };
     push(
-        "有效音频",
-        format!("{:.1}% 非静音", active_ratio * 100.0),
+        if en() { "Active audio" } else { "有效音频" },
+        if en() { format!("{:.1}% active", active_ratio * 100.0) } else { format!("{:.1}% 非静音", active_ratio * 100.0) },
         if active_ratio > 0.9 {
             Severity::Ok
         } else if active_ratio > 0.5 {
@@ -312,7 +316,7 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "峰值",
+        if en() { "Peak" } else { "峰值" },
         format!("{peak_dbfs:.1} dBFS"),
         if peak_dbfs > -0.1 {
             Severity::Warn
@@ -323,11 +327,11 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "削波",
+        if en() { "Clipping" } else { "削波" },
         if clip_ratio > 0.0 {
-            format!("{:.3}% 样本贴顶", clip_ratio * 100.0)
+            if en() { format!("{:.3}% samples at peak", clip_ratio * 100.0) } else { format!("{:.3}% 样本贴顶", clip_ratio * 100.0) }
         } else {
-            "无".to_string()
+            if en() { "none".to_string() } else { "无".to_string() }
         },
         if clip_ratio > 0.02 {
             Severity::Bad
@@ -338,7 +342,7 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "直流偏移",
+        if en() { "DC offset" } else { "直流偏移" },
         format!("{dc:.5}"),
         if dc > 0.02 {
             Severity::Warn
@@ -347,17 +351,17 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "立体声相关",
+        if en() { "Stereo correlation" } else { "立体声相关" },
         if ch == 1 {
-            "单声道".to_string()
+            if en() { "mono".to_string() } else { "单声道".to_string() }
         } else {
             format!("{stereo_corr:.2}")
         },
         Severity::Ok,
     );
     push(
-        "谱平坦度",
-        format!("{flatness:.2}（1 = 白噪声）"),
+        if en() { "Spectral flatness" } else { "谱平坦度" },
+        if en() { format!("{flatness:.2} (1 = white noise)") } else { format!("{flatness:.2}（1 = 白噪声）") },
         if flatness > 0.45 {
             Severity::Bad
         } else if flatness > 0.3 {
@@ -367,7 +371,7 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "音高稳定度",
+        if en() { "Pitch stability" } else { "音高稳定度" },
         format!("{pitch_stability:.2}"),
         if pitch_stability < 0.12 {
             Severity::Warn
@@ -376,7 +380,7 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "节拍强度",
+        if en() { "Beat strength" } else { "节拍强度" },
         format!("{beat_strength:.2}"),
         if beat_strength < 0.08 {
             Severity::Warn
@@ -385,7 +389,7 @@ pub fn analyze(tools: &fc_core::Tools, path: &Path) -> Result<Health> {
         },
     );
     push(
-        "响度范围",
+        if en() { "Loudness range" } else { "响度范围" },
         format!("{lra_lu:.1} LU"),
         if lra_lu < 0.5 {
             Severity::Warn
