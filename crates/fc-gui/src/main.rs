@@ -1252,6 +1252,19 @@ impl App {
                     Job::Vgaudio { idx, out, .. } => (*idx, out.clone()),
                     Job::Vadpcm { idx, out, .. } => (*idx, out.clone()),
                 };
+                // 所有任务都带源时长，用于转换后的自检
+                let job_dur = match &job {
+                    Job::Ffmpeg { dur, .. }
+                    | Job::Atrac { dur, .. }
+                    | Job::Speex { dur, .. }
+                    | Job::Wavpack { dur, .. }
+                    | Job::Ofr { dur, .. }
+                    | Job::Mpc { dur, .. }
+                    | Job::Psx { dur, .. }
+                    | Job::Qoa { dur, .. }
+                    | Job::Vgaudio { dur, .. }
+                    | Job::Vadpcm { dur, .. } => *dur,
+                };
                 let res = match job {
                     Job::Ffmpeg {
                         idx,
@@ -1512,6 +1525,13 @@ impl App {
                         }
                     }
                 };
+                // 转换后自检：回读输出，坏文件/时长离谱直接报出来，不假装成功
+                let res = res.and_then(|size| {
+                    match fc_core::verify_output(&tools, &out, job_dur) {
+                        Ok(()) => Ok(size),
+                        Err(why) => Err(anyhow::anyhow!("输出已生成，但自检没通过：{why}")),
+                    }
+                });
                 match res {
                     Ok(size) => {
                         // 空歌词 sidecar：同名 .lyc / .txt，已有就不覆盖
@@ -2939,6 +2959,10 @@ fn main() -> eframe::Result<()> {
             Box::new(|_| {}),
         ) {
             eprintln!("转换失败: {e:#}");
+            std::process::exit(1);
+        }
+        if let Err(why) = fc_core::verify_output(&tools, Path::new(output), info.duration_s) {
+            eprintln!("文件已生成，但自检没通过：{why}");
             std::process::exit(1);
         }
         println!("完成: {output}");

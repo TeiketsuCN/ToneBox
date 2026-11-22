@@ -53,6 +53,11 @@ pub fn metadata_args(m: &MetaWrite<'_>) -> Vec<String> {
     push_tag(&mut args, "album", &m.tags.album);
     push_tag(&mut args, "track", &m.tags.track);
     push_tag(&mut args, "date", &m.tags.date);
+    // ReplayGain：源文件有就原样带过去，别让转码把响度标签吃掉
+    if let Some(db) = m.tags.replaygain_db {
+        args.push("-metadata".to_string());
+        args.push(format!("replaygain_track_gain={db:+.2} dB"));
+    }
 
     args
 }
@@ -132,6 +137,17 @@ mod tests {
                 "date=2026",
             ]
         );
+    }
+
+    #[test]
+    fn replaygain_is_written() {
+        let mut t = tags(Some("歌"), None);
+        t.replaygain_db = Some(-6.25);
+        let args = metadata_args(&MetaWrite {
+            tags: &t,
+            cover: None,
+        });
+        assert!(args.contains(&"replaygain_track_gain=-6.25 dB".to_string()));
     }
 
     #[test]

@@ -16,7 +16,7 @@ pub mod loudness;
 pub mod ncm;
 pub mod qmc;
 
-pub use ffmpeg::{convert, locate, probe, AudioTrackInfo, MediaInfo, ProgressFn, Tools};
+pub use ffmpeg::{convert, locate, probe, verify_output, AudioTrackInfo, MediaInfo, ProgressFn, Tools};
 pub use dsd::{bit_rate_hz as dsd_bit_rate_hz, tier as dsd_tier};
 pub use loudness::Loudness as LoudnessReport;
 pub use encoders::{list_decoders, list_encoders, version as ffmpeg_version};

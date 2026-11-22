@@ -218,7 +218,8 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - **注册到「打开方式」**：`--register` / 设置页按钮；不静默抢默认（Windows 要求用户确认）
 - **vgmstream 输入**：PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 可以先解成 WAV 再转（extras 里带）
 - **openmpt123 输入**：MOD / XM / IT / S3M 等模块音乐可以直接拖进来（extras 里带）
-- 转换后自检、ReplayGain 正在做
+- **转换后自检**：每个输出都重新 probe，坏文件/时长离谱直接标失败，不假装成功
+- **ReplayGain 标签写入**：源文件的 `replaygain_track_gain` 会带进 FLAC / MP3 等输出
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）

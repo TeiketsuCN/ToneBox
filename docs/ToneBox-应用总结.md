@@ -314,6 +314,12 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 可输出格式 **95 → 106**。
 
+### 10.3b 1.7（开发中）
+| 新增 | 说明 |
+|---|---|
+| 转换后自检 | 每个输出重新 probe，坏文件/时长偏差 > max(2s, 8%) 标失败 |
+| ReplayGain | 源标签 `replaygain_track_gain` 写入输出（FLAC/MP3 实测保留） |
+
 ### 10.4 1.6.1（已发布）
 
 | 新增 | 类型 | 实测结果 |

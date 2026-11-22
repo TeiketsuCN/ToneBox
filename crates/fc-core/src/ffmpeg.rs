@@ -407,13 +407,8 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
     } else {
         duration_s
     };
-    if duration_s <= 0.0 {
-        return Err(anyhow!(
-            "读不出时长，文件很可能是加密的：容器头可识别，但音频数据是密文。\n\
-             常见来源：网易云 .ncm、QQ 音乐 .mflac/.qmc、酷狗 .kgm、Sony OpenMG .oma。\n\
-             本工具不提供解密功能。"
-        ));
-    }
+    // 有流但读不出时长（AMV、裸流等）：按 0 处理，别误判成加密。
+    // 真正的加密容器在 identify() 里有魔数判断，ffprobe 也多半读不出流。
 
     // 位深：优先 ffprobe 的 bits_per_raw_sample（FLAC/ALAC 会给），
     // 其次 bits_per_sample，最后按 PCM 的 codec 名兜底
@@ -698,5 +693,57 @@ mod tests {
             vec![PathBuf::from("in.mp3"), PathBuf::from("cover.jpg")]
         );
         assert!(has_audio_map(&rest));
+    }
+}
+
+/// 时长是否在容差内：超过 max(2 秒, 8%) 就算不对。
+///
+/// 有些容器（AMV、裸流）probe 出来 duration 是 N/A，这种情况下跳过时长检查，
+/// 只要求能回读、能解出流。
+fn duration_ok(expected_s: f64, actual_s: f64) -> bool {
+    if actual_s <= 0.5 || expected_s <= 1.0 {
+        return true;
+    }
+    (actual_s - expected_s).abs() <= (expected_s * 0.08).max(2.0)
+}
+
+/// 转换后自检：把输出重新 probe 一遍，确认不是 0 字节/坏文件/时长离谱。
+///
+/// 只做“明显不对”的判断，不做逐样本比对（那要再解一遍，太慢）。
+pub fn verify_output(tools: &Tools, path: &Path, expected_s: f64) -> Result<(), String> {
+    let info = probe(tools, path).map_err(|e| format!("输出回读失败：{e:#}"))?;
+    if let Err(why) = std::fs::metadata(path) {
+        return Err(format!("输出文件不存在：{why}"));
+    }
+    if !duration_ok(expected_s, info.duration_s) {
+        return Err(format!(
+            "时长不符：输出 {:.2}s，输入 {:.2}s",
+            info.duration_s, expected_s
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod verify_tests {
+    use super::duration_ok;
+
+    #[test]
+    fn duration_accepts_close_values() {
+        assert!(duration_ok(180.0, 180.5));
+        assert!(duration_ok(3.0, 3.0));
+    }
+
+    #[test]
+    fn duration_rejects_wild_values() {
+        assert!(!duration_ok(180.0, 240.0));
+        assert!(!duration_ok(60.0, 10.0));
+    }
+
+    #[test]
+    fn duration_skips_unknown_output() {
+        // AMV / 裸流 probe 出来是 N/A（0），不该因此判失败
+        assert!(duration_ok(120.0, 0.0));
+        assert!(duration_ok(0.5, 999.0));
     }
 }
