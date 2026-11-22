@@ -745,6 +745,14 @@ pub fn verify_output(tools: &Tools, path: &Path, expected_s: f64) -> Result<(), 
     if meta.len() == 0 {
         return Err("输出文件是 0 字节".to_string());
     }
+    // 裸 PCM 没有头部，probe 认不出来；只能确认非空，解码参数由用户约定
+    if path
+        .extension()
+        .map(|e| e.to_string_lossy().eq_ignore_ascii_case("pcm"))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
     let info = probe(tools, path).map_err(|e| format!("输出回读失败：{e:#}"))?;
     if !duration_ok(expected_s, info.duration_s) {
         return Err(format!(
@@ -753,7 +761,6 @@ pub fn verify_output(tools: &Tools, path: &Path, expected_s: f64) -> Result<(), 
         ));
     }
 
-    // 真解码一小段：probe 只读头部，坏帧/坏索引要到解码才报错
     let mut cmd = Command::new(&tools.ffmpeg);
     cmd.args(["-v", "error", "-nostdin", "-i"])
         .arg(path)

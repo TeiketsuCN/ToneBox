@@ -419,7 +419,7 @@ pub static FEASIBLE: &[FormatSpec] = &[
         can_encode: true,
         primary: false,
         blurb: "1-bit 差分脉宽调制，ComputerCraft（我的世界里的电脑模组）用的音频。\n8kHz 单声道、码率固定，体积非常小。\n`.dfpwm` 是 ffmpeg 的叫法，那个模组自己也这么存。",
-        args: &["-c:a", "dfpwm"],
+        args: &["-c:a", "dfpwm", "-ar", "48000", "-ac", "1"],
         size_ratio: 0.02,
     },
     // ── 老游戏 / 复古音频：都在随包 ffmpeg 上实测过（2026-11，1.5 开发中） ──

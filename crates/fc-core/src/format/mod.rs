@@ -735,7 +735,7 @@ pub fn effective_video_codec(
         "gif" => VideoCodec::Gif,
         "apng" => VideoCodec::Apng,
         "dv" => VideoCodec::Dv,
-        "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
+        "gxf" | "mxf_opatom" | "mxf" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
     };
     let mut c = o.video_codec;
