@@ -50,7 +50,7 @@ enum Msg {
 }
 
 /// 检查项。加一项就在这里加一行，线程里对应加一段。
-const LABELS: [&str; 14] = [
+const LABELS: [&str; 15] = [
     "定位 ffmpeg / ffprobe",
     "读取 ffmpeg 版本",
     "读取编码器表",
@@ -64,6 +64,7 @@ const LABELS: [&str; 14] = [
     "检查 Speex 编码器",
     "检查 WavPack 编码器",
     "检查 OptimFROG 编码器",
+    "检查 Musepack 编码器",
     "读取配置与音乐库",
 ];
 
@@ -287,11 +288,18 @@ impl Boot {
                 None => send(12, Step::Skip, "未安装（可选）".to_string()),
             }
 
-            // 13 配置与音乐库缓存
+            // 13 Musepack（随包 mpcenc）
             send(13, Step::Running, String::new());
+            match fc_core::find_mpcenc() {
+                Some(_) => send(13, Step::Ok, "已找到".to_string()),
+                None => send(13, Step::Skip, "未找到".to_string()),
+            }
+
+            // 14 配置与音乐库缓存
+            send(14, Step::Running, String::new());
             let cfg = crate::settings::Settings::load();
             send(
-                13,
+                14,
                 Step::Ok,
                 if cfg.library_cache.is_empty() {
                     "配置就绪，音乐库还没扫".to_string()

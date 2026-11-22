@@ -14,6 +14,19 @@ use super::{FormatSpec, Group, Kind, Patent};
 
 pub static VIDEO: &[FormatSpec] = &[
     FormatSpec {
+        id: "mxf",
+        name: "MXF",
+        ext: "mxf",
+        kind: Kind::Container,
+        group: Group::Video,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "广播行业的标准封装（Material Exchange Format）。\n画面 MPEG-2、声音 PCM 48kHz——电视台/后期流程要的就是它。\nMXF 规范只接受 48kHz，源是 44.1k 时会重采样。",
+        args: &[],
+        size_ratio: 0.0,
+    },
+    FormatSpec {
         id: "mkv",
         name: "MKV",
         ext: "mkv",

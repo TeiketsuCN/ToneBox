@@ -1126,6 +1126,18 @@ impl App {
             Knob::WavpackBitrate => {
                 changed |= bitrate_row(ui, "wavpack_lossy", &mut self.cfg.opts.wavpack_bitrate)
             }
+            Knob::MpcProfile => {
+                field_row(ui, "质量档", |ui| {
+                    for (i, label) in ["thumb", "radio", "standard", "extreme", "insane"].iter().enumerate() {
+                        let on = self.cfg.opts.mpc_profile as usize == i;
+                        if seg_button(ui, label, on) {
+                            self.cfg.opts.mpc_profile = i as u8;
+                            changed = true;
+                        }
+                    }
+                });
+                out_hint(ui, "standard 约 180kbps（默认），extreme / insane 约 210 / 240kbps。", DIM);
+            }
             Knob::OfrPreset => {
                 field_row(ui, "压缩预设", |ui| {
                     let mut v = self.cfg.opts.ofr_preset as i32;

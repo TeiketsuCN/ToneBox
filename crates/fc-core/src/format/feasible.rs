@@ -8,6 +8,31 @@ use super::{FormatSpec, Group, Kind, Patent};
 
 pub static FEASIBLE: &[FormatSpec] = &[
     FormatSpec {
+        id: "voc",
+        name: "VOC",
+        ext: "voc",
+        kind: Kind::Uncompressed,
+        group: Group::Container,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "Creative Voice File —— Sound Blaster 时代的老格式。\nDOS 游戏、老音频软件留下的 .voc 文件就是它。\n只存 PCM，没有元数据。",
+        args: &["-c:a", "pcm_s16le", "-f", "voc"],
+        size_ratio: 1.0,
+    },
+    FormatSpec {
+        id: "latm",
+        name: "AAC (LATM/LOAS)",
+        ext: "latm",
+        kind: Kind::Lossy,
+        group: Group::Container,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "AAC 的 LATM/LOAS 封装，广播（DVB）里很常见。\n和 ADTS 的区别是带 StreamMuxConfig，码率省一点点。",
+        args: &["-c:a", "aac", "-b:a", "128k", "-f", "latm"],
+        size_ratio: 0.1,
+    },    FormatSpec {
         id: "optimfrog",
         name: "OptimFROG",
         ext: "ofr",

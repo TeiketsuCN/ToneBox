@@ -289,6 +289,14 @@ pub(crate) enum Job {
         dur: f64,
         preset: u8,
     },
+    /// 随包 mpcenc：Musepack 有损
+    Mpc {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        profile: u8,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -438,6 +446,8 @@ pub(crate) struct App {
     wavpack: Option<PathBuf>,
     /// 外部 OptimFROG CLI（ofr.exe，官方不随包，用户自装）
     ofr: Option<PathBuf>,
+    /// 随包的 Musepack 编码器（vendor\musepack\mpcenc.exe，LGPL）
+    mpcenc: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -519,6 +529,7 @@ impl App {
         match name {
             "wavpack" => self.wavpack.is_some(),
             "ofr" => self.ofr.is_some(),
+            "mpcenc" => self.mpcenc.is_some(),
             // atracdenc 是默认那个（external::NAME）
             _ => self.atracdenc.is_some(),
         }
@@ -687,6 +698,7 @@ impl App {
             speexenc: fc_core::find_speexenc(),
             wavpack: fc_core::find_wavpack(),
             ofr: fc_core::find_ofr(),
+            mpcenc: fc_core::find_mpcenc(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -840,6 +852,7 @@ impl App {
         let speexenc = self.speexenc.clone();
         let wavpack = self.wavpack.clone();
         let ofr = self.ofr.clone();
+        let mpcenc = self.mpcenc.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -912,6 +925,24 @@ impl App {
                     out,
                     dur,
                     preset: self.tasks[i].opts.ofr_preset,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // Musepack 走随包 mpcenc（LGPL）
+            if spec.id == "musepack" {
+                if self.mpcenc.is_none() {
+                    self.tasks[i].state =
+                        State::Failed("找不到 mpcenc.exe，Musepack 输出不可用".to_string());
+                    continue;
+                }
+                jobs.push(Job::Mpc {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                    profile: self.tasks[i].opts.mpc_profile,
                 });
                 self.tasks[i].state = State::Running(0.0);
                 continue;
@@ -1043,7 +1074,7 @@ impl App {
                     Job::Speex { idx, out, .. } => (*idx, out.clone()),
                     Job::Wavpack { idx, out, .. } => (*idx, out.clone()),
                     Job::Ofr { idx, out, .. } => (*idx, out.clone()),
-                    Job::Ofr { idx, out, .. } => (*idx, out.clone()),
+                    Job::Mpc { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1133,6 +1164,31 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 speexenc")),
+                        }
+                    }
+                    Job::Mpc {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        profile,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match mpcenc.as_ref() {
+                            Some(exe) => fc_core::external::mpc_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                profile,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 mpcenc.exe")),
                         }
                     }
                     Job::Ofr {
@@ -2141,6 +2197,7 @@ fn main() -> eframe::Result<()> {
         show("speexenc", fc_core::find_speexenc());
         show("wavpack", fc_core::find_wavpack());
         show("ofr", fc_core::find_ofr());
+        show("mpcenc", fc_core::find_mpcenc());
         return Ok(());
     }
 
@@ -2259,6 +2316,28 @@ fn main() -> eframe::Result<()> {
                 },
                 None => {
                     eprintln!("找不到 wavpack.exe");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "musepack" {
+            match fc_core::find_mpcenc() {
+                Some(exe) => match fc_core::external::mpc_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.mpc_profile,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 mpcenc.exe");
                     std::process::exit(1);
                 }
             }

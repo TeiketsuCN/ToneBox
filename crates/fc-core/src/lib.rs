@@ -25,6 +25,7 @@ pub use external::find as find_atracdenc;
 pub use external::find_speexenc;
 pub use external::find_wavpack;
 pub use external::find_ofr;
+pub use external::find_mpcenc;
 pub use identify::{identify, Encrypted};
 pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;

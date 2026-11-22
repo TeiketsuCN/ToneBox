@@ -421,3 +421,86 @@ pub fn ofr_convert(
     on_progress(1.0);
     Ok(size)
 }
+/// 找 Musepack 官方编码器（mpcenc.exe，MSYS2 的 libmpcdec 包里带的）。
+///
+/// 许可 LGPL-2.1，可以随包；和 speex / wavpack 一样按"程序目录 → 子目录 → PATH"找。
+pub fn find_mpcenc() -> Option<std::path::PathBuf> {
+    let exe = if cfg!(windows) { "mpcenc.exe" } else { "mpcenc" };
+    let mut cands: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("musepack").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 mpcenc 编 Musepack：ffmpeg 先解成 16bit WAV，再交给它。
+///
+/// `profile` 0~4 对应官方档位：thumb / radio / standard / extreme / insane。
+pub fn mpc_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    profile: u8,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_mpc_{tag}.wav"));
+    let tmp_mpc = std::env::temp_dir().join(format!("fc_mpc_{tag}.mpc"));
+    let flag = match profile {
+        0 => "--thumb",
+        1 => "--radio",
+        3 => "--extreme",
+        4 => "--insane",
+        _ => "--standard",
+    };
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（Musepack 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg(flag)
+        .arg("--silent")
+        .arg(&tmp_wav)
+        .arg(&tmp_mpc)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 mpcenc 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_mpc);
+        return Err(anyhow!("Musepack 编码失败"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_mpc, output).context("复制 Musepack 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_mpc);
+    on_progress(1.0);
+    Ok(size)
+}

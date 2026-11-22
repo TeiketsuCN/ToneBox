@@ -885,6 +885,8 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "wmv" => &[VideoCodec::Copy, VideoCodec::Wmv2],
         // 3GP：MPEG-4 Part 2
         "3gp" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
+        // MXF：广播封装，画面 MPEG-2
+        "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         _ => &[],
     }
 }
@@ -913,6 +915,8 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "wmv" => matches!(c.as_str(), "wmv1" | "wmv2" | "wmv3" | "vc1"),
         // 3GP 收 H.263 / MPEG-4 Part 2 / H.264
         "3gp" => matches!(c.as_str(), "h263" | "mpeg4" | "h264"),
+        // MXF 只收 MPEG-2（以及 D-10 的变体）
+        "mxf" => matches!(c.as_str(), "mpeg2video"),
         _ => false,
     }
 }
@@ -967,6 +971,8 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "ogv" => matches!(c.as_str(), "vorbis" | "opus" | "flac"),
         "wmv" => matches!(c.as_str(), "wmav1" | "wmav2" | "wmavoice" | "mp3"),
         "3gp" => matches!(c.as_str(), "aac" | "amr_nb" | "amr_wb"),
+        // MXF 只收未压缩 PCM，且必须 48kHz —— 这里一律不复制，交给 audio_plan 重编
+        "mxf" => false, // MXF 只收 48kHz，源多半 44.1k，统一走重编码
         _ => false,
     }
 }
@@ -1035,6 +1041,12 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 96,
             label: "AAC",
         },
+        // MXF 要未压缩 PCM，48kHz
+        "mxf" => AudioPlan::Encode {
+            codec: "pcm_s24le",
+            kbps: 2304,
+            label: "PCM 24bit",
+        },
         // MKV 什么都收；走到这里说明源是 WMA/ATRAC/DSD 之类，
         // 转 FLAC 至少不再丢东西（DSD 会被解码成 PCM，这是格式决定的）
         _ => AudioPlan::Encode {
@@ -1060,6 +1072,7 @@ pub fn container_note(container: &str) -> &'static str {
         "ogv" => "Ogg 视频：画面 Theora、声音 Vorbis，全开源但认它的设备很少。",
         "wmv" => "Windows Media：画面 WMV2、声音 WMA，给老 Windows 设备和老播放器用。",
         "3gp" => "3GPP 手机容器：画面 MPEG-4、声音 AAC，体积小。",
+        "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
         _ => "",
     }
 }
@@ -1167,6 +1180,8 @@ pub struct ConvertOptions {
     pub wavpack_bitrate: u32,
     /// OptimFROG 压缩预设 0~10（越大越慢越小）
     pub ofr_preset: u8,
+    /// Musepack 质量档 0~4（2 = standard，默认）
+    pub mpc_profile: u8,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -1201,6 +1216,7 @@ impl Default for ConvertOptions {
             speech_bitrate: 32,
             wavpack_bitrate: 384,
             ofr_preset: 8,
+            mpc_profile: 2,
             sample_rate: None,
             channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
@@ -1299,6 +1315,8 @@ pub fn knob_note(spec: &FormatSpec) -> Option<&'static str> {
         "eac3" => "E-AC-3 同码率比 AC-3 省，但老功放、老电视只认 AC-3。",
         "wma" => "老播放器通常只认 128~192k，调高不一定放得动。",
         "atrac3" => "132k = LP2，66k = LP4。这档由外部的 atracdenc 决定，不是 ffmpeg。",
+        "optimfrog" => "预设越高越慢也越小：8 = 5.1 倍速省 3.06%，10 = 11.6 倍速省 3.41%。",
+        "musepack" => "standard（默认）约 180kbps，extreme/insane 约 210/240kbps。",
         _ => return None,
     })
 }
@@ -1351,12 +1369,17 @@ pub fn fixed_rate(id: &str) -> Option<u32> {
 }
 
 pub fn output_rate(spec: &FormatSpec, o: &ConvertOptions) -> Option<u32> {
+    // MXF 规范只接受 48kHz，而视频容器没有采样率旋钮，必须在这里兜住
+    if spec.id == "mxf" {
+        return Some(o.sample_rate.unwrap_or(48000));
+    }
     if rate_choices(spec.id).is_empty() {
         return None;
     }
     match o.sample_rate {
         Some(r) => Some(snap_rate(spec.id, r)),
-        None if matches!(spec.id, "ac3" | "eac3" | "dts" | "truehd") => Some(48000),
+        // MXF 规范只接受 48kHz；Dolby 族默认 48k（规范要求）
+        None if matches!(spec.id, "ac3" | "eac3" | "dts" | "truehd" | "mxf") => Some(48000),
         None => None,
     }
 }
@@ -1390,6 +1413,8 @@ pub enum Knob {
     WavpackBitrate,
     /// OptimFROG 压缩预设 0~10，走外部 ofr.exe
     OfrPreset,
+    /// Musepack 质量档 0~4（thumb/radio/standard/extreme/insane），走外部 mpcenc
+    MpcProfile,
     /// 输出采样率（自动 / 44.1k / 48k / 96k / 192k……），档位见 `rate_choices`
     SampleRate,
     /// 输出声道（保持源 / 立体声 / 5.1）
@@ -1429,6 +1454,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "wavpack_lossy" => &[Knob::WavpackBitrate],
         // OptimFROG 走外部 ofr.exe，只有压缩预设可调
         "optimfrog" => &[Knob::OfrPreset],
+        // Musepack 走外部 mpcenc，只有质量档
+        "musepack" => &[Knob::MpcProfile],
         // MLP 是无损，能选位深；Ogg FLAC 就是 FLAC，能选压缩等级和位深
         "mlp" => &[Knob::BitDepth],
         "ogg_flac" => &[Knob::FlacLevel, Knob::BitDepth],
@@ -1437,7 +1464,7 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "atrac3" => &[Knob::Atrac3Bitrate],
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
-        | "ogv" | "wmv" | "3gp" => &[
+        | "ogv" | "wmv" | "3gp" | "mxf" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -1503,6 +1530,8 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "wavpack_lossy" => Some("wavpack"),
         // OptimFROG：ffmpeg 连解码器都不完整，编码只有官方 ofr.exe
         "optimfrog" => Some("ofr"),
+        // Musepack：ffmpeg 只有解码器
+        "musepack" => Some("mpcenc"),
         _ => None,
     }
 }
@@ -1779,6 +1808,11 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
             quality(&mut a, vc);
         }
     }
+    // MXF 规范只接受 48kHz：音轨统一重采样（PCM 重采样不损失精度）
+    if spec.id == "mxf" {
+        a.extend([s("-ar"), s("48000")]);
+    }
+
     // copy 不能缩放/改帧率（effective_video_codec 已经保证这里不会是 copy）
     if vc != VideoCodec::Copy {
         if o.video_height > 0 {
@@ -1798,12 +1832,11 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
                     a.extend([format!("-c:a:{i}"), s("copy")]);
                 }
                 AudioPlan::Encode { codec, kbps, .. } => {
-                    a.extend([
-                        format!("-c:a:{i}"),
-                        s(codec),
-                        format!("-b:a:{i}"),
-                        format!("{kbps}k"),
-                    ]);
+                    a.extend([format!("-c:a:{i}"), s(codec)]);
+                    // 未压缩 PCM 没有码率参数，给了反而报错
+                    if !codec.starts_with("pcm_") {
+                        a.extend([format!("-b:a:{i}"), format!("{kbps}k")]);
+                    }
                 }
             }
         }
@@ -2055,6 +2088,7 @@ mod tests {
                 match k {
                     Knob::FlacLevel
                     | Knob::OfrPreset
+                    | Knob::MpcProfile
                     | Knob::VorbisQuality
                     | Knob::Channels
                     | Knob::BitDepth
@@ -2441,7 +2475,7 @@ mod tests {
     #[test]
     fn video_containers_are_selectable_targets() {
         for id in [
-            "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
+            "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
             "3gp",
         ] {
             let s = spec(id);
@@ -2458,8 +2492,8 @@ mod tests {
         assert_eq!(
             video_containers().map(|f| f.id).collect::<Vec<_>>(),
             vec![
-                "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv",
-                "wmv", "3gp"
+                "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
+                "ogv", "wmv", "3gp"
             ]
         );
     }
@@ -2642,6 +2676,8 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         "nellymoser" => "nellymoser",
         "aac_multichannel" => "aac",
         "au" => "pcm_s16be",
+        "voc" => "pcm_s16le",
+        "latm" => "aac",
         "rf64" | "bwf" => "pcm_s24le",
         "aptx" => "aptx",
         "aptx_hd" => "aptx_hd",

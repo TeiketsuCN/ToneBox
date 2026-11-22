@@ -738,6 +738,21 @@ impl App {
                                         });
                                     dep(ui, "ofr", ok, status, &path);
                                 }
+                                // mpcenc：随包，Musepack 用
+                                {
+                                    let ok = self.mpcenc.is_some();
+                                    let status = if ok {
+                                        "已找到 · Musepack 可输出"
+                                    } else {
+                                        "未找到 · Musepack 不可输出"
+                                    };
+                                    let path = self
+                                        .mpcenc
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "随包提供，通常在 musepack 目录".to_string());
+                                    dep(ui, "mpcenc", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {

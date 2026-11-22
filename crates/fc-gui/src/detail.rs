@@ -604,6 +604,16 @@ impl App {
                 ),
                 Knob::WavpackBitrate => parts.push(format!("{}k", o.wavpack_bitrate)),
                 Knob::OfrPreset => parts.push(format!("预设 {}", o.ofr_preset)),
+                Knob::MpcProfile => {
+                    let names = ["thumb", "radio", "standard", "extreme", "insane"];
+                    parts.push(
+                        names
+                            .get(o.mpc_profile as usize)
+                            .copied()
+                            .unwrap_or("standard")
+                            .to_string(),
+                    )
+                }
                 // 声道不进标题摘要：标题行放不下，下面旋钮自己写得很清楚
                 Knob::Channels => {}
                 Knob::SampleRate => match fc_core::output_rate(self.target, o) {
