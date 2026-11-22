@@ -33,6 +33,7 @@ mod settings;
 mod sysstat;
 mod boot;
 mod assoc;
+mod i18n;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
@@ -641,6 +642,9 @@ impl App {
         let (spt, spr) = channel();
         let boot = boot::Boot::start();
         let cfg = settings::Settings::load();
+        if std::env::var_os("TONEBOX_LANG").is_none() {
+            i18n::set_lang(&cfg.lang);
+        }
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
         // 注意：窗口尺寸这里不能再动。
@@ -2546,6 +2550,16 @@ fn main() -> eframe::Result<()> {
     #[cfg(feature = "vulkan")]
     std::env::set_var("WGPU_BACKEND", "vulkan");
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // --lang en / --lang zh：命令行临时切界面语言（也会从 args 里移除，避免被当文件路径）
+    if let Some(pos) = args.iter().position(|a| a == "--lang") {
+        let value = args.get(pos + 1).cloned().unwrap_or_default();
+        std::env::set_var("TONEBOX_LANG", &value);
+        let end = (pos + 2).min(args.len());
+        args.drain(pos..end);
+    }
+    if let Ok(lang) = std::env::var("TONEBOX_LANG") {
+        i18n::set_lang(&lang);
+    }
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
     set_zoom(if screen_logical_height() >= 1150.0 { 1.2 } else { 1.0 });

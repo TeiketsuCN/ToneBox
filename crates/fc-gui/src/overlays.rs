@@ -889,6 +889,35 @@ impl App {
                                 }
 
                                 ui.add_space(16.0);
+                                section(ui, "语言 / Language");
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .selectable_label(self.cfg.lang == "zh", "中文")
+                                        .clicked()
+                                    {
+                                        self.cfg.lang = "zh".to_string();
+                                        crate::i18n::set_lang("zh");
+                                        self.cfg.save();
+                                        ui.ctx().request_repaint();
+                                    }
+                                    if ui
+                                        .selectable_label(self.cfg.lang == "en", "English")
+                                        .clicked()
+                                    {
+                                        self.cfg.lang = "en".to_string();
+                                        crate::i18n::set_lang("en");
+                                        self.cfg.save();
+                                        ui.ctx().request_repaint();
+                                    }
+                                });
+                                para(
+                                    ui,
+                                    "Switch takes effect immediately. English translation is being filled in.",
+                                    8.5,
+                                    DIM,
+                                );
+
+                                ui.add_space(16.0);
                                 section(ui, "CUE 分轨");
                                 para(
                                     ui,

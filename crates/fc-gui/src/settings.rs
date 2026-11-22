@@ -20,6 +20,8 @@ fn default_bg_color() -> [u8; 3] {
 }
 
 /// 播放栏默认高度（和 util::BAR_H 保持一致）
+fn default_lang() -> String { "zh".to_string() }
+
 fn default_bar_h() -> f32 {
     164.0
 }
@@ -221,6 +223,9 @@ pub enum LyricMode {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Settings {
+    /// 界面语言："zh" / "en"
+    #[serde(default = "default_lang")]
+    pub lang: String,
     pub bg_mode: BgMode,
     /// 纯色背景的颜色
     #[serde(default = "default_bg_color")]
@@ -313,6 +318,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            lang: default_lang(),
             bg_mode: BgMode::Gradient,
             bg_color: default_bg_color(),
             bg_gradient: 0,
@@ -385,7 +391,9 @@ impl Settings {
         self.exclusive_output = e == fc_player::Engine::Exclusive;
     }
 
-    pub fn load() -> Self {
+    fn default_lang() -> String { "zh".to_string() }
+
+pub fn load() -> Self {
         let mut s = Self::file()
             .and_then(|p| std::fs::read(p).ok())
             .and_then(|b| serde_json::from_slice::<Settings>(&b).ok())

@@ -37,7 +37,7 @@ impl App {
         ui.set_width(ui.available_width());
         let mut animating = false;
 
-        if rail_big(ui, "音乐库", self.page == Page::Library) {
+        if rail_big(ui, crate::i18n::tr("音乐库"), self.page == Page::Library) {
             if self.page != Page::Library {
                 self.page_t = 0.0;
             }
@@ -47,17 +47,17 @@ impl App {
                 && !self.lib_scanning
                 && (!self.cfg.library_dirs.is_empty() || !self.cfg.library_files.is_empty())
             {
-                self.lib_status = "点「重新扫描」扫一遍音乐库".into();
+                self.lib_status = crate::i18n::tr("点「重新扫描」扫一遍音乐库").to_string();
             }
         }
-        if rail_big(ui, "编解码", self.page == Page::Convert) {
+        if rail_big(ui, crate::i18n::tr("编解码"), self.page == Page::Convert) {
             if self.page != Page::Convert {
                 self.page_t = 0.0;
             }
             self.page = Page::Convert;
         }
         // 第三个大项：引擎和设备（音频设备与引擎信息）
-        if rail_big(ui, "引擎和设备", self.page == Page::Engine) {
+        if rail_big(ui, crate::i18n::tr("引擎和设备"), self.page == Page::Engine) {
             if self.page != Page::Engine {
                 self.page_t = 0.0;
             }
@@ -72,9 +72,9 @@ impl App {
                 .count();
             let n_bt = self.audio_devices.iter().filter(|d| d.is_bluetooth).count();
             for (tab, label, count) in [
-                (codec::CodecTab::Devices, "设备", n_dev),
-                (codec::CodecTab::Bluetooth, "蓝牙", n_bt),
-                (codec::CodecTab::Engine, "引擎", 0),
+                (codec::CodecTab::Devices, crate::i18n::tr("设备"), n_dev),
+                (codec::CodecTab::Bluetooth, crate::i18n::tr("蓝牙"), n_bt),
+                (codec::CodecTab::Engine, crate::i18n::tr("引擎"), 0),
             ] {
                 if rail_sub_tab(ui, label, count, self.codec_tab == tab) {
                     self.codec_tab = tab;
