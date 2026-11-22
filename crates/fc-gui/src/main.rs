@@ -645,7 +645,7 @@ impl App {
         if std::env::var_os("TONEBOX_LANG").is_none() {
             i18n::set_lang(&cfg.lang);
         }
-        fc_analyze::health::set_en(i18n::is_en());
+        fc_analyze::set_en(i18n::is_en());
         fc_core::format::set_en(i18n::is_en());
         fc_core::wiki::set_en(i18n::is_en());
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
@@ -2588,7 +2588,7 @@ fn main() -> eframe::Result<()> {
     }
     if let Ok(lang) = std::env::var("TONEBOX_LANG") {
         i18n::set_lang(&lang);
-        fc_analyze::health::set_en(i18n::is_en());
+        fc_analyze::set_en(i18n::is_en());
         fc_core::format::set_en(i18n::is_en());
         fc_core::wiki::set_en(i18n::is_en());
     }

@@ -11,6 +11,7 @@
 //! 不把“截止频率 → 码率”当成确定结论；母带带宽受限时给区间而不是硬猜。
 
 use std::cmp::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -206,14 +207,14 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
 
     let (estimate, mut base_conf) = if lossless {
         caveats.push(
-            "编码本身是无损格式；频谱只能说明文件没有被再次有损压缩，不能证明母带质量。"
+            if en() { "The codec itself is lossless; the spectrum only shows the file was not re-compressed, not that the master is good." } else { "编码本身是无损格式；频谱只能说明文件没有被再次有损压缩，不能证明母带质量。" }
                 .to_string(),
         );
         // 无损不是"猜"的，置信度由证据加分，界面把它一条条列出来
         let mut c = 0.80f64;
         notes.push(ConfidenceNote::plus(
             80.0,
-            format!("编码标记为无损（{}）", info.codec),
+            if en() { format!("Codec marked lossless ({})", info.codec) } else { format!("编码标记为无损（{}）", info.codec) },
         ));
         let nyquist = info.sample_rate as f64 / 2.0;
         if cutoff >= nyquist * 0.96 {
@@ -268,13 +269,13 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
         );
         notes.push(ConfidenceNote::minus(
             88.0,
-            "SBR/PS 频带复制让截止法失效，只能给很低的分",
+            if en() { "SBR/PS band replication defeats the cutoff method; keep the score low" } else { "SBR/PS 频带复制让截止法失效，只能给很低的分" },
         ));
         ("不可判定".to_string(), 0.12)
     } else if edge.is_none() {
         let (est, conf, why) = no_edge_guess(family);
         caveats.push(why.to_string());
-        notes.push(ConfidenceNote::minus(50.0, "没找到陡峭边沿，用格式先验给一个低分"));
+        notes.push(ConfidenceNote::minus(50.0, if en() { "No steep edge found; use the format prior for a low score" } else { "没找到陡峭边沿，用格式先验给一个低分" }));
         (est.to_string(), conf)
     } else {
         let guess = classify(family, cutoff);
@@ -282,21 +283,29 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
         let mut conf = sigmoid * guess.confidence_scale;
         notes.push(ConfidenceNote::plus(
             (sigmoid * 100.0) as f32,
-            format!("边沿陡度 {:.0} dB/kHz，基础分", slope.abs()),
+            if en() { format!("Edge slope {:.0} dB/kHz, base score", slope.abs()) } else { format!("边沿陡度 {:.0} dB/kHz，基础分", slope.abs()) },
         ));
         if guess.confidence_scale < 0.999 {
             notes.push(ConfidenceNote::minus(
                 ((1.0 - guess.confidence_scale) * 100.0) as f32,
-                format!(
-                    "档位 {} 属于区间/重叠档，打 {:.2} 折",
-                    guess.estimate, guess.confidence_scale
-                ),
+                if en() {
+                    format!(
+                        "Tier {} is an interval/overlapping tier; scale {:.2}",
+                        guess.estimate, guess.confidence_scale
+                    )
+                } else {
+                    format!(
+                        "档位 {} 属于区间/重叠档，打 {:.2} 折",
+                        guess.estimate, guess.confidence_scale
+                    )
+                },
             ));
         } else {
-            notes.push(ConfidenceNote::plain(format!(
-                "档位 {} 唯一，不打折",
-                guess.estimate
-            )));
+            notes.push(ConfidenceNote::plain(if en() {
+                format!("Tier {} is unique; no discount", guess.estimate)
+            } else {
+                format!("档位 {} 唯一，不打折", guess.estimate)
+            }));
         }
         if let Some(note) = guess.caveat {
             caveats.push(note.to_string());
@@ -314,7 +323,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                 "边沿上方仍有明显能量，疑似噪底填充（黑胶/模拟噪声），推测可能偏高。".to_string(),
             );
             conf *= 0.75;
-            notes.push(ConfidenceNote::minus(25.0, "边沿上方仍有明显能量，疑似噪底填充"));
+            notes.push(ConfidenceNote::minus(25.0, if en() { "Visible energy above the edge; likely noise-floor fill" } else { "边沿上方仍有明显能量，疑似噪底填充" }));
         }
 
         // 边沿下方能量偏低 → 音源本身高频就少。
@@ -330,7 +339,7 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                     .to_string(),
             );
             conf *= 0.8;
-            notes.push(ConfidenceNote::minus(20.0, "边沿下方能量偏低，音源本身高频就少"));
+            notes.push(ConfidenceNote::minus(20.0, if en() { "Low energy below the edge; the source itself has little high end" } else { "边沿下方能量偏低，音源本身高频就少" }));
         }
 
         (guess.estimate.to_string(), conf)
@@ -344,14 +353,15 @@ pub fn analyze(path: &Path, info: &MediaInfo) -> Result<QualityReport> {
                 .to_string(),
         );
         base_conf = base_conf.min(0.60);
-        notes.push(ConfidenceNote::minus(40.0, "ATRAC 阈值表样本太少，封顶 60%"));
+        notes.push(ConfidenceNote::minus(40.0, if en() { "ATRAC threshold table has too few samples; capped at 60%" } else { "ATRAC 阈值表样本太少，封顶 60%" }));
     }
 
     let confidence = (round2(base_conf.clamp(0.05, 0.97))).clamp(0.05, 0.97);
-    notes.push(ConfidenceNote::plain(format!(
-        "最终 {:.0}%（上限 97%，留一点给未知因素）",
-        confidence * 100.0
-    )));
+    notes.push(ConfidenceNote::plain(if en() {
+        format!("Final {:.0}% (cap 97%, leaving room for unknowns)", confidence * 100.0)
+    } else {
+        format!("最终 {:.0}%（上限 97%，留一点给未知因素）", confidence * 100.0)
+    }));
     Ok(QualityReport {
         cutoff_hz: cutoff,
         slope_db_per_khz: slope,
@@ -990,4 +1000,13 @@ mod tests {
         assert!(windows[0].0 < windows[1].0);
         assert!(windows[1].0 < windows[2].0);
     }
+}
+static EN: AtomicBool = AtomicBool::new(false);
+/// 切换频谱判档/置信度文案的语言。
+pub fn set_en(v: bool) {
+    EN.store(v, AtomicOrdering::Relaxed);
+    health::set_en(v);
+}
+fn en() -> bool {
+    EN.load(AtomicOrdering::Relaxed)
 }

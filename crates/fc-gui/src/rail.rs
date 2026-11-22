@@ -184,7 +184,7 @@ impl App {
                 name_rect,
                 10.5,
                 if on { accent() } else { MUTED },
-                &self.cfg.profiles[i].name,
+                &profile_label(&self.cfg.profiles[i].name),
             );
             // 改名按钮（✎）
             let er = egui::Rect::from_center_size(
@@ -812,4 +812,13 @@ fn paint_ext_badges(
         );
         right = left - 3.0;
     }
+}
+/// 旧配置里的默认名是「配置 1/2/3」，英文模式下显示成 Profile 1/2/3。
+fn profile_label(name: &str) -> String {
+    if crate::i18n::is_en() {
+        if let Some(rest) = name.strip_prefix("配置 ") {
+            return format!("Profile {rest}");
+        }
+    }
+    name.to_string()
 }
