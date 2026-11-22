@@ -26,9 +26,30 @@ pub use external::find_speexenc;
 pub use external::find_wavpack;
 pub use external::find_ofr;
 pub use external::find_mpcenc;
+pub use external::find_psxavenc;
 pub use identify::{identify, Encrypted};
 pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;
+
+/// 主机芯片音乐扩展名（ffmpeg 的 libgme 解复用）。
+///
+/// 这些文件没有固定时长（libgme 会一直渲染），转换时统一只取前 3 分钟，
+/// 免得一个 .nsf 出来几小时的 FLAC。播放/进度也按这个兜底。
+pub fn is_chiptune(path: &std::path::Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "nsf" | "nsfe" | "spc" | "gbs" | "vgm" | "vgz" | "gym" | "psf" | "psf2" | "usf"
+            | "2sf" | "gsf" | "qsf" | "ssf" | "sid" | "hes" | "kss" | "ay" | "sap"
+    )
+}
+
+/// 芯片音乐默认渲染时长（秒）。NSF/SPC 这类没有"曲目长度"字段。
+pub const CHIPTUNE_SECONDS: u32 = 180;
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
 pub use format::{
     all, args_for, args_for_with, audio_plan, bit_depths_for, bitrate_choices, bitrate_of, browsable,

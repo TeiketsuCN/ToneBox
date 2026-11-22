@@ -504,3 +504,97 @@ pub fn mpc_convert(
     on_progress(1.0);
     Ok(size)
 }
+
+/// 找 PS1/PS2 编码器 psxavenc。
+///
+/// 许可 Zlib（可随包），但和 atracdenc 一样按"可选外部工具"处理：
+/// 程序目录 → 程序目录\psxavenc → PATH。
+pub fn find_psxavenc() -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "psxavenc.exe"
+    } else {
+        "psxavenc"
+    };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("psxavenc").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 psxavenc 编 PS1 XA（`kind = "xa"`）或 PS2 VAG（`kind = "vag"`）。
+///
+/// 两段式：先用 ffmpeg 解成 psxavenc 要的 WAV（XA：37.8kHz 立体声；
+/// VAG：44.1kHz 单声道），再交给它。psxavenc 自己会做 ADPCM 编码。
+pub fn psx_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    kind: &str,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let (rate, channels) = match kind {
+        "xa" => (37800u32, 2u16),
+        _ => (44100, 1),
+    };
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_psx_{tag}.wav"));
+    let tmp_out = std::env::temp_dir().join(format!("fc_psx_{tag}.{kind}"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
+        .args(["-ar", &rate.to_string(), "-ac", &channels.to_string()])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（psxavenc 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.5);
+
+    let mut enc = Command::new(exe);
+    enc.args(["-q", "-t", kind])
+        .arg(&tmp_wav)
+        .arg(&tmp_out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let out = enc.output().context("启动 psxavenc 失败")?;
+    if !out.status.success() || !tmp_out.is_file() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_out);
+        let err = String::from_utf8_lossy(&out.stderr);
+        let mut tail: Vec<&str> = err.lines().rev().take(4).collect();
+        tail.reverse();
+        return Err(anyhow!(
+            "psxavenc 编码失败（退出码 {:?}）：\n{}",
+            out.status.code(),
+            tail.join("\n")
+        ));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_out, output).context("复制 psxavenc 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_out);
+    on_progress(1.0);
+    Ok(size)
+}

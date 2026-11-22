@@ -753,6 +753,21 @@ impl App {
                                         .unwrap_or_else(|| "随包提供，通常在 musepack 目录".to_string());
                                     dep(ui, "mpcenc", ok, status, &path);
                                 }
+                                // psxavenc：可选，PS1 XA / PS2 VAG 用
+                                {
+                                    let ok = self.psxavenc.is_some();
+                                    let status = if ok {
+                                        "已找到 · PS1 XA / PS2 VAG 可输出"
+                                    } else {
+                                        "未找到（可选）· PS1 XA / PS2 VAG 不可输出"
+                                    };
+                                    let path = self
+                                        .psxavenc
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "放到程序目录或 psxavenc 子目录".to_string());
+                                    dep(ui, "psxavenc", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {
@@ -770,6 +785,10 @@ impl App {
                                         }
                                         self.atracdenc = fc_core::find_atracdenc();
                                         self.speexenc = fc_core::find_speexenc();
+                                        self.wavpack = fc_core::find_wavpack();
+                                        self.ofr = fc_core::find_ofr();
+                                        self.mpcenc = fc_core::find_mpcenc();
+                                        self.psxavenc = fc_core::find_psxavenc();
                                         changed = true;
                                     }
                                     ui.label(

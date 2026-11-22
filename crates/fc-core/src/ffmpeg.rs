@@ -385,8 +385,14 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
         size: None,
     });
 
-    // 时长是判断"是否加密"最可靠的低成本信号：
-    // 加密文件的容器头是密文，ffprobe 只能认出外层格式，读不出时长和码率。
+    // 芯片音乐（libgme 解复用）没有固定时长：它是按曲目循环渲染的，
+    // ffprobe 的 duration 是 N/A。这里给个 3 分钟兜底，别让"读不出时长"
+    // 的加密判定把 .nsf/.spc/.vgm 这类文件误杀。
+    let gme = fmt
+        .format_name
+        .as_deref()
+        .map(|n| n.contains("gme"))
+        .unwrap_or(false);
     let duration_s = {
         let d = parse_f64(&fmt.duration);
         if d > 0.0 {
@@ -395,6 +401,11 @@ pub fn probe(tools: &Tools, file: &Path) -> Result<MediaInfo> {
             let st = audio.or(video);
             st.map(|s| parse_f64(&s.duration)).unwrap_or(0.0)
         }
+    };
+    let duration_s = if duration_s <= 0.0 && gme {
+        crate::CHIPTUNE_SECONDS as f64
+    } else {
+        duration_s
     };
     if duration_s <= 0.0 {
         return Err(anyhow!(

@@ -93,4 +93,8 @@ foreach ($e in @('libgsm', 'libvo_amrwbenc', 'libilbc', 'liblc3', 'libcodec2')) 
     "{0,-16} {1}" -f $e, $(if ($enc -match "(^|\s)$e(\s|`)") { '有' } else { '缺失（链接失败？）' })
 }
 
+Write-Host "==> 主机音乐解复用自检（libgme）" -ForegroundColor Cyan
+$dem = (& $ff -hide_banner -demuxers 2>&1) -join "`n"
+"gme (nsf/spc/vgm/psf)  {0}" -f $(if ($dem -match '(?m)^\s*D\s+libgme\s') { '有' } else { '缺失（libgme 没链上？）' })
+
 Write-Host "==> 别忘了跑一遍 cargo test -p fc-core 确认格式表还对得上" -ForegroundColor Yellow

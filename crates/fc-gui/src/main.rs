@@ -297,6 +297,14 @@ pub(crate) enum Job {
         dur: f64,
         profile: u8,
     },
+    /// 外部 psxavenc：PS1 XA / PS2 VAG
+    Psx {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        kind: &'static str,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -448,6 +456,8 @@ pub(crate) struct App {
     ofr: Option<PathBuf>,
     /// 随包的 Musepack 编码器（vendor\musepack\mpcenc.exe，LGPL）
     mpcenc: Option<PathBuf>,
+    /// PS1/PS2 编码器 psxavenc（Zlib，可选外部工具）
+    psxavenc: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -530,6 +540,7 @@ impl App {
             "wavpack" => self.wavpack.is_some(),
             "ofr" => self.ofr.is_some(),
             "mpcenc" => self.mpcenc.is_some(),
+            "psxavenc" => self.psxavenc.is_some(),
             // atracdenc 是默认那个（external::NAME）
             _ => self.atracdenc.is_some(),
         }
@@ -699,6 +710,7 @@ impl App {
             wavpack: fc_core::find_wavpack(),
             ofr: fc_core::find_ofr(),
             mpcenc: fc_core::find_mpcenc(),
+            psxavenc: fc_core::find_psxavenc(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -853,6 +865,7 @@ impl App {
         let wavpack = self.wavpack.clone();
         let ofr = self.ofr.clone();
         let mpcenc = self.mpcenc.clone();
+        let psxavenc = self.psxavenc.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -948,6 +961,26 @@ impl App {
                 continue;
             }
 
+            // PS1 XA / PS2 VAG 走外部 psxavenc（Zlib 许可，可选安装）
+            if spec.id == "xa" || spec.id == "vag" {
+                if self.psxavenc.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        "找不到 psxavenc.exe，PS1 XA / PS2 VAG 输出不可用（extras 包里有）"
+                            .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Psx {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                    kind: if spec.id == "xa" { "xa" } else { "vag" },
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
             // Speex 走随包的 speexenc：ffmpeg 只负责解成 8k WAV
             if spec.id == "speex" {
                 if self.speexenc.is_none() {
@@ -1005,6 +1038,12 @@ impl App {
                 continue;
             }
             let mut args = fc_core::args_for_with(spec, &self.tasks[i].opts, src_info);
+
+            // 芯片音乐没有固定时长：libgme 会一直渲染，默认只取前 3 分钟
+            if fc_core::is_chiptune(&self.tasks[i].path) {
+                args.push("-t".to_string());
+                args.push(fc_core::CHIPTUNE_SECONDS.to_string());
+            }
 
             // 元数据：源标签 → 单文件覆盖 → 批量覆盖，后写的赢
             if self.cfg.write_tags {
@@ -1075,6 +1114,7 @@ impl App {
                     Job::Wavpack { idx, out, .. } => (*idx, out.clone()),
                     Job::Ofr { idx, out, .. } => (*idx, out.clone()),
                     Job::Mpc { idx, out, .. } => (*idx, out.clone()),
+                    Job::Psx { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1164,6 +1204,31 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 speexenc")),
+                        }
+                    }
+                    Job::Psx {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        kind,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match psxavenc.as_ref() {
+                            Some(exe) => fc_core::external::psx_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                kind,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 psxavenc.exe")),
                         }
                     }
                     Job::Mpc {
@@ -2230,6 +2295,7 @@ fn main() -> eframe::Result<()> {
         show("wavpack", fc_core::find_wavpack());
         show("ofr", fc_core::find_ofr());
         show("mpcenc", fc_core::find_mpcenc());
+        show("psxavenc", fc_core::find_psxavenc());
         return Ok(());
     }
 
@@ -2395,6 +2461,28 @@ fn main() -> eframe::Result<()> {
                     std::process::exit(1);
                 }
             }
+        } else if target.id == "xa" || target.id == "vag" {
+            match fc_core::find_psxavenc() {
+                Some(exe) => match fc_core::external::psx_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    if target.id == "xa" { "xa" } else { "vag" },
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 psxavenc.exe（PS1 XA / PS2 VAG 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
         }
         if external_done {
             println!("完成: {output}");
@@ -2402,7 +2490,12 @@ fn main() -> eframe::Result<()> {
         }
         // 带上源信息：视频容器要靠它决定"能不能直接 copy"，
         // 否则 CLI 一律按 copy 走，转 mpg/vob 这种会直接失败
-        let args = fc_core::args_for_with(target, &fc_core::ConvertOptions::default(), Some(&info));
+        let mut args = fc_core::args_for_with(target, &fc_core::ConvertOptions::default(), Some(&info));
+        // 芯片音乐没有固定时长：默认只渲染前 3 分钟（和 GUI 批量一致）
+        if fc_core::is_chiptune(Path::new(input)) {
+            args.push("-t".to_string());
+            args.push(fc_core::CHIPTUNE_SECONDS.to_string());
+        }
         let arg_refs: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         if let Err(e) = fc_core::convert(
             &tools,

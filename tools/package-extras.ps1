@@ -64,7 +64,27 @@ atracdenc —— ATRAC1 / ATRAC3 / ATRAC3+ 编码器
 "@
 Set-Content -Path (Join-Path $atracDst 'SOURCE-说明.txt') -Value $srcNote -Encoding UTF8
 
-Write-Host "== 2/3 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
+Write-Host "== 2/4 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
+$psxSrc = Join-Path $src 'vendor\psxavenc'
+$psxExe = Join-Path $psxSrc 'psxavenc.exe'
+if (-not (Test-Path $psxExe)) {
+    $alt = Join-Path $src 'target\release\psxavenc\psxavenc.exe'
+    if (Test-Path $alt) { $psxSrc = Split-Path $alt -Parent } else { throw "找不到 psxavenc.exe（vendor\psxavenc 或 target\release\psxavenc）" }
+}
+$psxDst = Join-Path $stage 'psxavenc'
+New-Item -ItemType Directory -Force -Path $psxDst | Out-Null
+Copy-Item (Join-Path $psxSrc 'psxavenc.exe') $psxDst -Force
+$psxLic = Join-Path $psxSrc 'LICENSE-psxavenc.txt'
+if (Test-Path $psxLic) { Copy-Item $psxLic $psxDst -Force }
+$psxNote = @"
+psxavenc —— PS1 XA-ADPCM / PS2 VAG 编码器
+项目主页：https://github.com/WonderfulToolchain/psxavenc
+许可：Zlib（见同目录 LICENSE-psxavenc.txt）
+说明：程序会自动调用，不需要手动跑。
+"@
+Set-Content -Path (Join-Path $psxDst 'SOURCE-说明.txt') -Value $psxNote -Encoding UTF8
+
+Write-Host "== 3/4 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
 $ofrPs1 = @'
 # 下载 OptimFROG 的 ofr.exe 到本目录下的 optimfrog\（不涉及再分发）
 # 由 install-ofr.cmd 调用；需要联网。
@@ -134,29 +154,33 @@ $readme = @"
 ToneBox 可选外部工具包
 ======================
 
-这个包里是两样**不随主程序一起发**的编码器。
+这个包里是三样**不随主程序一起发**的编码器。
 把整个压缩包解压到 ToneBox 目录（format-converter.exe 所在的那层），然后：
 
 1) ATRAC（atracdenc）
    已包含在 atracdenc\ 里，解压完就能用。
    程序会自动找到它，不用做别的。
 
-2) OptimFROG（ofr.exe）
+2) PS1 XA / PS2 VAG（psxavenc）
+   已包含在 psxavenc\ 里，解压完就能用。
+
+3) OptimFROG（ofr.exe）
    双击 install-ofr.cmd，脚本会从官网下载并校验，放到 optimfrog\。
    需要联网。
 
 装完后回到程序：设置 → 依赖 / 外部工具 → 重新检测，
-就能看到 atracdenc / ofr 亮起来。
+就能看到 atracdenc / psxavenc / ofr 亮起来。
 
-这两个工具都是可选的：
+这三个工具都是可选的：
 - 没有 atracdenc：ATRAC1 / ATRAC3 / ATRAC3+ 不能输出（其它格式不受影响）
+- 没有 psxavenc：PS1 XA / PS2 VAG 不能输出（其它格式不受影响）
 - 没有 ofr.exe：OptimFROG 不能输出（其它格式不受影响）
 
 许可说明见各子目录里的文本。
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
-Write-Host "== 3/3 zip ==" -ForegroundColor Cyan
+Write-Host "== 4/4 zip ==" -ForegroundColor Cyan
 $dist = Split-Path -Parent $Out
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Force -Path $dist | Out-Null }
 if (Test-Path $Out) { Remove-Item $Out -Force }

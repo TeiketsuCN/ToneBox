@@ -531,7 +531,7 @@ impl App {
         if !enc_ok {
             let msg = match external {
                 Some(name) => format!(
-                    "你的系统里还没装 {name}（ATRAC 外部编码器）\n装好后放到程序目录或 PATH，再到设置里点「重新检测」。\n它不随本程序分发，装不装由你决定。"
+                    "你的系统里还没装 {name}（外部编码器）\n装好后放到程序目录或 PATH，再到设置里点「重新检测」。\n它不随本程序分发，装不装由你决定。"
                 ),
                 None => format!(
                     "你的机器上似乎没有这个编码器（{}）\n换个 ffmpeg 构建可能就有，或者别选这个格式。",

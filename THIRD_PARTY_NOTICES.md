@@ -11,6 +11,7 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 用途：解码/编码/探测
 - 版本：8.0，用 MSYS2 UCRT64 的 mingw-w64 gcc 16.2.0 构建
 - 构建脚本：`tools/build-ffmpeg.sh`（`tools/build-ffmpeg.ps1` 是 Windows 入口）
+- 构建额外启用：`--enable-libgme`（主机芯片音乐解码，见下）
 - 许可证全文：`vendor/ffmpeg/LICENSE-ffmpeg.txt`
 
 随包 ffmpeg 链接的编解码库（均为 LGPL 兼容许可，DLL 位于 `vendor/ffmpeg/`）：
@@ -82,6 +83,25 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 用途：`vendor/musepack/mpcenc.exe` 输出 `.mpc`（ffmpeg 只有解码器）
 - 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-libmpcdec` 1~0.1+r475-2
 - 许可证全文：`vendor/musepack/LICENSE-musepack.txt`
+
+## libgme（Game Music Emu，主机芯片音乐解码）
+
+- 项目：Game Music Emu
+- 主页：<https://github.com/libgme/game-music-emu>
+- 许可：LGPL-2.1-or-later
+- 用途：随包 ffmpeg 的 libgme 解复用，把 NSF / SPC / GBS / VGM / PSF / SID 等芯片音乐渲染成 PCM
+- 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-libgme` 0.6.5-2（`libgme.dll`；另需 zlib1.dll 运行时）
+- 许可证全文：`vendor/ffmpeg/LICENSE-libgme.txt`
+
+## psxavenc（PS1 XA / PS2 VAG 编码器，可选，在 extras 包）
+
+- 项目：psxavenc
+- 主页：<https://github.com/WonderfulToolchain/psxavenc>
+- 许可：Zlib
+- 用途：`psxavenc.exe` 输出 PS1 XA-ADPCM（`.xa`）与 PS2 VAG（`.vag`）
+- 分发：Zlib 允许随包，放在 `ToneBox-x.y.z-extras-win64.zip` 的 `psxavenc\` 里
+- 版本：v0.3.1（官方 Windows release）
+- 许可证全文：`vendor/psxavenc/LICENSE-psxavenc.txt`
 ## OptimFROG（ofr.exe，可选，不随包）
 
 - 项目：OptimFROG / Lossless Audio

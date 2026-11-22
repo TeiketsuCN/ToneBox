@@ -305,6 +305,8 @@ fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> 
         VideoCodec::Mpeg4 => 0.16,
         VideoCodec::Theora => 0.15,
         VideoCodec::Wmv2 => 0.17,
+        // DV 是固定 25Mbps 的帧内编码，bpp 反推出来的值就很大
+        VideoCodec::Dv => 2.4,
         VideoCodec::Copy => return 0,
     };
     // CRF 每差 6，码率大约差一倍；以 23 为基准
@@ -656,6 +658,8 @@ pub fn effective_video_codec(
         "vob" => VideoCodec::Mpeg2,
         "mpg" => VideoCodec::Mpeg2,
         "3gp" => VideoCodec::Mpeg4,
+        "dv" => VideoCodec::Dv,
+        "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
     };
     let mut c = o.video_codec;
@@ -760,6 +764,8 @@ pub enum VideoCodec {
     Theora,
     /// WMV2（ASF 容器的老画面）
     Wmv2,
+    /// DV（miniDV 摄像机；画面固定 720×576/25fps）
+    Dv,
 }
 
 impl VideoCodec {
@@ -774,6 +780,7 @@ impl VideoCodec {
             VideoCodec::Mpeg4 => "MPEG-4",
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
+            VideoCodec::Dv => "DV",
         }
     }
     /// 短标签（旋钮上放得下）
@@ -788,6 +795,7 @@ impl VideoCodec {
             VideoCodec::Mpeg4 => "MPEG-4",
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
+            VideoCodec::Dv => "DV",
         }
     }
     /// ffmpeg 编码器名；`Copy` 没有编码器
@@ -802,6 +810,7 @@ impl VideoCodec {
             VideoCodec::Mpeg4 => "mpeg4",
             VideoCodec::Theora => "libtheora",
             VideoCodec::Wmv2 => "wmv2",
+            VideoCodec::Dv => "dvvideo",
         })
     }
 
@@ -822,6 +831,7 @@ impl VideoCodec {
             VideoCodec::Mpeg4 => &["mpeg4"],
             VideoCodec::Theora => &["libtheora"],
             VideoCodec::Wmv2 => &["wmv2"],
+            VideoCodec::Dv => &["dvvideo"],
         }
     }
 }
@@ -887,6 +897,19 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "3gp" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
         // MXF：广播封装，画面 MPEG-2
         "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        // MXF OPAtom：Avid 流程，画面 MPEG-2
+        "mxf_opatom" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        // GXF：广播交换，画面 MPEG-2
+        "gxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        // DV：只有 DV 一种画面
+        "dv" => &[VideoCodec::Copy, VideoCodec::Dv],
+        // NUT：ffmpeg 自家容器，常见编码都收
+        "nut" => &[
+            VideoCodec::Copy,
+            VideoCodec::H264,
+            VideoCodec::Hevc,
+            VideoCodec::Mpeg4,
+        ],
         _ => &[],
     }
 }
@@ -917,6 +940,14 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "3gp" => matches!(c.as_str(), "h263" | "mpeg4" | "h264"),
         // MXF 只收 MPEG-2（以及 D-10 的变体）
         "mxf" => matches!(c.as_str(), "mpeg2video"),
+        // MXF OPAtom 同样只收 MPEG-2
+        "mxf_opatom" => matches!(c.as_str(), "mpeg2video"),
+        // GXF 是 MPEG-2 广播封装
+        "gxf" => matches!(c.as_str(), "mpeg2video"),
+        // DV 只收 DV 画面
+        "dv" => matches!(c.as_str(), "dvvideo"),
+        // NUT 通吃
+        "nut" => true,
         _ => false,
     }
 }
@@ -973,6 +1004,18 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "3gp" => matches!(c.as_str(), "aac" | "amr_nb" | "amr_wb"),
         // MXF 只收未压缩 PCM，且必须 48kHz —— 这里一律不复制，交给 audio_plan 重编
         "mxf" => false, // MXF 只收 48kHz，源多半 44.1k，统一走重编码
+        // MXF OPAtom 同样只收 PCM 48kHz
+        "mxf_opatom" => false,
+        // GXF 只收单声道 PCM 48kHz，不能直接复制立体声
+        "gxf" => false,
+        // DV 的音频是固定的 48kHz 立体声 PCM
+        "dv" => false,
+        // NUT 和 Matroska 一样什么都收
+        "nut" => matches!(
+            c.as_str(),
+            "aac" | "aac_latm" | "mp3" | "mp2" | "ac3" | "eac3" | "dts" | "flac"
+                | "vorbis" | "opus" | "alac"
+        ) || c.starts_with("pcm_"),
         _ => false,
     }
 }
@@ -1047,6 +1090,24 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 2304,
             label: "PCM 24bit",
         },
+        // MXF OPAtom：PCM 24bit / 48kHz
+        "mxf_opatom" => AudioPlan::Encode {
+            codec: "pcm_s24le",
+            kbps: 2304,
+            label: "PCM 24bit",
+        },
+        // GXF：单声道 PCM 16bit / 48kHz
+        "gxf" => AudioPlan::Encode {
+            codec: "pcm_s16le",
+            kbps: 768,
+            label: "PCM 16bit 单声道",
+        },
+        // DV：立体声 PCM 16bit / 48kHz
+        "dv" => AudioPlan::Encode {
+            codec: "pcm_s16le",
+            kbps: 1536,
+            label: "PCM 16bit",
+        },
         // MKV 什么都收；走到这里说明源是 WMA/ATRAC/DSD 之类，
         // 转 FLAC 至少不再丢东西（DSD 会被解码成 PCM，这是格式决定的）
         _ => AudioPlan::Encode {
@@ -1073,6 +1134,10 @@ pub fn container_note(container: &str) -> &'static str {
         "wmv" => "Windows Media：画面 WMV2、声音 WMA，给老 Windows 设备和老播放器用。",
         "3gp" => "3GPP 手机容器：画面 MPEG-4、声音 AAC，体积小。",
         "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
+        "mxf_opatom" => "MXF OPAtom（Avid）：画面 MPEG-2、声音 PCM 24bit/48kHz，一个文件一条流。",
+        "gxf" => "GXF 广播交换：画面 MPEG-2、声音 PCM 16bit/48kHz **单声道**。",
+        "dv" => "DV：画面固定 720×576/25fps，声音 PCM 16bit/48kHz 立体声，约 25Mbps。",
+        "nut" => "NUT 是 ffmpeg 的实验容器：什么都能装，但播放器基本不认。",
         _ => "",
     }
 }
@@ -1086,6 +1151,9 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "mov" => "MOV 的 H.265 用 hvc1 标记，Final Cut/QuickTime 才认。",
         "ts" | "m2ts" => "TS/M2TS 没有索引，剪起来难受；只是给电视/蓝光机放就无所谓。",
         "flv" => "FLV 早就没人维护了，除非必须，别选。",
+        "dv" => "DV 规格是死的：画面会缩放到 720×576、25fps，声音强制 48kHz 立体声。",
+        "gxf" => "GXF 只收单声道 PCM；立体声源会被下混成单声道。",
+        "nut" => "NUT 只适合自己存档/实验，别发给别人。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
     }
 }
@@ -1464,12 +1532,14 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "atrac3" => &[Knob::Atrac3Bitrate],
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
-        | "ogv" | "wmv" | "3gp" | "mxf" => &[
+        | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
             Knob::VideoFps,
         ],
+        // DV 的尺寸/帧率/码率都是规范固定的，只给「复制 / DV」这一项
+        "dv" => &[Knob::VideoCodec],
         _ => &[],
     }
 }
@@ -1532,6 +1602,8 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "optimfrog" => Some("ofr"),
         // Musepack：ffmpeg 只有解码器
         "musepack" => Some("mpcenc"),
+        // PS1 XA / PS2 VAG：ffmpeg 只有解码器，编码走 psxavenc
+        "xa" | "vag" => Some("psxavenc"),
         _ => None,
     }
 }
@@ -1807,14 +1879,43 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
             a.extend([s("-c:v"), s(enc)]);
             quality(&mut a, vc);
         }
+        // DV 是固定 25Mbps 的帧内编码，没有码率/质量参数可调
+        VideoCodec::Dv => {
+            a.extend([s("-c:v"), s(enc)]);
+        }
     }
-    // MXF 规范只接受 48kHz：音轨统一重采样（PCM 重采样不损失精度）
-    if spec.id == "mxf" {
-        a.extend([s("-ar"), s("48000")]);
+    // 广播/固定规格容器的硬约束：采样率、声道、画面尺寸都在这里兜住，
+    // 免得用户在界面上选了「保持」却产出一个装不进去的文件。
+    match spec.id {
+        "mxf" | "mxf_opatom" => {
+            a.extend([s("-ar"), s("48000")]);
+        }
+        "gxf" => {
+            // GXF 只收单声道 PCM / 48kHz，画面也限定 PAL/NTSC 分辨率
+            a.extend([s("-ac"), s("1"), s("-ar"), s("48000")]);
+            if vc != VideoCodec::Copy {
+                a.extend([s("-vf"), s("scale=720:576"), s("-r"), s("25")]);
+            }
+        }
+        "dv" => {
+            // DV 只收 720×576/25fps + 48kHz 立体声；-shortest 防止音画长度不齐导致收尾报错
+            a.extend([
+                s("-ac"),
+                s("2"),
+                s("-ar"),
+                s("48000"),
+                s("-shortest"),
+            ]);
+            if vc == VideoCodec::Dv {
+                a.extend([s("-vf"), s("scale=720:576"), s("-r"), s("25")]);
+            }
+        }
+        _ => {}
     }
 
     // copy 不能缩放/改帧率（effective_video_codec 已经保证这里不会是 copy）
-    if vc != VideoCodec::Copy {
+    // DV / GXF 的尺寸/帧率在上面固定死了，别让用户旋钮覆盖
+    if vc != VideoCodec::Copy && !matches!(spec.id, "dv" | "gxf") {
         if o.video_height > 0 {
             a.extend([s("-vf"), format!("scale=-2:{}", o.video_height)]);
         }
@@ -2476,7 +2577,7 @@ mod tests {
     fn video_containers_are_selectable_targets() {
         for id in [
             "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
-            "3gp",
+            "3gp", "dv", "gxf", "nut", "mxf_opatom",
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
@@ -2493,7 +2594,7 @@ mod tests {
             video_containers().map(|f| f.id).collect::<Vec<_>>(),
             vec![
                 "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
-                "ogv", "wmv", "3gp"
+                "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom"
             ]
         );
     }
@@ -2523,6 +2624,43 @@ mod tests {
         assert!(matches!(
             audio_plan("webm", "mp3"),
             AudioPlan::Encode { codec: "libopus", .. }
+        ));
+    }
+
+    #[test]
+    fn psx_formats_use_psxavenc() {
+        for id in ["xa", "vag"] {
+            let s = spec(id);
+            assert!(s.can_encode, "{id} 应该能当输出");
+            assert_eq!(s.group, Group::Device, "{id} 分组不对");
+            assert_eq!(external_encoder(id), Some("psxavenc"), "{id} 外部编码器不对");
+            assert!(s.args.is_empty(), "{id} 走外部工具，不该有 ffmpeg 参数");
+        }
+    }
+
+    #[test]
+    fn fixed_spec_containers_force_params() {
+        let src = miv("aac", "h264", 1920, 1080, 30.0, 4000);
+        // DV：画面必须缩到 720×576/25fps，声音强制 48k 立体声，还要 -shortest
+        let a = args_for_with(spec("dv"), &ConvertOptions::default(), Some(&src));
+        assert!(a.windows(2).any(|w| w[0] == "-c:v" && w[1] == "dvvideo"), "{a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-vf" && w[1] == "scale=720:576"), "{a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-r" && w[1] == "25"), "{a:?}");
+        assert!(a.windows(2).any(|w| w[0] == "-ac" && w[1] == "2"), "{a:?}");
+        assert!(a.iter().any(|x| x == "-shortest"), "{a:?}");
+
+        // GXF：只收单声道 48k PCM
+        let g = args_for_with(spec("gxf"), &ConvertOptions::default(), Some(&src));
+        assert!(g.windows(2).any(|w| w[0] == "-ac" && w[1] == "1"), "{g:?}");
+        assert!(matches!(
+            audio_plan("gxf", "aac"),
+            AudioPlan::Encode { codec: "pcm_s16le", .. }
+        ));
+
+        // MXF OPAtom：PCM 24bit / 48k
+        assert!(matches!(
+            audio_plan("mxf_opatom", "aac"),
+            AudioPlan::Encode { codec: "pcm_s24le", .. }
         ));
     }
 

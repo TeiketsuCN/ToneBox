@@ -50,6 +50,8 @@ PKGS=(
   mingw-w64-ucrt-x86_64-dav1d
   mingw-w64-ucrt-x86_64-aom
   mingw-w64-ucrt-x86_64-zlib
+  # 主机芯片音乐（NSF/SPC/GBS/VGM/PSF/SID…）走 ffmpeg 的 libgme 解复用器
+  mingw-w64-ucrt-x86_64-libgme
 )
 echo "==> 安装依赖包…"
 pacman -S --needed --noconfirm "${PKGS[@]}"
@@ -114,6 +116,8 @@ CONFIGURE=(
   --enable-libilbc
   --enable-liblc3
   --enable-libcodec2
+  # 主机芯片音乐：libgme 提供 NSF/SPC/GBS/VGM/PSF/SID 等的解复用（渲染成 PCM）
+  --enable-libgme
   # 视频编解码（ToneBox 的视频容器要用）
   --enable-libvpx
   --enable-libtheora
@@ -160,8 +164,15 @@ for f in avcodec-63.dll avformat-63.dll avutil-61.dll avfilter-12.dll \
   rm -f "$OUT/$f"
 done
 
+# libgme 还依赖 zlib1.dll（MSYS2 的 zlib 运行时），它不是 lib* 前缀，
+# ldd 的过滤列表会漏掉它 —— 少了它 ffmpeg 直接 0xC0000135 起不来
+if [ -f /ucrt64/bin/zlib1.dll ]; then
+  cp -f /ucrt64/bin/zlib1.dll "$OUT/"
+fi
+
 # 许可证
 cp -f "$BUILD/ffmpeg/COPYING.LGPLv3" "$OUT/LICENSE-ffmpeg.txt" 2>/dev/null || true
 
 echo "==> 完成。自检："
 "$OUT/ffmpeg.exe" -hide_banner -encoders 2>&1 | grep -Ei 'libgsm|libvo_amrwbenc|libilbc|liblc3|libcodec2' || echo "（没找到新编码器，检查链接是否成功）"
+"$OUT/ffmpeg.exe" -hide_banner -demuxers 2>&1 | grep -i 'libgme' || echo "（没找到 libgme 解复用器）"

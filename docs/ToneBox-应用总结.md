@@ -3,7 +3,7 @@
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.4.0**（1.5 开发中：可输出已到 79，新增老游戏语音与 SoX/IRCAM）
+- 文档版本：对应应用 **1.4.0**（1.5 开发中：可输出已到 85，新增老游戏语音、视频容器、PS1/PS2 输出与主机音乐输入）
 - 整理时间：2026-11
 - 仓库：<https://github.com/TeiketsuCN/ToneBox>
 
@@ -18,7 +18,7 @@
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
 | 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
-| 当前能力 | **79 个可输出格式**、47 个只读参考格式（合计 126 条）、14 个视频容器 |
+| 当前能力 | **85 个可输出格式**、47 个只读参考格式（合计 132 条）、18 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
 
@@ -49,15 +49,17 @@
 - 多文件拖拽进队列，统一目标格式；单个文件可在队列里单独覆盖
 - 三种执行路径：
   1. **ffmpeg 一把梭**（绝大多数格式）
-  2. **外部编码器**（ATRAC / Speex / WavPack 有损 / OptimFROG / Musepack）
+  2. **外部编码器**（ATRAC / Speex / WavPack 有损 / OptimFROG / Musepack / PS1 XA / PS2 VAG）
   3. **纯容器直通**（AC-4、IEC 61937 只能复制，源不对会明确报错）
-- 视频容器：保留**第一条画面 + 全部音轨**，画面可复制或转 H.264/H.265/VP9/AV1/MPEG-2/MPEG-4/Theora/WMV2，音轨逐条决定复制还是重编
+- **主机芯片音乐当输入**：NSF / SPC / GBS / VGM / PSF 等经随包 ffmpeg 的 libgme 渲染成 PCM
+  （默认 180 秒），再走正常转换流程
+- 视频容器：保留**第一条画面 + 全部音轨**，画面可复制或转 H.264/H.265/VP9/AV1/MPEG-2/MPEG-4/Theora/WMV2/DV，音轨逐条决定复制还是重编
 - 响度归一化（LUFS）、采样率/声道/位深转换、元数据与歌词 sidecar
 - 失败原因逐条显示（不是"转换失败"四个字）
 
 ### 3.2 格式百科
 
-点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 126 个条目（79 可输出 + 47 只读）。
+点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 132 个条目（85 可输出 + 47 只读）。
 
 ### 3.3 音乐库
 
@@ -98,7 +100,7 @@ format-converter.exe --health <file>            内容体检
 
 ## 4. 格式能力
 
-### 4.1 可输出（79 个，按组）
+### 4.1 可输出（85 个，按组）
 
 | 组 | 数量 | 格式 |
 |---|---|---|
@@ -107,9 +109,9 @@ format-converter.exe --health <file>            内容体检
 | **语音/电话** | 20 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0、**ALP ADPCM** |
 | **空间音频** | 5 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | **音频容器** | 9 | WAV/AU/SND、RF64、BWF、IEC 61937、VOC、AAC-LATM、**SMAF（MMF）**、**SoX**、**IRCAM** |
-| **视频容器** | 14 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF |
-| **设备专用** | 3 | ATRAC1、ATRAC3、ATRAC3+* |
-| **合计** | **79** | |
+| **视频容器** | 18 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、**DV**、**GXF**、**NUT**、**MXF OPAtom** |
+| **设备专用** | 5 | ATRAC1、ATRAC3、ATRAC3+*、**PS1 XA-ADPCM***、**PS2 VAG*** |
+| **合计** | **85** | |
 
 `*` = 需要外部工具（见第 5 节）；`†` = 需要 ffmpeg 构建里带对应库（随包 LGPL 构建不包含，完整构建如 gyan 有）
 
@@ -128,10 +130,11 @@ APE、TAK、OptimFROG 旧条目、Shorten、WMA Lossless/Pro/Voice、DSD（DSF/D
 
 | 工具 | 是否随包 | 许可 | 用途 |
 |---|---|---|---|
-| ffmpeg / ffprobe 8.0 | ✅ 主包 | LGPL-2.1-or-later | 解码、编码、探测（207 个编码器） |
+| ffmpeg / ffprobe 8.0 | ✅ 主包 | LGPL-2.1-or-later | 解码、编码、探测（207 个编码器；含 libgme） |
 | speexenc | ✅ 主包 | BSD-3-Clause | Speex 输出 |
 | mpcenc | ✅ 主包 | LGPL-2.1 | Musepack 输出 |
 | wavpack.exe | ✅ 主包 | BSD-3-Clause | WavPack **有损**（hybrid）输出 |
+| psxavenc | 📦 extras 包 | Zlib | PS1 XA / PS2 VAG 输出 |
 | atracdenc | 📦 extras 包 | LGPL-2.1 | ATRAC1/3/3+ 输出 |
 | ofr.exe（OptimFROG） | ⬇️ extras 内一键下载 | 闭源免费（再分发需授权） | OptimFROG 输出 |
 
@@ -205,6 +208,11 @@ docs/         设计笔记、格式总览、截图
    → 改成 `!can_encode || !avail`，跟随运行时可用性
 9. **Git 提交前没注意 `build/`**
    → 曾把 ffmpeg 源码树（15052 个文件）提交进去，已回退并加 `.gitignore`
+10. **libgme 需要 `zlib1.dll`，而 ldd 的 `lib*.dll` 过滤会漏掉它**
+    → 构建脚本只收集 `lib` 前缀的依赖，漏了 `zlib1.dll`，ffmpeg 直接 0xC0000135 起不来；
+    已在 `build-ffmpeg.sh` 里显式补拷
+11. **芯片音乐没有时长，libgme 会一直渲染**
+    → 一个 749 字节的 test.nsf 能渲出 3.4 小时；统一按 `CHIPTUNE_SECONDS = 180` 截断
 
 ---
 
@@ -220,7 +228,7 @@ powershell -File tools\fetch-optimfrog.ps1     # 可选
 
 # 编译与测试
 cargo build --release -p fc-gui
-cargo test -p fc-core --lib                    # 72 项
+cargo test -p fc-core --lib                    # 74 项
 
 # 打包
 powershell -File tools\package-release.ps1     # 主包
@@ -244,7 +252,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ## 9. 质量保证
 
-- **72 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
+- **74 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
 - **真实编码验证**：每加一个格式都用随包 ffmpeg/外部工具实际压一段音频，比对
   `ffprobe` 输出的编码、采样率、声道；视频容器还会验证画面/音轨编码
 - **发布会验三次哈希**：本地文件、GitHub 返回的 digest、重新下载后的文件
@@ -278,7 +286,11 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | **SoX** | 音频容器（PCM 32-bit） | 1.06 MB |
 | **IRCAM** | 音频容器（PCM 16-bit） | 530 KB |
 
-可输出格式 **73 → 79**。主机芯片音乐仍然不做，原因见 `docs/主机音频格式.md`。
+| **DV / GXF / NUT / MXF OPAtom** | 视频容器 | DV 720×576 / GXF 单声道 / NUT 直通 / MXF OPAtom |
+| **PS1 XA-ADPCM / PS2 VAG** | 设备专用（外部 psxavenc） | XA 133 KB / VAG 76 KB（3 秒正弦） |
+| **主机芯片音乐输入** | 输入（libgme） | NSF 渲染 3 分钟 → 10.7 MB FLAC |
+
+可输出格式 **73 → 85**。NSF/SPC/VGM/PSF 等芯片音乐现在能当输入（默认渲染 3 分钟），但仍不能作为输出。
 
 ---
 
