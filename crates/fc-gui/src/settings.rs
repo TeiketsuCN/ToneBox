@@ -422,6 +422,20 @@ impl Settings {
     fn default_lang() -> String { "zh".to_string() }
 
 pub fn load() -> Self {
+        // 从旧名字迁移：新目录没有配置时，复制旧的 config.json（含歌单/预设）
+        if Self::file().map(|p| !p.exists()).unwrap_or(false) {
+            if let Some(appdata) = std::env::var_os("APPDATA") {
+                let old = PathBuf::from(appdata)
+                    .join("FormatConverter")
+                    .join("config.json");
+                if old.exists() {
+                    if let Some(dir) = Self::dir() {
+                        let _ = std::fs::create_dir_all(&dir);
+                        let _ = std::fs::copy(&old, dir.join("config.json"));
+                    }
+                }
+            }
+        }
         let mut s = Self::file()
             .and_then(|p| std::fs::read(p).ok())
             .and_then(|b| serde_json::from_slice::<Settings>(&b).ok())
