@@ -90,13 +90,13 @@ impl App {
             .show_separator_line(false)
             .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(0.0, 6.0)))
             .show_inside(ui, |ui| {
-                let b = egui::Button::new(RichText::new("百科").size(9.5).color(MUTED))
+                let b = egui::Button::new(RichText::new(crate::tr!("百科")).size(9.5).color(MUTED))
                     .fill(tint(Color32::WHITE, 8))
                     .stroke(line(Color32::WHITE, 16))
                     .rounding(Rounding::same(7.0));
                 if ui
                     .add_sized([ui.available_width(), 24.0], b)
-                    .on_hover_text("看看每个格式到底是什么")
+                    .on_hover_text(crate::tr!("看看每个格式到底是什么"))
                     .clicked()
                 {
                     // 打开时对准当前输出格式：用户多半是"想知道我正在转的这个是什么"
@@ -359,7 +359,7 @@ impl App {
         let mut animating = false;
 
         // 百科按钮已经挪到侧栏最下面（rail_wiki），标题这里只留文字
-        ui.label(RichText::new("输出格式").size(11.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("输出格式")).size(11.0).color(DIM));
         ui.add_space(4.0);
 
         // 展开状态变化时，把高度动画归零重来
@@ -419,7 +419,7 @@ impl App {
                 // 视频容器也是正式格式行（见 Group::Video），只留一行很短的边界说明：
                 // 详细的"容器收什么编码"在输出列和百科里，不在这里堆字
                 ui.add_space(8.0);
-                para(ui, "视频保留第一条画面 + 全部音轨。", 8.5, DIM);
+                para(ui, crate::tr!("视频保留第一条画面 + 全部音轨。"), 8.5, DIM);
             });
 
         animating
@@ -540,7 +540,7 @@ impl App {
             };
             resp = resp.on_hover_text(msg);
         } else if !selectable {
-            resp = resp.on_hover_text("只读格式：能解码，不能作为输出目标");
+            resp = resp.on_hover_text(crate::tr!("只读格式：能解码，不能作为输出目标"));
         }
         if resp.clicked() {
             // 只读/缺编码器的格式不改输出目标，只展开解释

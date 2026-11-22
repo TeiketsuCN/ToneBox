@@ -90,7 +90,7 @@ impl App {
 
         if self.cfg.library_dirs.is_empty() && self.cfg.library_files.is_empty() {
             card(ui, WARN, |ui| {
-                para(ui, "还没有音乐库", 11.5, WARN);
+                para(ui, crate::tr!("还没有音乐库"), 11.5, WARN);
                 ui.add_space(4.0);
                 para(
                     ui,
@@ -106,7 +106,7 @@ impl App {
         if self.lib_entries.is_empty() && !self.lib_scanning && self.lib_tab != LibTab::Folders {
             let mut go = false;
             card(ui, WARN, |ui| {
-                para(ui, "还没扫描过音乐库", 11.5, WARN);
+                para(ui, crate::tr!("还没扫描过音乐库"), 11.5, WARN);
                 ui.add_space(4.0);
                 para(
                     ui,
@@ -203,10 +203,10 @@ impl App {
                                 );
                             });
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.add(egui::Button::new(RichText::new("在文件夹中显示").size(9.0)).frame(false)).clicked() {
+                                if ui.add(egui::Button::new(RichText::new(crate::tr!("在文件夹中显示")).size(9.0)).frame(false)).clicked() {
                                     lib_reveal = Some(e.path.clone());
                                 }
-                                if ui.add(egui::Button::new(RichText::new("播放").size(9.0)).frame(false)).clicked() {
+                                if ui.add(egui::Button::new(RichText::new(crate::tr!("播放")).size(9.0)).frame(false)).clicked() {
                                     lib_play = Some(e.path.clone());
                                 }
                             });
@@ -230,7 +230,7 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if ids.is_empty() {
-                    para(ui, "没找到匹配的歌。", 10.0, DIM);
+                    para(ui, crate::tr!("没找到匹配的歌。"), 10.0, DIM);
                     return;
                 }
                 match self.lib_tab {
@@ -366,7 +366,7 @@ impl App {
                 DIM,
             );
         } else {
-            ui.label(RichText::new("文件夹").size(9.5).color(DIM));
+            ui.label(RichText::new(crate::tr!("文件夹")).size(9.5).color(DIM));
             ui.add_space(4.0);
         }
 
@@ -405,7 +405,7 @@ impl App {
         // 单独加进来的文件（不挂在任何文件夹下）
         if !self.cfg.library_files.is_empty() {
             ui.add_space(10.0);
-            ui.label(RichText::new("单独添加的文件").size(9.5).color(DIM));
+            ui.label(RichText::new(crate::tr!("单独添加的文件")).size(9.5).color(DIM));
             ui.add_space(4.0);
         }
         let mut remove_file: Option<usize> = None;

@@ -114,7 +114,7 @@ impl App {
                 ui.set_width(ui.available_width());
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("引擎和设备").size(14.0).color(TEXT).strong());
+                    ui.label(RichText::new(crate::tr!("引擎和设备")).size(14.0).color(TEXT).strong());
                     ui.add_space(12.0);
                     if tiny_text_button(ui, "重新检测") {
                         self.devices_loaded = false;
@@ -142,7 +142,7 @@ impl App {
     /// 设备子页：输出 + 输入（不含蓝牙，蓝牙在单独一页）
     fn codec_devices(&mut self, ui: &mut egui::Ui) {
         let mut pick: Option<String> = None;
-        ui.label(RichText::new("输出设备").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("输出设备")).size(10.0).color(DIM));
         ui.add_space(2.0);
         let outs: Vec<usize> = (0..self.audio_devices.len())
             .filter(|i| {
@@ -173,7 +173,7 @@ impl App {
         }
 
         ui.add_space(12.0);
-        ui.label(RichText::new("输入设备").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("输入设备")).size(10.0).color(DIM));
         ui.add_space(2.0);
         let ins: Vec<usize> = (0..self.audio_devices.len())
             .filter(|i| {
@@ -182,7 +182,7 @@ impl App {
             })
             .collect();
         if ins.is_empty() {
-            para(ui, "没有检测到输入设备。", 9.0, DIM);
+            para(ui, crate::tr!("没有检测到输入设备。"), 9.0, DIM);
         } else {
             for idx in ins {
                 let dev = &self.audio_devices[idx];
@@ -203,7 +203,7 @@ impl App {
         // 配对交给 Windows：PIN/确认、驱动选择都由系统弹窗处理，程序不碰底层 HCI
         ui.horizontal(|ui| {
             let b = egui::Button::new(
-                RichText::new("蓝牙配对（Windows 设置）").size(9.5).color(MUTED),
+                RichText::new(crate::tr!("蓝牙配对（Windows 设置）")).size(9.5).color(MUTED),
             )
             .fill(tint(Color32::WHITE, 10))
             .stroke(line(Color32::WHITE, 18))
@@ -245,12 +245,12 @@ impl App {
             }
         }
         if !self.bt_paired.is_empty() {
-            ui.label(RichText::new("已配对设备").size(9.5).color(DIM));
+            ui.label(RichText::new(crate::tr!("已配对设备")).size(9.5).color(DIM));
             let mut unpair_id: Option<String> = None;
             for d in &self.bt_paired {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&d.name).size(9.5).color(TEXT));
-                    if ui.add(egui::Button::new(RichText::new("取消配对").size(8.5).color(DIM)).frame(false)).clicked() {
+                    if ui.add(egui::Button::new(RichText::new(crate::tr!("取消配对")).size(8.5).color(DIM)).frame(false)).clicked() {
                         unpair_id = Some(d.id.clone());
                     }
                 });
@@ -330,7 +330,7 @@ impl App {
 
         let groups = fc_player::devices::bluetooth_groups(&self.audio_devices);
         if groups.is_empty() {
-            para(ui, "没有检测到蓝牙音频设备。", 10.0, MUTED);
+            para(ui, crate::tr!("没有检测到蓝牙音频设备。"), 10.0, MUTED);
             ui.add_space(4.0);
             para(
                 ui,
@@ -352,7 +352,7 @@ impl App {
                 ui.add_space(6.0);
                 ui.label(RichText::new(&g.name).size(12.0).color(TEXT).strong());
                 ui.add_space(8.0);
-                ui.label(RichText::new("已连接").size(8.5).color(C_BT));
+                ui.label(RichText::new(crate::tr!("已连接")).size(8.5).color(C_BT));
             });
             ui.add_space(4.0);
 
@@ -428,7 +428,7 @@ impl App {
     fn codec_engine(&mut self, ui: &mut egui::Ui) {
         // 引擎页内容限宽：说明文字按 780 换行，不横着拉满整个窗口
         ui.set_max_width(780.0);
-        ui.label(RichText::new("播放").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("播放")).size(10.0).color(DIM));
         ui.add_space(6.0);
         let mut rg = self.cfg.replaygain;
         if transparent_toggle(ui, &mut rg, "播放时应用 ReplayGain（按文件里的响度标签调整）") {
@@ -443,7 +443,7 @@ impl App {
             egui::vec2(780.0, 0.0),
             Layout::top_down(Align::LEFT),
             |ui| {
-                para(ui, "ReplayGain 是什么？", 9.0, MUTED);
+                para(ui, crate::tr!("ReplayGain 是什么？"), 9.0, MUTED);
                 para(
                     ui,
                     "同一张专辑里，歌和歌的响度经常不一样：有的母带压得响，有的轻。",
@@ -478,14 +478,14 @@ impl App {
         if let Some(p) = &self.player {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("当前输出").size(9.0).color(DIM));
+                ui.label(RichText::new(crate::tr!("当前输出")).size(9.0).color(DIM));
                 ui.label(RichText::new(p.output_label()).size(9.0).color(MUTED));
             });
         }
 
         // ── 播放引擎：可选的两个是真能用的，其余标清楚为什么不能用 ──
         ui.add_space(14.0);
-        ui.label(RichText::new("播放引擎").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("播放引擎")).size(10.0).color(DIM));
         ui.add_space(4.0);
         let cur = self.cfg.engine_enum();
         let mut picked = cur;
@@ -585,7 +585,7 @@ impl App {
                     }
                 }
                 ui.label(
-                    RichText::new("选好输出设备后点右上角「重新检测」")
+                    RichText::new(crate::tr!("选好输出设备后点右上角「重新检测」"))
                         .size(8.5)
                         .color(DIM),
                 );
@@ -622,7 +622,7 @@ impl App {
         }
 
         ui.add_space(14.0);
-        ui.label(RichText::new("引擎信息").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("引擎信息")).size(10.0).color(DIM));
         ui.add_space(6.0);
         egui::Grid::new("codec_engine")
             .num_columns(2)
@@ -643,7 +643,7 @@ impl App {
             });
 
         ui.add_space(14.0);
-        ui.label(RichText::new("输出能力").size(10.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("输出能力")).size(10.0).color(DIM));
         ui.add_space(6.0);
         egui::Grid::new("codec_out_caps")
             .num_columns(2)

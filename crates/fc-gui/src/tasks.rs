@@ -22,7 +22,7 @@ use crate::overlays::*;
 /// 标题行里的「＋ 任务」小按钮：宽度跟着文字走，不占整行
 pub(crate) fn add_task_pill(ui: &mut egui::Ui, can: bool) -> bool {
     let b = egui::Button::new(
-        RichText::new("＋ 任务")
+        RichText::new(crate::tr!("＋ 任务"))
             .size(9.5)
             .color(if can { on_accent() } else { DIM }),
     )
@@ -38,14 +38,14 @@ pub(crate) fn add_task_pill(ui: &mut egui::Ui, can: bool) -> bool {
     if can && r.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    r.on_hover_text("把选中的文件按当前参数加进任务").clicked() && can
+    r.on_hover_text(crate::tr!("把选中的文件按当前参数加进任务")).clicked() && can
 }
 
 impl App {
     pub(crate) fn task_list(&mut self, ui: &mut egui::Ui) -> bool {
         let mut animating = false;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("任务").size(10.0).color(MUTED));
+            ui.label(RichText::new(crate::tr!("任务")).size(10.0).color(MUTED));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if !self.tasks.is_empty() {
                     ui.label(
@@ -59,7 +59,7 @@ impl App {
         ui.add_space(8.0);
 
         if self.tasks.is_empty() {
-            para(ui, "还没有任务。", 9.5, DIM);
+            para(ui, crate::tr!("还没有任务。"), 9.5, DIM);
             return false;
         }
 

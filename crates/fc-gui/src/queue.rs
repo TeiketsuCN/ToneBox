@@ -254,7 +254,7 @@ impl App {
                                 // ③ 状态
                                 match &state {
                                     State::Pending => {
-                                        ui.label(RichText::new("待转换").size(10.0).color(MUTED));
+                                        ui.label(RichText::new(crate::tr!("待转换")).size(10.0).color(MUTED));
                                     }
                                     State::Running(p) => {
                                         ui.add(
@@ -358,24 +358,23 @@ impl App {
                 let pad = ((avail - 190.0) * 0.5).max(0.0);
                 ui.add_space(pad);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("把你认为有音乐的文件拖进来").size(15.0).color(TEXT));
+                    ui.label(RichText::new(crate::tr!("把你认为有音乐的文件拖进来")).size(15.0).color(TEXT));
                     ui.add_space(5.0);
                     ui.label(
-                        RichText::new(
-                            "可以一次拖多个 · 不限后缀，按文件内容识别",
+                        RichText::new(crate::tr!("可以一次拖多个 · 不限后缀，按文件内容识别"),
                         )
                         .size(10.5)
                         .color(MUTED),
                     );
                     ui.add_space(3.0);
                     ui.label(
-                        RichText::new("视频来源：全部音轨都会保留；认不出来的会告诉你为什么")
+                        RichText::new(crate::tr!("视频来源：全部音轨都会保留；认不出来的会告诉你为什么"))
                             .size(9.5)
                             .color(DIM),
                     );
                     ui.add_space(16.0);
                     let btn =
-                        egui::Button::new(RichText::new("选择文件").size(12.5).color(TEXT))
+                        egui::Button::new(RichText::new(crate::tr!("选择文件")).size(12.5).color(TEXT))
                             .fill(tint(Color32::WHITE, 16))
                             .stroke(line(Color32::WHITE, 32))
                             .rounding(Rounding::same(9.0));

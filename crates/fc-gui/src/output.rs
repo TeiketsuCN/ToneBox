@@ -52,7 +52,7 @@ impl App {
 
         // 标题行 + 右侧「添加任务」：按钮不能放列底（播放栏展开会盖住底边）
         ui.horizontal(|ui| {
-            ui.label(RichText::new("输出").size(11.0).color(DIM));
+            ui.label(RichText::new(crate::tr!("输出")).size(11.0).color(DIM));
             ui.add_space(6.0);
             ui.add(
                 egui::Label::new(
@@ -129,7 +129,7 @@ impl App {
         ui.add_space(6.0);
 
         // 预设
-        ui.label(RichText::new("预设").size(9.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("预设")).size(9.0).color(DIM));
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
@@ -189,7 +189,7 @@ impl App {
                 .rounding(Rounding::same(7.0));
                 let resp = ui
                     .add(b)
-                    .on_hover_text("点一下套用这套参数；右键改名 / 删除");
+                    .on_hover_text(crate::tr!("点一下套用这套参数；右键改名 / 删除"));
                 if resp.clicked() {
                     apply_preset = Some(i);
                 }
@@ -232,12 +232,12 @@ impl App {
             }
             if ui
                 .add(
-                    egui::Button::new(RichText::new("＋ 存为预设").size(9.5).color(accent()))
+                    egui::Button::new(RichText::new(crate::tr!("＋ 存为预设")).size(9.5).color(accent()))
                         .fill(tint(accent(), 14))
                         .stroke(line(accent(), 45))
                         .rounding(Rounding::same(7.0)),
                 )
-                .on_hover_text("把当前格式和参数存成一套，可改名，跟着「配置」一起保存")
+                .on_hover_text(crate::tr!("把当前格式和参数存成一套，可改名，跟着「配置」一起保存"))
                 .clicked()
             {
                 let n = self.cfg.presets.len() + 1;
@@ -279,7 +279,7 @@ impl App {
         ui.spacing_mut().button_padding = egui::vec2(9.0, 3.0);
         let knobs = fc_core::knobs_for(self.target);
         if knobs.is_empty() {
-            para(ui, "这个格式没有可调参数。", 9.0, DIM);
+            para(ui, crate::tr!("这个格式没有可调参数。"), 9.0, DIM);
         }
         let mut shown: Vec<fc_core::WarningKind> = vec![fc_core::WarningKind::Container];
         for k in knobs {
@@ -431,7 +431,7 @@ impl App {
         }
 
         ui.add_space(14.0);
-        ui.label(RichText::new("输出到").size(9.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("输出到")).size(9.0).color(DIM));
         ui.add_space(4.0);
         if radio_dot(
             ui,
@@ -467,7 +467,7 @@ impl App {
                                 egui::TextEdit::singleline(&mut dir)
                                     .frame(false)
                                     .text_color(MUTED)
-                                    .hint_text(RichText::new("选一个目录").size(10.0).color(DIM)),
+                                    .hint_text(RichText::new(crate::tr!("选一个目录")).size(10.0).color(DIM)),
                             )
                             .changed();
                     });
@@ -475,7 +475,7 @@ impl App {
                     self.cfg.output_dir = dir;
                     changed = true;
                 }
-                let browse = egui::Button::new(RichText::new("浏览").size(10.0).color(MUTED))
+                let browse = egui::Button::new(RichText::new(crate::tr!("浏览")).size(10.0).color(MUTED))
                     .fill(Color32::TRANSPARENT)
                     .stroke(line(Color32::WHITE, 20))
                     .rounding(Rounding::same(7.0));
@@ -489,7 +489,7 @@ impl App {
         }
 
         ui.add_space(12.0);
-        ui.label(RichText::new("转换后").size(9.0).color(DIM));
+        ui.label(RichText::new(crate::tr!("转换后")).size(9.0).color(DIM));
         ui.add_space(4.0);
         if radio_dot(ui, "保留源文件", !self.delete_source) {
             self.delete_source = false;
@@ -500,7 +500,7 @@ impl App {
         }
         if self.delete_source {
             ui.add_space(2.0);
-            para(ui, "删了就找不回来了，谨慎。", 8.5, DANGER);
+            para(ui, crate::tr!("删了就找不回来了，谨慎。"), 8.5, DANGER);
         }
 
         ui.add_space(14.0);
@@ -564,7 +564,7 @@ impl App {
 
         // 歌词 sidecar：和「元数据」同级，始终露出，不藏在展开区里；默认不生成
         ui.add_space(8.0);
-        ui.label(RichText::new("歌词文件").size(9.5).color(MUTED));
+        ui.label(RichText::new(crate::tr!("歌词文件")).size(9.5).color(MUTED));
         ui.horizontal(|ui| {
             if radio_dot_inline(ui, "不生成", self.cfg.lyric_mode == crate::settings::LyricMode::None) {
                 self.cfg.lyric_mode = crate::settings::LyricMode::None;
@@ -628,11 +628,11 @@ impl App {
                     .and_then(|i| i.title_ov.clone())
                     .unwrap_or_default();
                 ui.add_space(6.0);
-                ui.label(RichText::new("标题（当前文件）").size(9.0).color(DIM));
+                ui.label(RichText::new(crate::tr!("标题（当前文件）")).size(9.0).color(DIM));
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut title)
-                            .hint_text("留空=用源文件标签")
+                            .hint_text(crate::tr!("留空=用源文件标签"))
                             .margin(egui::vec2(6.0, 4.0)),
                     )
                     .changed()
@@ -653,11 +653,11 @@ impl App {
                     .and_then(|i| i.track_ov.clone())
                     .unwrap_or_default();
                 ui.add_space(4.0);
-                ui.label(RichText::new("音轨号").size(9.0).color(DIM));
+                ui.label(RichText::new(crate::tr!("音轨号")).size(9.0).color(DIM));
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut track)
-                            .hint_text("如 03")
+                            .hint_text(crate::tr!("如 03"))
                             .margin(egui::vec2(6.0, 4.0)),
                     )
                     .changed()
@@ -675,11 +675,11 @@ impl App {
 
             // ── 全批（影响所有文件）──
             ui.add_space(8.0);
-            ui.label(RichText::new("艺术家（全部）").size(9.0).color(DIM));
+            ui.label(RichText::new(crate::tr!("艺术家（全部）")).size(9.0).color(DIM));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut self.cfg.meta_artist)
-                        .hint_text("留空=用源文件标签")
+                        .hint_text(crate::tr!("留空=用源文件标签"))
                         .margin(egui::vec2(6.0, 4.0)),
                 )
                 .changed()
@@ -687,11 +687,11 @@ impl App {
                 changed = true;
             }
             ui.add_space(4.0);
-            ui.label(RichText::new("专辑（全部）").size(9.0).color(DIM));
+            ui.label(RichText::new(crate::tr!("专辑（全部）")).size(9.0).color(DIM));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut self.cfg.meta_album)
-                        .hint_text("留空=用源文件标签")
+                        .hint_text(crate::tr!("留空=用源文件标签"))
                         .margin(egui::vec2(6.0, 4.0)),
                 )
                 .changed()
@@ -700,7 +700,7 @@ impl App {
             }
 
             ui.add_space(6.0);
-            ui.label(RichText::new("封面（全部）").size(9.0).color(DIM));
+            ui.label(RichText::new(crate::tr!("封面（全部）")).size(9.0).color(DIM));
             ui.horizontal(|ui| {
                 let name = std::path::Path::new(&self.cfg.meta_cover)
                     .file_name()
@@ -712,7 +712,7 @@ impl App {
                 if ui
                     .add_sized(
                         [(ui.available_width() - 46.0).max(50.0), 22.0],
-                        egui::Button::new(RichText::new("选图片…").size(9.5)),
+                        egui::Button::new(RichText::new(crate::tr!("选图片…")).size(9.5)),
                     )
                     .clicked()
                 {
@@ -725,14 +725,14 @@ impl App {
                     }
                 }
                 if ui
-                    .add_sized([42.0, 22.0], egui::Button::new(RichText::new("清除").size(9.0)))
+                    .add_sized([42.0, 22.0], egui::Button::new(RichText::new(crate::tr!("清除")).size(9.0)))
                     .clicked()
                 {
                     self.cfg.meta_cover.clear();
                     changed = true;
                 }
             });
-            para(ui, "封面只写进 FLAC/MP3/M4A。", 8.5, DIM);
+            para(ui, crate::tr!("封面只写进 FLAC/MP3/M4A。"), 8.5, DIM);
         }
 
         ui.add_space(8.0);
@@ -811,7 +811,7 @@ impl App {
         };
         if !l.lufs.is_finite() || !l.peak_dbfs.is_finite() {
             ui.label(
-                RichText::new("测不出响度（样本太短或几乎全是静音）")
+                RichText::new(crate::tr!("测不出响度（样本太短或几乎全是静音）"))
                     .size(8.5)
                     .color(DIM),
             );
@@ -826,7 +826,7 @@ impl App {
 
         // 说明这是"当前选中文件"的预览：响度是全局设置，但每条素材要补的增益不同
         ui.label(
-            RichText::new("响度预览（当前文件）")
+            RichText::new(crate::tr!("响度预览（当前文件）"))
                 .size(8.0)
                 .color(DIM),
         );
@@ -1192,7 +1192,7 @@ impl App {
                     }
                 }
                 // 「视频编码」放不下在 field_row 的标签列里（5 个按钮），单独占一行
-                ui.label(RichText::new("视频编码").size(10.0).color(MUTED));
+                ui.label(RichText::new(crate::tr!("视频编码")).size(10.0).color(MUTED));
                 ui.add_space(2.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);

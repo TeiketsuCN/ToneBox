@@ -59,15 +59,15 @@ impl App {
         ui.add_space(16.0 * (1.0 - t));
 
         let Some(it) = self.items.get(self.selected) else {
-            ui.label(RichText::new("详情").size(10.5).color(DIM));
+            ui.label(RichText::new(crate::tr!("详情")).size(10.5).color(DIM));
             ui.add_space(10.0);
-            para(ui, "拖入文件后，这里显示源文件的真实参数、质量判断和解释。", 10.5, DIM);
+            para(ui, crate::tr!("拖入文件后，这里显示源文件的真实参数、质量判断和解释。"), 10.5, DIM);
             return animating;
         };
 
         let fade = |c: Color32| c.gamma_multiply(t);
 
-        ui.label(RichText::new("详情").size(10.5).color(fade(DIM)));
+        ui.label(RichText::new(crate::tr!("详情")).size(10.5).color(fade(DIM)));
         ui.add_space(8.0);
         let disp = it.tags.display_title(&it.name());
         ui.add(
@@ -223,12 +223,12 @@ impl App {
                         .map(|m| m.sample_rate == 0 && m.has_video())
                         .unwrap_or(false);
                     if no_audio {
-                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                        para(ui, crate::tr!("纯视频文件没有音轨，不做频谱分析和内容体检。"), 9.5, DIM);
                     } else if self.cfg.auto_analyze {
-                        para(ui, "准备分析频谱…", 10.0, DIM);
+                        para(ui, crate::tr!("准备分析频谱…"), 10.0, DIM);
                     } else {
                         ui.horizontal(|ui| {
-                            para(ui, "未分析（自动分析已关闭）", 9.5, DIM);
+                            para(ui, crate::tr!("未分析（自动分析已关闭）"), 9.5, DIM);
                             if ui.small_button("分析频谱").clicked() {
                                 self.pending_analyze = Some(self.selected);
                             }
@@ -242,9 +242,9 @@ impl App {
                         .map(|m| m.sample_rate == 0 && m.has_video())
                         .unwrap_or(false);
                     if no_audio {
-                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                        para(ui, crate::tr!("纯视频文件没有音轨，不做频谱分析和内容体检。"), 9.5, DIM);
                     } else {
-                        para(ui, "正在分析频谱…", 10.0, DIM);
+                        para(ui, crate::tr!("正在分析频谱…"), 10.0, DIM);
                     }
                 }
                 Analysis::Failed(e) => {
@@ -255,10 +255,10 @@ impl App {
                         .map(|m| m.sample_rate == 0 && m.has_video())
                         .unwrap_or(false);
                     if no_audio {
-                        para(ui, "纯视频文件没有音轨，不做频谱分析和内容体检。", 9.5, DIM);
+                        para(ui, crate::tr!("纯视频文件没有音轨，不做频谱分析和内容体检。"), 9.5, DIM);
                     } else {
                         ui.vertical(|ui| {
-                            para(ui, "频谱分析失败", 11.0, DANGER);
+                            para(ui, crate::tr!("频谱分析失败"), 11.0, DANGER);
                             ui.add_space(4.0);
                             para(ui, e, 9.5, MUTED);
                         });
@@ -282,7 +282,7 @@ impl App {
                     // 内容体检放到质量评估后面（见下面），先看判档、再看内容是否正常
                     if let Some(d) = &r.dsd {
                         // DSD 不走"截止频率推码率"那套：只报格式事实，别给一个假的置信度
-                        para(ui, "质量评估", 10.0, DIM);
+                        para(ui, crate::tr!("质量评估"), 10.0, DIM);
                         ui.add_space(6.0);
                         let tier = if d.tier > 0 {
                             format!("DSD{}", d.tier)
@@ -302,7 +302,7 @@ impl App {
                                 row(ui, "判定", "无损源码");
                             });
                     } else {
-                        para(ui, "质量评估", 10.0, DIM);
+                        para(ui, crate::tr!("质量评估"), 10.0, DIM);
                         ui.add_space(6.0);
                         egui::Grid::new("quality_grid")
                             .num_columns(2)
@@ -324,10 +324,10 @@ impl App {
                                 };
                                 if bad {
                                     ui.label(
-                                        RichText::new("推测源质量").size(10.0).color(tint(TEXT, 168)),
+                                        RichText::new(crate::tr!("推测源质量")).size(10.0).color(tint(TEXT, 168)),
                                     );
                                     ui.label(
-                                        RichText::new("内容异常")
+                                        RichText::new(crate::tr!("内容异常"))
                                             .size(10.5)
                                             .color(DANGER)
                                             .strong(),
@@ -337,7 +337,7 @@ impl App {
                                     row(ui, "推测源质量", &est);
                                 }
 
-                                ui.label(RichText::new("置信度").size(10.0).color(tint(TEXT, 168)));
+                                ui.label(RichText::new(crate::tr!("置信度")).size(10.0).color(tint(TEXT, 168)));
                                 let (rect, _) = ui.allocate_exact_size(
                                     egui::vec2(118.0, 10.0),
                                     egui::Sense::hover(),
@@ -383,7 +383,7 @@ impl App {
                     // 再「内容体检」（这段音频本身正不正常）。
                     if let Some(h) = &it.health {
                         ui.add_space(14.0);
-                        para(ui, "内容体检", 10.0, DIM);
+                        para(ui, crate::tr!("内容体检"), 10.0, DIM);
                         ui.add_space(6.0);
                         let (icon, vcol) = match h.verdict {
                             fc_analyze::health::Verdict::Normal => ("✓", GOOD),
@@ -483,7 +483,7 @@ impl App {
         if let Some(enc) = &it.encrypted {
             // 加密格式：别只丢一句"读不出来"，给出平台、置信度、判断依据和合法出路
             ui.add_space(14.0);
-            para(ui, "加密格式", 10.0, DANGER);
+            para(ui, crate::tr!("加密格式"), 10.0, DANGER);
             // NCM 的封面是明文存的：不给音频解密，也能让你看见是哪张专辑
             if let Some(tex) = &it.cover {
                 ui.add_space(8.0);
@@ -501,8 +501,8 @@ impl App {
                     paint_lock(ui.painter(), img_rect);
                     ui.add_space(10.0);
                     ui.vertical(|ui| {
-                        para(ui, "容器内封面（明文）", 9.0, MUTED);
-                        para(ui, "只读这张图，不碰加密音频", 8.5, DIM);
+                        para(ui, crate::tr!("容器内封面（明文）"), 9.0, MUTED);
+                        para(ui, crate::tr!("只读这张图，不碰加密音频"), 8.5, DIM);
                     });
                 });
             }
@@ -510,7 +510,7 @@ impl App {
             egui::Grid::new("enc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 row(ui, "平台", enc.platform);
                 row(ui, "格式", enc.format);
-                ui.label(RichText::new("置信度").size(10.0).color(tint(TEXT, 168)));
+                ui.label(RichText::new(crate::tr!("置信度")).size(10.0).color(tint(TEXT, 168)));
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(150.0, 12.0), egui::Sense::hover());
                 let p = ui.painter();
@@ -555,7 +555,7 @@ impl App {
         } else if let Some(e) = &it.error {
             ui.add_space(14.0);
             ui.vertical(|ui| {
-                para(ui, "读不出来", 11.5, DANGER);
+                para(ui, crate::tr!("读不出来"), 11.5, DANGER);
                 ui.add_space(5.0);
                 para(ui, e, 10.0, MUTED);
             });

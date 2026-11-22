@@ -68,21 +68,21 @@ impl App {
                         // 顶栏：返回按钮 + 标题 + 搜索
                         ui.horizontal(|ui| {
                             let back = egui::Button::new(
-                                RichText::new("返回").size(10.0).color(MUTED),
+                                RichText::new(crate::tr!("返回")).size(10.0).color(MUTED),
                             )
                             .fill(tint(Color32::WHITE, 8))
                             .stroke(line(Color32::WHITE, 16))
                             .rounding(Rounding::same(7.0))
                             .min_size(egui::vec2(56.0, 24.0));
-                            if ui.add(back).on_hover_text("回到主界面（Esc 也行）").clicked() {
+                            if ui.add(back).on_hover_text(crate::tr!("回到主界面（Esc 也行）")).clicked() {
                                 self.wiki_open = false;
                             }
                             ui.add_space(12.0);
-                            ui.label(RichText::new("格式百科").size(15.0).color(TEXT).strong());
+                            ui.label(RichText::new(crate::tr!("格式百科")).size(15.0).color(TEXT).strong());
                             ui.add_space(16.0);
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.wiki_filter)
-                                    .hint_text("搜格式名…")
+                                    .hint_text(crate::tr!("搜格式名…"))
                                     .desired_width(180.0)
                                     .margin(egui::vec2(8.0, 5.0)),
                             );
@@ -215,7 +215,7 @@ impl App {
                                             .min_size(egui::vec2(0.0, 30.0));
                                             if ui
                                                 .add(btn)
-                                                .on_hover_text("回到主界面，接下来转的文件都用这个格式")
+                                                .on_hover_text(crate::tr!("回到主界面，接下来转的文件都用这个格式"))
                                                 .clicked()
                                                 && !is_target
                                             {
@@ -313,7 +313,7 @@ impl App {
                                         ui.add_space(TITLEBAR_H);
 
                         // 顶栏：不要返回键了，点齿轮或 Esc 退出
-                        ui.label(RichText::new("设置").size(15.0).color(TEXT).strong());
+                        ui.label(RichText::new(crate::tr!("设置")).size(15.0).color(TEXT).strong());
                         ui.add_space(18.0);
 
                         egui::ScrollArea::vertical()
@@ -331,9 +331,9 @@ impl App {
                                         |ui| {
                                             ui.set_max_width(col_w);
                                 // ── 外观 ──
-                                section(ui, "外观");
+                                section(ui, crate::tr!("外观"));
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("背景").size(10.5).color(MUTED));
+                                    ui.label(RichText::new(crate::tr!("背景")).size(10.5).color(MUTED));
                                     ui.add_space(12.0);
                                     for m in settings::BgMode::all() {
                                         let on = self.cfg.bg_mode == m;
@@ -444,7 +444,7 @@ impl App {
 
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("暗化").size(10.5).color(MUTED));
+                                    ui.label(RichText::new(crate::tr!("暗化")).size(10.5).color(MUTED));
                                     ui.add_space(12.0);
                                     let mut dim = self.cfg.dim as i32;
                                     if bar_slider(ui, &mut dim, 0, 210, false) {
@@ -457,7 +457,7 @@ impl App {
                                 // 缩放会让内容比窗口先变大，五列必然挤坏。
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("窗口大小").size(10.5).color(MUTED));
+                                    ui.label(RichText::new(crate::tr!("窗口大小")).size(10.5).color(MUTED));
                                     ui.add_space(12.0);
                                     for m in settings::WindowSize::all() {
                                         let on = self.cfg.window == m;
@@ -484,14 +484,14 @@ impl App {
                                         );
                                     }
                                     ui.label(
-                                        RichText::new("F11 切换；Esc 退出全屏")
+                                        RichText::new(crate::tr!("F11 切换；Esc 退出全屏"))
                                             .size(9.0)
                                             .color(DIM),
                                     );
                                 });
                                 ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("窗口固定尺寸：小 1160×660，中 1260×700，大 1380×760，超大 1580×880（随屏幕自动缩放）")
+                                    RichText::new(crate::tr!("窗口固定尺寸：小 1160×660，中 1260×700，大 1380×760，超大 1580×880（随屏幕自动缩放）"))
                                         .size(9.0)
                                         .color(DIM),
                                 );
@@ -499,7 +499,7 @@ impl App {
                                 ui.add_space(18.0);
 
                                 // ── 行为 ──
-                                section(ui, "行为");
+                                section(ui, crate::tr!("行为"));
                                 let mut auto = self.cfg.auto_analyze;
                                 // 复选框底色透明：只留勾和文字，别在深色面板上再压一块方块
                                 let r = ui
@@ -516,7 +516,7 @@ impl App {
                                         v.active.bg_stroke = Stroke::NONE;
                                         ui.checkbox(
                                             &mut auto,
-                                            RichText::new("选中文件时自动分析频谱")
+                                            RichText::new(crate::tr!("选中文件时自动分析频谱"))
                                                 .size(10.5)
                                                 .color(MUTED),
                                         )
@@ -528,13 +528,13 @@ impl App {
                                 }
                                 ui.add_space(4.0);
                                 ui.label(
-                                    RichText::new("关掉后不自动分析，省 CPU；每个文件约 1 秒")
+                                    RichText::new(crate::tr!("关掉后不自动分析，省 CPU；每个文件约 1 秒"))
                                         .size(9.0)
                                         .color(DIM),
                                 );
 
                                 ui.add_space(18.0);
-                                section(ui, "配置");
+                                section(ui, crate::tr!("配置"));
                                 self.profile_panel(ui);
 
                                 ui.add_space(18.0);
@@ -548,7 +548,7 @@ impl App {
                                         |ui| {
                                             ui.set_max_width(col_w);
                                 // ── 关于 ──
-                                section(ui, "关于");
+                                section(ui, crate::tr!("关于"));
                                 egui::Grid::new("about")
                                     .num_columns(2)
                                     .spacing([16.0, 6.0])
@@ -594,7 +594,7 @@ impl App {
                                 });
 
                                 ui.add_space(10.0);
-                                section(ui, "依赖 / 外部工具");
+                                section(ui, crate::tr!("依赖 / 外部工具"));
 
                                 // 一行：圆点 + 名字 + 状态；下面缩进一行路径
                                 let dep = |ui: &mut egui::Ui,
@@ -817,7 +817,7 @@ impl App {
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {
                                     let b = egui::Button::new(
-                                        RichText::new("重新检测").size(9.0).color(MUTED),
+                                        RichText::new(crate::tr!("重新检测")).size(9.0).color(MUTED),
                                     )
                                     .fill(tint(Color32::WHITE, 10))
                                     .stroke(line(Color32::WHITE, 18))
@@ -840,7 +840,7 @@ impl App {
                                         changed = true;
                                     }
                                     ui.label(
-                                        RichText::new("换过工具目录或版本后点一下")
+                                        RichText::new(crate::tr!("换过工具目录或版本后点一下"))
                                             .size(8.5)
                                             .color(DIM),
                                     );
@@ -853,7 +853,7 @@ impl App {
                                 );
 
                                 ui.add_space(16.0);
-                                section(ui, "文件关联");
+                                section(ui, crate::tr!("文件关联"));
                                 para(
                                     ui,
                                     "注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。",
@@ -889,7 +889,7 @@ impl App {
                                 }
 
                                 ui.add_space(16.0);
-                                section(ui, "语言 / Language");
+                                section(ui, crate::tr!("语言 / Language"));
                                 ui.horizontal(|ui| {
                                     if ui
                                         .selectable_label(self.cfg.lang == "zh", "中文")
@@ -918,7 +918,7 @@ impl App {
                                 );
 
                                 ui.add_space(16.0);
-                                section(ui, "CUE 分轨");
+                                section(ui, crate::tr!("CUE 分轨"));
                                 para(
                                     ui,
                                     "选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。",
@@ -927,7 +927,7 @@ impl App {
                                 );
                                 ui.add_space(6.0);
                                 let cue_btn = egui::Button::new(
-                                    RichText::new("选择 CUE 并分轨").size(9.0).color(MUTED),
+                                    RichText::new(crate::tr!("选择 CUE 并分轨")).size(9.0).color(MUTED),
                                 )
                                 .fill(tint(Color32::WHITE, 10))
                                 .stroke(line(Color32::WHITE, 18))
@@ -963,7 +963,7 @@ impl App {
                                 }
 
                                 ui.add_space(18.0);
-                                section(ui, "支持开发");
+                                section(ui, crate::tr!("支持开发"));
                                 para(
                                     ui,
                                     "免费、开源、不卖授权。觉得有用就扫下面任意一个。",
@@ -1040,7 +1040,7 @@ impl App {
 
                         // ── 头：活动 + 开始转换 ──
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("活动").size(12.5).color(TEXT).strong());
+                            ui.label(RichText::new(crate::tr!("活动")).size(12.5).color(TEXT).strong());
                             let pending = self
                                 .tasks
                                 .iter()
@@ -1076,7 +1076,7 @@ impl App {
                                     .min_size(egui::vec2(76.0, 24.0));
                                 if ui
                                     .add_enabled(can || self.running, b)
-                                    .on_hover_text("把任务列表里待转换的文件都转掉")
+                                    .on_hover_text(crate::tr!("把任务列表里待转换的文件都转掉"))
                                     .clicked()
                                     && can
                                 {
@@ -1108,7 +1108,7 @@ impl App {
                             .count();
                         let covers = self.items.iter().filter(|i| i.cover.is_some()).count();
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("缓存").size(9.5).color(MUTED));
+                            ui.label(RichText::new(crate::tr!("缓存")).size(9.5).color(MUTED));
                             ui.add_space(6.0);
                             ui.label(
                                 RichText::new(format!(
@@ -1121,7 +1121,7 @@ impl App {
                         });
                         ui.add_space(4.0);
                         ui.label(
-                            RichText::new("波形/分析/封面都是按需算的，关掉就没了")
+                            RichText::new(crate::tr!("波形/分析/封面都是按需算的，关掉就没了"))
                                 .size(8.5)
                                 .color(DIM),
                         );
@@ -1132,13 +1132,13 @@ impl App {
 
                         // ── 通知 ──
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("通知").size(10.5).color(MUTED));
+                            ui.label(RichText::new(crate::tr!("通知")).size(10.5).color(MUTED));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if !self.notices.is_empty()
                                     && ui
                                         .add(
                                             egui::Button::new(
-                                                RichText::new("清空").size(9.0).color(DIM),
+                                                RichText::new(crate::tr!("清空")).size(9.0).color(DIM),
                                             )
                                             .fill(Color32::TRANSPARENT)
                                             .stroke(Stroke::NONE),
@@ -1151,7 +1151,7 @@ impl App {
                         });
                         ui.add_space(4.0);
                         if self.notices.is_empty() {
-                            para(ui, "还没有通知。转换完成或失败都会记一条。", 9.0, DIM);
+                            para(ui, crate::tr!("还没有通知。转换完成或失败都会记一条。"), 9.0, DIM);
                         } else {
                             egui::ScrollArea::vertical()
                                 .id_salt("activity_notices")
@@ -1199,7 +1199,7 @@ impl App {
                         ui.add_space(7.0);
                         self.sys.sample(ui.ctx());
                         let s = self.sys.stats;
-                        ui.label(RichText::new("系统").size(9.5).color(MUTED));
+                        ui.label(RichText::new(crate::tr!("系统")).size(9.5).color(MUTED));
                         ui.add_space(3.0);
                         Self::stat_row(
                             ui,
