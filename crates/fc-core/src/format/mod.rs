@@ -1112,6 +1112,8 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "f4v" | "ismv" => matches!(c.as_str(), "h264"),
         // WTV 是录制容器，MPEG-2 / H.264 / MPEG-4 / VC-1 都能装
         "wtv" => matches!(c.as_str(), "mpeg2video" | "h264" | "mpeg4" | "vc1"),
+        // PSP 有分辨率上限，copy 会留下超规格流
+        "psp" => false,
         // VCD 只收 MPEG-1，SVCD 只收 MPEG-2
         "vcd" => matches!(c.as_str(), "mpeg1video"),
         "svcd" => matches!(c.as_str(), "mpeg2video"),
@@ -2219,6 +2221,17 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
     match spec.id {
         "mxf" | "mxf_opatom" => {
             a.extend([s("-ar"), s("48000")]);
+        }
+        "psp" => {
+            // PSP 只认 ≤480×272；超规格会让 H.264 出现坏宏块
+            if vc != VideoCodec::Copy {
+                a.extend([
+                    s("-vf"),
+                    s("scale=480:272:force_original_aspect_ratio=decrease"),
+                    s("-r"),
+                    s("30"),
+                ]);
+            }
         }
         "gxf" => {
             // GXF 只收单声道 PCM / 48kHz，画面也限定 PAL/NTSC 分辨率

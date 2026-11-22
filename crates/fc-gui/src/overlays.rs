@@ -1174,6 +1174,101 @@ impl App {
                                 self.task_list(ui);
                             });
 
+                        ui.add_space(8.0);
+                        let mut copy = false;
+                        let mut clear = false;
+                        let mut open_dir = false;
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(crate::tr2!("控制台", "Console"))
+                                            .size(10.0)
+                                            .color(if self.console_open { accent() } else { MUTED }),
+                                    )
+                                    .fill(Color32::TRANSPARENT)
+                                    .stroke(line(Color32::WHITE, 16))
+                                    .rounding(Rounding::same(7.0)),
+                                )
+                                .clicked()
+                            {
+                                self.console_open = !self.console_open;
+                            }
+                            if self.console_open {
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new(crate::tr2!("打开日志", "Open logs")).size(8.5).color(MUTED),
+                                            )
+                                            .fill(Color32::TRANSPARENT)
+                                            .stroke(line(Color32::WHITE, 14))
+                                            .rounding(Rounding::same(6.0)),
+                                        )
+                                        .clicked()
+                                    {
+                                        open_dir = true;
+                                    }
+                                    if ui
+                                        .add(
+                                            egui::Button::new(RichText::new(crate::tr2!("清空", "Clear")).size(8.5).color(MUTED))
+                                                .fill(Color32::TRANSPARENT)
+                                                .stroke(line(Color32::WHITE, 14))
+                                                .rounding(Rounding::same(6.0)),
+                                        )
+                                        .clicked()
+                                    {
+                                        clear = true;
+                                    }
+                                    if ui
+                                        .add(
+                                            egui::Button::new(RichText::new(crate::tr2!("复制", "Copy")).size(8.5).color(MUTED))
+                                                .fill(Color32::TRANSPARENT)
+                                                .stroke(line(Color32::WHITE, 14))
+                                                .rounding(Rounding::same(6.0)),
+                                        )
+                                        .clicked()
+                                    {
+                                        copy = true;
+                                    }
+                                });
+                            }
+                        });
+                        if copy {
+                            ui.ctx().copy_text(self.console.join("\n"));
+                        }
+                        if clear {
+                            self.console.clear();
+                        }
+                        if open_dir {
+                            if let Some(dir) = self.log_path.parent() {
+                                #[cfg(windows)]
+                                {
+                                    let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
+                                }
+                            }
+                        }
+                        if self.console_open {
+                            egui::ScrollArea::vertical()
+                                .id_salt("console_scroll")
+                                .max_height(150.0)
+                                .stick_to_bottom(true)
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    if self.console.is_empty() {
+                                        para(ui, crate::tr2!("还没有日志。转换一次就会出现。", "No logs yet. Run a conversion."), 8.5, DIM);
+                                    }
+                                    for line in &self.console {
+                                        ui.label(
+                                            RichText::new(line)
+                                                .monospace()
+                                                .size(8.3)
+                                                .color(DIM),
+                                        );
+                                    }
+                                });
+                        }
+
                         ui.add_space(10.0);
                         self.hairline(ui);
                         ui.add_space(8.0);

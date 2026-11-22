@@ -384,6 +384,10 @@ pub(crate) struct App {
     settings_tab: overlays::SettingsTab,
     qr_wechat: Option<egui::TextureHandle>,
     qr_alipay: Option<egui::TextureHandle>,
+    /// 诊断控制台：本次会话的转换事件，最多保留 2000 行
+    pub(crate) console: Vec<String>,
+    pub(crate) console_open: bool,
+    pub(crate) log_path: PathBuf,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -707,6 +711,16 @@ impl App {
             settings_tab: overlays::SettingsTab::About,
             qr_wechat: None,
             qr_alipay: None,
+            console: Vec::new(),
+            console_open: false,
+            log_path: { 
+                let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+                let p = std::env::var_os("APPDATA")
+                    .map(|a| PathBuf::from(a).join("ToneLore").join("logs").join(format!("session-{ms}.log")))
+                    .unwrap_or_default();
+                if let Some(dir) = p.parent() { let _ = std::fs::create_dir_all(dir); }
+                p
+            },
             expanded: Some(target.id),
             rx: None,
             running: false,
@@ -1269,6 +1283,7 @@ impl App {
         }
         self.running = true;
         self.batch_total = jobs.len();
+        self.log(format!("[START] {} job(s)", jobs.len()));
         self.batch_done = 0;
 
         let (tx, rx) = channel();
@@ -1840,6 +1855,7 @@ impl App {
                     }
                 }
                 Msg::Done(i, path, size) => {
+                    self.log(format!("[OK] {}", path.display()));
                     // 转换成功且用户选了「删除源文件」——在标记成功之后删，
                     // 删失败也不影响结果（比如源文件正被别的程序占用）
                     let src = self.tasks.get(i).map(|t| t.path.clone());
@@ -1875,6 +1891,7 @@ impl App {
                     );
                 }
                 Msg::Failed(i, e) => {
+                    self.log(format!("[FAIL] {e}"));
                     let name = self
                         .tasks
                         .get(i)
@@ -1893,6 +1910,7 @@ impl App {
                     self.push_notice(false, crate::tr!("转换失败"), format!("{name}\n{e}"));
                 }
                 Msg::Finished => {
+                    self.log("batch finished");
                     self.running = false;
                     self.rx = None;
                     // 一批多个文件时再补一条汇总，单文件就别重复了
@@ -3501,6 +3519,25 @@ impl Drop for App {
     fn drop(&mut self) {
         for it in &self.items {
             it.forget_media();
+        }
+    }
+}
+
+impl App {
+    /// 往诊断控制台写一行，同时追加到会话日志文件。
+    pub(crate) fn log(&mut self, line: impl Into<String>) {
+        let entry = line.into();
+        self.console.push(entry.clone());
+        if self.console.len() > 2000 {
+            self.console.remove(0);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_path)
+        {
+            use std::io::Write;
+            let _ = writeln!(f, "{entry}");
         }
     }
 }
