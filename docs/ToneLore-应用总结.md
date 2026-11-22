@@ -351,3 +351,17 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | `tools/build-ffmpeg.sh` | 自建带语音编码库的 ffmpeg |
 | `tools/package-release.ps1` / `package-extras.ps1` | 两种发布包 |
 | `crates/fc-core/src/format/` | 格式表与全部规则（本项目的核心） |
+
+---
+
+## 21. 2026-11-23 当前状态（2.0.0 之后）
+
+- 品牌：ToneLore / 声识；仓库、exe、配置文件关联、安装包均已统一
+- 已发布：2.0.0（112 输出目标、English UI、可靠性/顾问、歌单、About）
+- 2.0.0 后已进 main、未发 release：
+  - 独立控制台（日志 + 命令 `help/version/logs/clear` + 落盘）
+  - 歌词管理页（`.lrc` 编辑器、试听打轴、封面列表）、详情页同步歌词
+  - 设置 Storage 页（默认导出目录、日志、缓存/临时文件）
+  - PSP 分辨率修复、音乐库播放修复、启动过渡 650ms
+- 真实音乐验证：99 OK / 12 SKIP_EXTERNAL / 1 FAIL（PSP，已修未全量重跑）
+- 已知限制：设置 Display/Behavior/Tools 未分栏；外部编码器无自动验证；歌词只读同名 `.lrc`
