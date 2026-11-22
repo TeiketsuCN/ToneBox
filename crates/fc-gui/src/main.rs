@@ -2394,7 +2394,7 @@ fn print_usage() {
     println!();
     println!("用法:");
     println!("  format-converter.exe                          打开图形界面");
-    println!("  format-converter.exe --convert <输入> <输出> [--to <格式id>]");
+    println!("  format-converter.exe --convert <输入> <输出> [--to <格式id>] [--vcodec <编码>]");
     println!("  format-converter.exe --formats                列出可输出格式");
     println!("  format-converter.exe --tools                  探测 ffmpeg / 外部编码器");
     println!("  format-converter.exe --devices                列出音频设备");
@@ -2720,6 +2720,37 @@ fn main() -> eframe::Result<()> {
         // 视频容器要先按"这个 ffmpeg 里真有的编码器"挑一个，
         // 否则默认会写 libx264，而随包构建只有 libopenh264，CLI 会直接报错
         let mut opts = fc_core::ConvertOptions::default();
+        // 视频容器可选编码：--vcodec prores / dnxhr / ffv1 / vp8 / mjpeg ...
+        if let Some(pos) = args.iter().position(|a| a == "--vcodec") {
+            if let Some(name) = args.get(pos + 1) {
+                opts.video_codec = match name.to_ascii_lowercase().as_str() {
+                    "copy" => fc_core::VideoCodec::Copy,
+                    "h264" => fc_core::VideoCodec::H264,
+                    "hevc" | "h265" => fc_core::VideoCodec::Hevc,
+                    "vp9" => fc_core::VideoCodec::Vp9,
+                    "vp8" => fc_core::VideoCodec::Vp8,
+                    "av1" => fc_core::VideoCodec::Av1,
+                    "mpeg2" => fc_core::VideoCodec::Mpeg2,
+                    "mpeg4" => fc_core::VideoCodec::Mpeg4,
+                    "mpeg1" => fc_core::VideoCodec::Mpeg1,
+                    "theora" => fc_core::VideoCodec::Theora,
+                    "wmv2" => fc_core::VideoCodec::Wmv2,
+                    "dv" => fc_core::VideoCodec::Dv,
+                    "amv" => fc_core::VideoCodec::Amv,
+                    "flv" => fc_core::VideoCodec::Flv,
+                    "prores" => fc_core::VideoCodec::ProRes,
+                    "dnxhr" | "dnxhd" => fc_core::VideoCodec::DnxHr,
+                    "ffv1" => fc_core::VideoCodec::Ffv1,
+                    "mjpeg" => fc_core::VideoCodec::Mjpeg,
+                    "gif" => fc_core::VideoCodec::Gif,
+                    "apng" => fc_core::VideoCodec::Apng,
+                    other => {
+                        eprintln!("未知视频编码: {other}");
+                        std::process::exit(2);
+                    }
+                };
+            }
+        }
         if fc_core::is_video(target) {
             let src_v = info.video_codec.clone().unwrap_or_default();
             let vc = fc_core::effective_video_codec(target.id, &opts, &src_v);

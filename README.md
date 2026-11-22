@@ -1,4 +1,4 @@
-# 声箱 ToneBox
+﻿# 声箱 ToneBox
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -15,7 +15,7 @@
 
 ## 一分钟了解
 
-- **110 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
+- **112 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
 - 32 个视频容器；支持保留第一条画面 + 全部音轨，音频逐条决定复制还是重编
 - 主机芯片音乐（NSF / SPC / GBS / VGM / PSF…）**能当输入**，渲染后转成普通音频
 - 全本地处理：不解 DRM、不联网、不上传文件、不做流媒体下载
@@ -78,7 +78,7 @@ OptimFROG 双击一次 `install-ofr.cmd` 即可。装完回程序里点
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
 | 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937、RF64、BWF、VOC、AAC-LATM、SMAF（MMF）、SoX、IRCAM |
-| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、VCD、SVCD、PSP、iPod (M4V)、IVF、H.264 / H.265 / MPEG-2 / MPEG-4 裸流、AVIF、**AMV、SWF** |
+| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、VCD、SVCD、PSP、iPod (M4V)、IVF、H.264 / H.265 / MPEG-2 / MPEG-4 裸流、AVIF、AMV、SWF、**GIF、APNG** |
 | 设备专用 | ATRAC1 / ATRAC3 / ATRAC3+（atracdenc）、PS1 XA / PS2 VAG（psxavenc）、BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli）、N64 VADPCM（vadpcm） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转
@@ -207,7 +207,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 
 ### 1.7（开发中）
 - 可输出格式 **107 → 110**：新增 **Argonaut ASF**（老游戏语音）、**AMV**（老国产 MP4 播放器）、**SWF**（Flash 动画）
-- 专业视频编码（ProRes / DNxHD / FFV1 / VP8 / MJPEG / GIF / APNG）、vgmstream 输入、双击播放正在做
+- vgmstream 输入、双击播放、转换后自检正在做
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）

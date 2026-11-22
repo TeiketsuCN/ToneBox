@@ -149,7 +149,7 @@ pub fn is_video(spec: &FormatSpec) -> bool {
 
 /// 纯视频容器：没有音轨（裸流 / 图片），参数里不能映射音频
 pub fn video_only(id: &str) -> bool {
-    matches!(id, "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif")
+    matches!(id, "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" | "gif" | "apng")
 }
 
 /// 侧栏里展示的格式：能编码的那些
@@ -315,6 +315,14 @@ fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> 
         VideoCodec::Dv => 2.4,
         VideoCodec::Amv => 0.35,
         VideoCodec::Flv => 0.12,
+        // 中间编码码率很高；动图按像素估
+        VideoCodec::ProRes => 3.5,
+        VideoCodec::DnxHr => 3.0,
+        VideoCodec::Ffv1 => 4.5,
+        VideoCodec::Vp8 => 0.09,
+        VideoCodec::Mjpeg => 0.9,
+        VideoCodec::Gif => 0.35,
+        VideoCodec::Apng => 0.8,
         VideoCodec::Copy => return 0,
     };
     // CRF 每差 6，码率大约差一倍；以 23 为基准
@@ -676,6 +684,8 @@ pub fn effective_video_codec(
         "avif" => VideoCodec::Av1,
         "amv" => VideoCodec::Amv,
         "swf" => VideoCodec::Flv,
+        "gif" => VideoCodec::Gif,
+        "apng" => VideoCodec::Apng,
         "dv" => VideoCodec::Dv,
         "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
@@ -790,6 +800,20 @@ pub enum VideoCodec {
     Amv,
     /// FLV1（Flash 视频）
     Flv,
+    /// ProRes（Apple 后期中间编码）
+    ProRes,
+    /// DNxHR / DNxHD（Avid 中间编码）
+    DnxHr,
+    /// FFV1（无损视频归档）
+    Ffv1,
+    /// VP8（WebM 老编码）
+    Vp8,
+    /// MJPEG（动图/老剪辑）
+    Mjpeg,
+    /// GIF 动图
+    Gif,
+    /// APNG 动图
+    Apng,
 }
 
 impl VideoCodec {
@@ -808,6 +832,13 @@ impl VideoCodec {
             VideoCodec::Dv => "DV",
             VideoCodec::Amv => "AMV",
             VideoCodec::Flv => "FLV1",
+            VideoCodec::ProRes => "ProRes",
+            VideoCodec::DnxHr => "DNxHR",
+            VideoCodec::Ffv1 => "FFV1",
+            VideoCodec::Vp8 => "VP8",
+            VideoCodec::Mjpeg => "MJPEG",
+            VideoCodec::Gif => "GIF",
+            VideoCodec::Apng => "APNG",
         }
     }
     /// 短标签（旋钮上放得下）
@@ -826,6 +857,13 @@ impl VideoCodec {
             VideoCodec::Dv => "DV",
             VideoCodec::Amv => "AMV",
             VideoCodec::Flv => "FLV1",
+            VideoCodec::ProRes => "ProRes",
+            VideoCodec::DnxHr => "DNxHR",
+            VideoCodec::Ffv1 => "FFV1",
+            VideoCodec::Vp8 => "VP8",
+            VideoCodec::Mjpeg => "MJPEG",
+            VideoCodec::Gif => "GIF",
+            VideoCodec::Apng => "APNG",
         }
     }
     /// ffmpeg 编码器名；`Copy` 没有编码器
@@ -844,6 +882,13 @@ impl VideoCodec {
             VideoCodec::Dv => "dvvideo",
             VideoCodec::Amv => "amv",
             VideoCodec::Flv => "flv",
+            VideoCodec::ProRes => "prores_ks",
+            VideoCodec::DnxHr => "dnxhd",
+            VideoCodec::Ffv1 => "ffv1",
+            VideoCodec::Vp8 => "libvpx",
+            VideoCodec::Mjpeg => "mjpeg",
+            VideoCodec::Gif => "gif",
+            VideoCodec::Apng => "apng",
         })
     }
 
@@ -868,6 +913,13 @@ impl VideoCodec {
             VideoCodec::Dv => &["dvvideo"],
             VideoCodec::Amv => &["amv"],
             VideoCodec::Flv => &["flv"],
+            VideoCodec::ProRes => &["prores_ks", "prores_aw", "prores"],
+            VideoCodec::DnxHr => &["dnxhd"],
+            VideoCodec::Ffv1 => &["ffv1"],
+            VideoCodec::Vp8 => &["libvpx"],
+            VideoCodec::Mjpeg => &["mjpeg"],
+            VideoCodec::Gif => &["gif"],
+            VideoCodec::Apng => &["apng"],
         }
     }
 }
@@ -910,6 +962,7 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
             VideoCodec::Hevc,
             VideoCodec::Vp9,
             VideoCodec::Av1,
+            VideoCodec::Ffv1,
         ],
         "mp4" => &[
             VideoCodec::Copy,
@@ -917,11 +970,17 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
             VideoCodec::Hevc,
             VideoCodec::Av1,
         ],
-        "webm" => &[VideoCodec::Copy, VideoCodec::Vp9, VideoCodec::Av1],
-        "mov" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Hevc],
+        "webm" => &[VideoCodec::Copy, VideoCodec::Vp8, VideoCodec::Vp9, VideoCodec::Av1],
+        "mov" => &[
+            VideoCodec::Copy,
+            VideoCodec::H264,
+            VideoCodec::Hevc,
+            VideoCodec::ProRes,
+            VideoCodec::Mjpeg,
+        ],
         "ts" | "m2ts" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Hevc],
         "flv" => &[VideoCodec::Copy, VideoCodec::H264],
-        "avi" => &[VideoCodec::Copy, VideoCodec::H264],
+        "avi" => &[VideoCodec::Copy, VideoCodec::H264, VideoCodec::Mjpeg],
         // 节目流 / DVD：MPEG-2 是正主
         "mpg" => &[VideoCodec::Copy, VideoCodec::Mpeg2, VideoCodec::Mpeg4],
         "vob" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
@@ -954,7 +1013,7 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         // SWF：FLV1 视频
         "swf" => &[VideoCodec::Copy, VideoCodec::Flv],
         // MXF：广播封装，画面 MPEG-2
-        "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2, VideoCodec::DnxHr],
         // MXF OPAtom：Avid 流程，画面 MPEG-2
         "mxf_opatom" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         // GXF：广播交换，画面 MPEG-2
@@ -967,7 +1026,10 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
             VideoCodec::H264,
             VideoCodec::Hevc,
             VideoCodec::Mpeg4,
+            VideoCodec::Ffv1,
         ],
+        "gif" => &[VideoCodec::Copy, VideoCodec::Gif],
+        "apng" => &[VideoCodec::Copy, VideoCodec::Apng],
         _ => &[],
     }
 }
@@ -981,7 +1043,7 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "mp4" => matches!(c.as_str(), "h264" | "hevc" | "av1"),
         // WebM 只认这两个（VP8 也算，但这里只开放 VP9/AV1）
         "webm" => matches!(c.as_str(), "vp8" | "vp9" | "av1"),
-        "mov" => matches!(c.as_str(), "h264" | "hevc" | "av1" | "prores" | "mpeg4"),
+        "mov" => matches!(c.as_str(), "h264" | "hevc" | "av1" | "prores" | "mpeg4" | "mjpeg"),
         // MPEG-TS 是广播容器：H.264/H.265 和 MPEG-2 都能装
         "ts" | "m2ts" => matches!(c.as_str(), "h264" | "hevc" | "mpeg2video" | "av1"),
         "flv" => matches!(c.as_str(), "h264"),
@@ -1018,7 +1080,9 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "amv" => matches!(c.as_str(), "amv"),
         "swf" => matches!(c.as_str(), "flv1" | "flv"),
         // MXF 只收 MPEG-2（以及 D-10 的变体）
-        "mxf" => matches!(c.as_str(), "mpeg2video"),
+        "mxf" => matches!(c.as_str(), "mpeg2video" | "dnxhd"),
+        "gif" => matches!(c.as_str(), "gif"),
+        "apng" => matches!(c.as_str(), "apng"),
         // MXF OPAtom 同样只收 MPEG-2
         "mxf_opatom" => matches!(c.as_str(), "mpeg2video"),
         // GXF 是 MPEG-2 广播封装
@@ -1096,7 +1160,7 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "psp" => matches!(c.as_str(), "aac" | "mp3"),
         "ipod" => matches!(c.as_str(), "aac" | "mp3" | "alac"),
         // 纯视频裸流没有音轨
-        "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => false,
+        "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" | "gif" | "apng" => false,
         // AMV 音频固定 ADPCM，SWF 只收 MP3
         "amv" => false,
         "swf" => matches!(c.as_str(), "mp3"),
@@ -1287,7 +1351,9 @@ pub fn container_note(container: &str) -> &'static str {
         "avif" => "AVIF 动图：AV1 编码的图片序列，没有音轨。",
         "amv" => "AMV：160×120/30fps + 22.05k 单声道 ADPCM，老国产 MP4 播放器专用。",
         "swf" => "SWF：FLV1 + MP3，Flash 已停更，只留给老课件。",
-        "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
+        "mxf" => "广播封装：画面 MPEG-2 / DNxHR、声音 PCM 24bit/48kHz，电视台/后期流程用。",
+        "gif" => "GIF 动图：没有音轨，颜色只到 256 色。",
+        "apng" => "APNG 动图：PNG 的无损动画，没有音轨。",
         "mxf_opatom" => "MXF OPAtom（Avid）：画面 MPEG-2、声音 PCM 24bit/48kHz，一个文件一条流。",
         "gxf" => "GXF 广播交换：画面 MPEG-2、声音 PCM 16bit/48kHz **单声道**。",
         "dv" => "DV：画面固定 720×576/25fps，声音 PCM 16bit/48kHz 立体声，约 25Mbps。",
@@ -1319,6 +1385,8 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => "这是纯视频裸流：没有音轨，也不会做封装。",
         "amv" => "AMV 规格是死的：画面会被缩到 160×120/30fps，声音强制 22.05k 单声道。",
         "swf" => "SWF 只认 FLV1 + MP3；Flash 已经停止支持。",
+        "gif" => "GIF 是 256 色动图，别拿它存视频。",
+        "apng" => "APNG 是无损动图，文件通常比 GIF 大。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
     }
 }
@@ -1699,7 +1767,7 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
         | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" | "3g2" | "f4v" | "ismv"
         | "wtv" | "vcd" | "svcd" | "psp" | "ipod" | "ivf" | "h264" | "hevc" | "m2v" | "m4v"
-        | "avif" | "amv" | "swf" => &[
+        | "avif" | "amv" | "swf" | "gif" | "apng" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -2006,8 +2074,13 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
             "libx264" | "libx265" => {
                 a.extend([s("-crf"), crf.to_string(), s("-preset"), s("medium")]);
             }
-            "libvpx-vp9" | "libaom-av1" => {
+            "libvpx-vp9" | "libvpx" | "libaom-av1" => {
                 a.extend([s("-crf"), crf.to_string(), s("-b:v"), s("0")]);
+            }
+            // MJPEG 只有 qscale（1 最好、31 最差）
+            "mjpeg" => {
+                let q = 1 + crf * 30 / 63;
+                a.extend([s("-q:v"), q.to_string()]);
             }
             "libsvtav1" => {
                 a.extend([s("-crf"), crf.to_string()]);
@@ -2070,6 +2143,27 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         VideoCodec::Flv => {
             a.extend([s("-c:v"), s(enc)]);
             quality(&mut a, vc);
+        }
+        // 后期中间编码：profile 固定，没有质量参数
+        VideoCodec::ProRes => {
+            a.extend([s("-c:v"), s(enc), s("-profile:v"), s("3")]);
+        }
+        VideoCodec::DnxHr => {
+            a.extend([s("-c:v"), s(enc), s("-profile:v"), s("dnxhr_hq")]);
+        }
+        VideoCodec::Ffv1 => {
+            a.extend([s("-c:v"), s(enc)]);
+        }
+        VideoCodec::Vp8 => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
+        VideoCodec::Mjpeg => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
+        VideoCodec::Gif | VideoCodec::Apng => {
+            a.extend([s("-c:v"), s(enc)]);
         }
     }
     // 广播/固定规格容器的硬约束：采样率、声道、画面尺寸都在这里兜住，
@@ -2143,6 +2237,8 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         "avif" => "avif",
         "amv" => "amv",
         "swf" => "swf",
+        "gif" => "gif",
+        "apng" => "apng",
         _ => "",
     };
     if !mux.is_empty() {
@@ -2819,7 +2915,8 @@ mod tests {
         for id in [
             "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
             "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv", "wtv", "vcd", "svcd",
-            "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v", "avif", "amv", "swf",
+            "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v", "avif", "amv", "swf", "gif",
+            "apng",
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
@@ -2838,7 +2935,7 @@ mod tests {
                 "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
                 "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv",
                 "wtv", "vcd", "svcd", "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v",
-                "avif", "amv", "swf"
+                "avif", "amv", "swf", "gif", "apng"
             ]
         );
     }
