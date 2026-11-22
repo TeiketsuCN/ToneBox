@@ -1478,25 +1478,38 @@ impl App {
         let mut open_dir = false;
         let mut submitted: Option<String> = None;
 
+        let screen = ctx.screen_rect();
+        let win_w = (screen.width() * 0.46).clamp(420.0, 720.0).min(screen.width() - 48.0);
+        let win_h = (screen.height() * 0.45).clamp(260.0, 420.0).min(screen.height() - 120.0);
+        let win_x = (screen.right() - win_w - 24.0).max(screen.left() + 24.0);
+        let win_y = (screen.top() + TITLEBAR_H + 24.0)
+            .min(screen.bottom() - win_h - 24.0)
+            .max(screen.top() + TITLEBAR_H + 12.0);
         egui::Window::new(crate::tr2!("控制台", "Console"))
             .id(egui::Id::new("console_window"))
             .open(&mut open)
-            .default_pos(egui::pos2(
-                (ctx.screen_rect().right() - 760.0).max(20.0),
-                ctx.screen_rect().top() + 80.0,
-            ))
-            .default_size([720.0, 420.0])
+            .default_pos(egui::pos2(win_x, win_y))
+            .default_size([win_w, win_h])
+            .max_width(screen.width() - 48.0)
+            .max_height(screen.height() - 96.0)
+            .constrain(true)
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(crate::tr2!("复制", "Copy")).clicked() {
+                    let ghost = |label: &str| {
+                        egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(line(Color32::WHITE, 18))
+                            .rounding(Rounding::same(7.0))
+                    };
+                    if ui.add(ghost(crate::tr2!("复制", "Copy"))).clicked() {
                         copy = true;
                     }
-                    if ui.button(crate::tr2!("清空", "Clear")).clicked() {
+                    if ui.add(ghost(crate::tr2!("清空", "Clear"))).clicked() {
                         clear = true;
                     }
-                    if ui.button(crate::tr2!("打开日志", "Open logs")).clicked() {
+                    if ui.add(ghost(crate::tr2!("打开日志", "Open logs"))).clicked() {
                         open_dir = true;
                     }
                     ui.label(
