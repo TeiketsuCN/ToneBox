@@ -172,3 +172,35 @@ mod tests {
             .any(|w| w[0] == "-metadata" && w[1] == "title=歌名"));
     }
 }
+/// 目标容器对标签/封面的支持情况。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TagSupport {
+    pub tags: bool,
+    pub cover: bool,
+}
+
+/// ffmpeg 各 muxer 的标签能力（保守表：不确定的按“不支持”处理）。
+pub fn tag_support(id: &str) -> TagSupport {
+    let tags = matches!(
+        id,
+        "flac" | "mp3" | "aac" | "mp4" | "ipod" | "m4v" | "mov" | "m4a" | "mkv" | "webm"
+            | "ogg" | "opus" | "vorbis" | "wav" | "aiff" | "caf" | "w64" | "wma" | "mxf"
+            | "avi" | "mp2"
+    );
+    let cover = matches!(id, "flac" | "mp3" | "mp4" | "ipod" | "m4v" | "m4a" | "mkv" | "mov");
+    TagSupport { tags, cover }
+}
+
+#[cfg(test)]
+mod support_tests {
+    use super::tag_support;
+
+    #[test]
+    fn common_containers_support_tags() {
+        assert!(tag_support("flac").tags);
+        assert!(tag_support("mp3").cover);
+        assert!(tag_support("mp4").cover);
+        assert!(!tag_support("pcm").tags);
+        assert!(!tag_support("adts").tags);
+    }
+}

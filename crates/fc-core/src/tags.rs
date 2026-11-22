@@ -22,10 +22,14 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub struct Tags {
     pub title: Option<String>,
     pub artist: Option<String>,
+    pub album_artist: Option<String>,
     pub album: Option<String>,
     pub genre: Option<String>,
     pub track: Option<String>,
     pub date: Option<String>,
+    pub disc: Option<String>,
+    pub isrc: Option<String>,
+    pub lyrics: Option<String>,
     /// ReplayGain 曲目增益（dB）。播放时可选应用；没有标签就是 None。
     pub replaygain_db: Option<f32>,
 }
@@ -56,7 +60,16 @@ impl Tags {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.title.is_none() && self.artist.is_none() && self.album.is_none()
+        self.title.is_none()
+            && self.artist.is_none()
+            && self.album.is_none()
+            && self.album_artist.is_none()
+            && self.genre.is_none()
+            && self.track.is_none()
+            && self.date.is_none()
+            && self.disc.is_none()
+            && self.isrc.is_none()
+            && self.lyrics.is_none()
     }
 }
 
@@ -114,10 +127,14 @@ pub fn read_tags(ffprobe: &Path, file: &Path) -> Tags {
     Tags {
         title: get(&["title"]),
         artist: get(&["artist", "album_artist", "albumartist", "performer"]),
+        album_artist: get(&["album_artist", "albumartist"]),
         album: get(&["album"]),
         genre: get(&["genre"]),
         track: get(&["track", "tracknumber"]),
         date: get(&["date", "year"]),
+        disc: get(&["disc", "discnumber"]),
+        isrc: get(&["isrc"]),
+        lyrics: get(&["lyrics", "unsyncedlyrics"]),
         replaygain_db,
     }
 }
