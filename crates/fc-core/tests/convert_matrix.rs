@@ -132,3 +132,21 @@ fn lossy_to_lossless_keeps_duration() {
     let info = probe(&tools, &flac).expect("probe flac");
     assert!((info.duration_s - 2.0).abs() < 0.5, "duration {:.2}", info.duration_s);
 }
+#[test]
+#[ignore]
+fn lossless_hash_verifies_and_detects_lossy() {
+    let Some(tools) = tools() else { return };
+    let input = assets().join("sine24-stereo.wav");
+    if !input.is_file() {
+        return;
+    }
+    let (flac, _) = run_case(&tools, &input, "flac");
+    fc_core::verify_lossless(&tools, &input, &flac)
+        .expect("FLAC should decode to the same PCM as the 24-bit WAV");
+
+    let (mp3, _) = run_case(&tools, &input, "mp3");
+    assert!(
+        fc_core::verify_lossless(&tools, &input, &mp3).is_err(),
+        "lossy MP3 must not match the source PCM"
+    );
+}

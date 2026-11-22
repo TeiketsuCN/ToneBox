@@ -796,3 +796,49 @@ mod verify_tests {
         assert!(duration_ok(0.5, 999.0));
     }
 }
+/// 把第一条音轨解码成 s32le 后做哈希；用于无损转换的逐样本校验。
+pub fn pcm_hash(tools: &Tools, path: &Path) -> Result<u64, String> {
+    let mut cmd = Command::new(&tools.ffmpeg);
+    cmd.args(["-v", "error", "-nostdin", "-i"])
+        .arg(path)
+        .args(["-map", "0:a:0", "-f", "s32le", "-acodec", "pcm_s32le", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let mut child = cmd.spawn().map_err(|e| format!("启动解码校验失败：{e}"))?;
+    let mut out = child.stdout.take().ok_or("拿不到解码输出")?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    use std::hash::Hasher;
+    loop {
+        let n = std::io::Read::read(&mut out, &mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.write(&buf[..n]);
+    }
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("解码校验失败".to_string());
+    }
+    Ok(hasher.finish())
+}
+
+/// 无损转换校验：采样率/声道一致时，比对解码后的 PCM 哈希。
+pub fn verify_lossless(tools: &Tools, source: &Path, output: &Path) -> Result<(), String> {
+    let a = probe(tools, source).map_err(|e| format!("源文件回读失败：{e:#}"))?;
+    let b = probe(tools, output).map_err(|e| format!("输出回读失败：{e:#}"))?;
+    if a.sample_rate != b.sample_rate || a.channels != b.channels {
+        return Err(format!(
+            "采样率/声道不同，无法逐样本比较（源 {} Hz/{}ch，输出 {} Hz/{}ch）",
+            a.sample_rate, a.channels, b.sample_rate, b.channels
+        ));
+    }
+    let ha = pcm_hash(tools, source)?;
+    let hb = pcm_hash(tools, output)?;
+    if ha != hb {
+        return Err("PCM 校验和不一致（无损转换被改动）".to_string());
+    }
+    Ok(())
+}

@@ -18,7 +18,7 @@ pub mod ncm;
 pub mod qmc;
 pub mod cue;
 
-pub use ffmpeg::{convert, locate, probe, verify_output, AudioTrackInfo, MediaInfo, ProgressFn, Tools};
+pub use ffmpeg::{convert, locate, pcm_hash, probe, verify_lossless, verify_output, AudioTrackInfo, MediaInfo, ProgressFn, Tools};
 pub use dsd::{bit_rate_hz as dsd_bit_rate_hz, tier as dsd_tier};
 pub use loudness::Loudness as LoudnessReport;
 pub use encoders::{list_decoders, list_encoders, version as ffmpeg_version};

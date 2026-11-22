@@ -2541,7 +2541,8 @@ fn print_usage() {
         println!("  format-converter.exe --engines                list playback engines");
         println!("  format-converter.exe --asio-probe             probe ASIO drivers");
         println!("  format-converter.exe --play <file> [secs]     preview (default 4s)");
-        println!("  format-converter.exe --tags <file>            tags and cover info");
+        println!("  format-converter.exe --tags <file>            tags and cover info
+  format-converter.exe --verify-lossless ...     compare decoded PCM for lossless targets");
         println!("  format-converter.exe --identify <file>        encryption/source detection");
         println!("  format-converter.exe --health <file>          content health check");
         println!("  format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
@@ -2602,6 +2603,14 @@ fn main() -> eframe::Result<()> {
     #[cfg(feature = "vulkan")]
     std::env::set_var("WGPU_BACKEND", "vulkan");
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // --verify-lossless：无损转换后逐样本比对 PCM（也会从 args 里移除）
+    let verify_lossless_flag = if let Some(pos) = args.iter().position(|a| a == "--verify-lossless") {
+        args.remove(pos);
+        true
+    } else {
+        false
+    };
+
     // --lang en / --lang zh：命令行临时切界面语言（也会从 args 里移除，避免被当文件路径）
     if let Some(pos) = args.iter().position(|a| a == "--lang") {
         let value = args.get(pos + 1).cloned().unwrap_or_default();
