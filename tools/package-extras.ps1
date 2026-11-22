@@ -41,7 +41,7 @@ $stage = Join-Path $src "dist\ToneBox-$Ver-extras"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Write-Host "== 1/6 ATRAC 编码器 ==" -ForegroundColor Cyan
+Write-Host "== 1/7 ATRAC 编码器 ==" -ForegroundColor Cyan
 $atracSrc = Join-Path $src 'vendor\atracdenc'
 $atracExe = Join-Path $atracSrc 'atracdenc.exe'
 if (-not (Test-Path $atracExe)) {
@@ -64,7 +64,7 @@ atracdenc —— ATRAC1 / ATRAC3 / ATRAC3+ 编码器
 "@
 Set-Content -Path (Join-Path $atracDst 'SOURCE-说明.txt') -Value $srcNote -Encoding UTF8
 
-Write-Host "== 2/6 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
+Write-Host "== 2/7 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
 $psxSrc = Join-Path $src 'vendor\psxavenc'
 $psxExe = Join-Path $psxSrc 'psxavenc.exe'
 if (-not (Test-Path $psxExe)) {
@@ -84,7 +84,7 @@ psxavenc —— PS1 XA-ADPCM / PS2 VAG 编码器
 "@
 Set-Content -Path (Join-Path $psxDst 'SOURCE-说明.txt') -Value $psxNote -Encoding UTF8
 
-Write-Host "== 3/6 VGAudioCli（任天堂容器）==" -ForegroundColor Cyan
+Write-Host "== 3/7 VGAudioCli（任天堂容器）==" -ForegroundColor Cyan
 $vgSrc = Join-Path $src 'vendor\vgaudio'
 $vgExe = Join-Path $vgSrc 'VGAudioCli.exe'
 if (-not (Test-Path $vgExe)) {
@@ -104,7 +104,7 @@ VGAudioCli —— BRSTM / BCSTM / BFSTM / DSP / IDSP 编码器
 "@
 Set-Content -Path (Join-Path $vgDst 'SOURCE-说明.txt') -Value $vgNote -Encoding UTF8
 
-Write-Host "== 4/6 qoaconv（QOA）==" -ForegroundColor Cyan
+Write-Host "== 4/7 qoaconv（QOA）==" -ForegroundColor Cyan
 $qoaSrc = Join-Path $src 'vendor\qoa'
 $qoaExe = Join-Path $qoaSrc 'qoaconv.exe'
 if (-not (Test-Path $qoaExe)) {
@@ -124,7 +124,27 @@ qoaconv —— Quite OK Audio（QOA）编码/解码器
 "@
 Set-Content -Path (Join-Path $qoaDst 'SOURCE-说明.txt') -Value $qoaNote -Encoding UTF8
 
-Write-Host "== 5/6 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
+Write-Host "== 5/7 vadpcm（N64 VADPCM）==" -ForegroundColor Cyan
+$vadSrc = Join-Path $src 'vendor\vadpcm'
+$vadExe = Join-Path $vadSrc 'vadpcm.exe'
+if (-not (Test-Path $vadExe)) {
+    $alt = Join-Path $src 'build\vadpcm\build\vadpcm.exe'
+    if (Test-Path $alt) { $vadSrc = Split-Path $alt -Parent } else { throw "找不到 vadpcm.exe" }
+}
+$vadDst = Join-Path $stage 'vadpcm'
+New-Item -ItemType Directory -Force -Path $vadDst | Out-Null
+Copy-Item (Join-Path $vadSrc 'vadpcm.exe') $vadDst -Force
+$vadLic = Join-Path $vadSrc 'LICENSE-vadpcm.txt'
+if (Test-Path $vadLic) { Copy-Item $vadLic $vadDst -Force }
+$vadNote = @"
+vadpcm —— N64 VADPCM 编解码器
+项目主页：https://github.com/depp/vadpcm
+许可：MPL-2.0（见同目录 LICENSE-vadpcm.txt）；源码见项目地址
+说明：程序自动调用。输入必须是 16-bit 单声道，输出固定 .aifc。
+"@
+Set-Content -Path (Join-Path $vadDst 'SOURCE-说明.txt') -Value $vadNote -Encoding UTF8
+
+Write-Host "== 6/7 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
 $ofrPs1 = @'
 # 下载 OptimFROG 的 ofr.exe 到本目录下的 optimfrog\（不涉及再分发）
 # 由 install-ofr.cmd 调用；需要联网。
@@ -194,7 +214,7 @@ $readme = @"
 ToneBox 可选外部工具包
 ======================
 
-这个包里是五样**不随主程序一起发**的编码器。
+这个包里是六样**不随主程序一起发**的编码器。
 把整个压缩包解压到 ToneBox 目录（format-converter.exe 所在的那层），然后：
 
 1) ATRAC（atracdenc）
@@ -211,25 +231,29 @@ ToneBox 可选外部工具包
 4) QOA（qoaconv）
    已包含在 qoa\ 里，解压完就能用。
 
-5) OptimFROG（ofr.exe）
+5) N64 VADPCM（vadpcm）
+   已包含在 vadpcm\ 里，让 .aifc（VADPCM）可输出。
+
+6) OptimFROG（ofr.exe）
    双击 install-ofr.cmd，脚本会从官网下载并校验，放到 optimfrog\。
    需要联网。
 
 装完后回到程序：设置 → 依赖 / 外部工具 → 重新检测，
-就能看到 atracdenc / psxavenc / vgaudio / qoaconv / ofr 亮起来。
+就能看到 atracdenc / psxavenc / vgaudio / qoaconv / vadpcm / ofr 亮起来。
 
-这五个工具都是可选的：
+这六个工具都是可选的：
 - 没有 atracdenc：ATRAC1 / ATRAC3 / ATRAC3+ 不能输出（其它格式不受影响）
 - 没有 psxavenc：PS1 XA / PS2 VAG 不能输出（其它格式不受影响）
 - 没有 VGAudioCli：BRSTM / BCSTM / BFSTM / DSP / IDSP 不能输出
 - 没有 qoaconv：QOA 不能输出
+- 没有 vadpcm：N64 VADPCM 不能输出
 - 没有 ofr.exe：OptimFROG 不能输出（其它格式不受影响）
 
 许可说明见各子目录里的文本。
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
-Write-Host "== 6/6 zip ==" -ForegroundColor Cyan
+Write-Host "== 7/7 zip ==" -ForegroundColor Cyan
 $dist = Split-Path -Parent $Out
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Force -Path $dist | Out-Null }
 if (Test-Path $Out) { Remove-Item $Out -Force }

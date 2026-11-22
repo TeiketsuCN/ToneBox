@@ -134,7 +134,7 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
 pub const APP_NAME: &str = "声箱ToneBox";
 /// 版本号只写这一处：关于页、启动过场都读它，别再多抄几份
-pub(crate) const VERSION: &str = "1.6.0";
+pub(crate) const VERSION: &str = "1.6.1";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
@@ -319,6 +319,13 @@ pub(crate) enum Job {
         out: PathBuf,
         dur: f64,
     },
+    /// 外部 vadpcm：N64 VADPCM
+    Vadpcm {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -476,6 +483,8 @@ pub(crate) struct App {
     qoaconv: Option<PathBuf>,
     /// 任天堂系编码器 VGAudioCli（MIT）
     vgaudio: Option<PathBuf>,
+    /// N64 VADPCM 编解码器（MPL-2.0）
+    vadpcm: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -561,6 +570,7 @@ impl App {
             "psxavenc" => self.psxavenc.is_some(),
             "qoaconv" => self.qoaconv.is_some(),
             "vgaudio" => self.vgaudio.is_some(),
+            "vadpcm" => self.vadpcm.is_some(),
             // atracdenc 是默认那个（external::NAME）
             _ => self.atracdenc.is_some(),
         }
@@ -733,6 +743,7 @@ impl App {
             psxavenc: fc_core::find_psxavenc(),
             qoaconv: fc_core::find_qoaconv(),
             vgaudio: fc_core::find_vgaudio(),
+            vadpcm: fc_core::find_vadpcm(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -890,6 +901,7 @@ impl App {
         let psxavenc = self.psxavenc.clone();
         let qoaconv = self.qoaconv.clone();
         let vgaudio = self.vgaudio.clone();
+        let vadpcm = self.vadpcm.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -1040,6 +1052,24 @@ impl App {
                 continue;
             }
 
+            // N64 VADPCM 走外部 vadpcm（MPL-2.0）
+            if spec.id == "vadpcm" {
+                if self.vadpcm.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        "找不到 vadpcm.exe，N64 VADPCM 输出不可用（extras 包里有）".to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Vadpcm {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
             // Speex 走随包的 speexenc：ffmpeg 只负责解成 8k WAV
             if spec.id == "speex" {
                 if self.speexenc.is_none() {
@@ -1176,6 +1206,7 @@ impl App {
                     Job::Psx { idx, out, .. } => (*idx, out.clone()),
                     Job::Qoa { idx, out, .. } => (*idx, out.clone()),
                     Job::Vgaudio { idx, out, .. } => (*idx, out.clone()),
+                    Job::Vadpcm { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1336,6 +1367,29 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 VGAudioCli.exe")),
+                        }
+                    }
+                    Job::Vadpcm {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match vadpcm.as_ref() {
+                            Some(exe) => fc_core::external::vadpcm_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 vadpcm.exe")),
                         }
                     }
                     Job::Mpc {
@@ -2405,6 +2459,7 @@ fn main() -> eframe::Result<()> {
         show("psxavenc", fc_core::find_psxavenc());
         show("qoaconv", fc_core::find_qoaconv());
         show("vgaudio", fc_core::find_vgaudio());
+        show("vadpcm", fc_core::find_vadpcm());
         return Ok(());
     }
 
@@ -2631,6 +2686,27 @@ fn main() -> eframe::Result<()> {
                 },
                 None => {
                     eprintln!("找不到 VGAudioCli.exe（BRSTM/BCSTM/BFSTM/DSP/IDSP 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "vadpcm" {
+            match fc_core::find_vadpcm() {
+                Some(exe) => match fc_core::external::vadpcm_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 vadpcm.exe（N64 VADPCM 输出需要它）");
                     std::process::exit(1);
                 }
             }

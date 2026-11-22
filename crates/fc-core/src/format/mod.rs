@@ -1735,6 +1735,8 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "qoa" => Some("qoaconv"),
         // 任天堂系（BRSTM/BCSTM/BFSTM/DSP/IDSP）：走 VGAudioCli
         "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp" => Some("vgaudio"),
+        // N64 VADPCM：走 vadpcm
+        "vadpcm" => Some("vadpcm"),
         _ => None,
     }
 }
@@ -2811,6 +2813,7 @@ mod tests {
             ("bfstm", "vgaudio"),
             ("dsp", "vgaudio"),
             ("idsp", "vgaudio"),
+            ("vadpcm", "vadpcm"),
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");

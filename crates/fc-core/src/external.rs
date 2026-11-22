@@ -758,3 +758,83 @@ pub fn vgaudio_convert(
     on_progress(1.0);
     Ok(size)
 }
+
+/// 找 N64 VADPCM 编解码器（vadpcm.exe，MPL-2.0）。
+pub fn find_vadpcm() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "vadpcm.exe" } else { "vadpcm" };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("vadpcm").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 vadpcm 编 N64 VADPCM：ffmpeg 先解成 16-bit 单声道 WAV，再交给它。
+///
+/// 输入必须是 16-bit mono（这是 vadpcm 的硬限制），输出固定 .aifc。
+pub fn vadpcm_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_vad_{tag}.wav"));
+    let tmp_out = std::env::temp_dir().join(format!("fc_vad_{tag}.aifc"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", "-ac", "1"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（VADPCM 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成单声道 WAV 失败"));
+    }
+    on_progress(0.5);
+
+    let mut enc = Command::new(exe);
+    enc.args(["encode", "--quiet"])
+        .arg(&tmp_wav)
+        .arg(&tmp_out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let out = enc.output().context("启动 vadpcm 失败")?;
+    if !out.status.success() || !tmp_out.is_file() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_out);
+        let err = String::from_utf8_lossy(&out.stderr);
+        let mut tail: Vec<&str> = err.lines().rev().take(4).collect();
+        tail.reverse();
+        return Err(anyhow!(
+            "vadpcm 编码失败（退出码 {:?}）：\n{}",
+            out.status.code(),
+            tail.join("\n")
+        ));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_out, output).context("复制 VADPCM 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_out);
+    on_progress(1.0);
+    Ok(size)
+}

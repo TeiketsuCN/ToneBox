@@ -168,4 +168,17 @@ pub static DEVICE: &[FormatSpec] = &[
         args: &[],
         size_ratio: 0.25,
     },
+    FormatSpec {
+        id: "vadpcm",
+        name: "N64 VADPCM",
+        ext: "aifc",
+        kind: Kind::Lossy,
+        group: Group::Device,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "N64 的 VADPCM（4.5 bit/样本），LibDragon / 官方 SDK 都用它。\n要外部的 vadpcm 才能编码；只收 16-bit 单声道，输出 .aifc。\n质量介于 ADPCM 和现代有损编码之间。",
+        args: &[],
+        size_ratio: 0.3,
+    },
 ];

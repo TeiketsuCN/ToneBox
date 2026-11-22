@@ -798,6 +798,21 @@ impl App {
                                         .unwrap_or_else(|| "放到程序目录或 vgaudio 子目录".to_string());
                                     dep(ui, "vgaudio", ok, status, &path);
                                 }
+                                // vadpcm：可选，N64 VADPCM 用
+                                {
+                                    let ok = self.vadpcm.is_some();
+                                    let status = if ok {
+                                        "已找到 · N64 VADPCM 可输出"
+                                    } else {
+                                        "未找到（可选）· N64 VADPCM 不可输出"
+                                    };
+                                    let path = self
+                                        .vadpcm
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "放到程序目录或 vadpcm 子目录".to_string());
+                                    dep(ui, "vadpcm", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {
@@ -821,6 +836,7 @@ impl App {
                                         self.psxavenc = fc_core::find_psxavenc();
                                         self.qoaconv = fc_core::find_qoaconv();
                                         self.vgaudio = fc_core::find_vgaudio();
+                                        self.vadpcm = fc_core::find_vadpcm();
                                         changed = true;
                                     }
                                     ui.label(

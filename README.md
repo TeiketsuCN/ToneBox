@@ -4,7 +4,7 @@
 >
 > 转换只是入口，它真正干的事是把格式知识摊开给你看。
 
-![版本](https://img.shields.io/badge/版本-1.6.0-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.6.1-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
@@ -15,7 +15,7 @@
 
 ## 一分钟了解
 
-- **106 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
+- **107 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
 - 32 个视频容器；支持保留第一条画面 + 全部音轨，音频逐条决定复制还是重编
 - 主机芯片音乐（NSF / SPC / GBS / VGM / PSF…）**能当输入**，渲染后转成普通音频
 - 全本地处理：不解 DRM、不联网、不上传文件、不做流媒体下载
@@ -27,8 +27,8 @@
 
 | 版本 | 安装包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.6.0** | [ToneBox-1.6.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.0/ToneBox-1.6.0-win64.zip) | 28.2 MB | `977247D28E0D7648D73B8E9082D94342C7D4F047E7359DA1EF7DC1BC46ECB182` |
-| 1.6.0 可选工具 | [ToneBox-1.6.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.0/ToneBox-1.6.0-extras-win64.zip) | 4.74 MB | `71E4AB7922F55B8DC7D7EBFC4A14DBB93E9A7A59BAB845E5D4AF6C09796FC9A0` |
+| **1.6.1** | [ToneBox-1.6.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.1/ToneBox-1.6.1-win64.zip) | 28.2 MB | `DFC03D29089F8F20BDA6EE4438A7FD8DC1175BFAB3ADD659C09F7DA2884A2FD2` |
+| 1.6.1 可选工具 | [ToneBox-1.6.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.1/ToneBox-1.6.1-extras-win64.zip) | 4.8 MB | `ADCEB7528927418B668A30BF6387003A6765D316FE925870C6CACA088D3AB1FC` |
 
 - Windows 10 / 11 x64，解压即用，**不需要安装**
 - 解压后双击 `format-converter.exe`
@@ -36,7 +36,7 @@
 
 ### 可选外部工具包（单独下载）
 
-主包**不含**有分发限制或体积较大的可选编码器，需要时另下 `ToneBox-1.6.0-extras-win64.zip`：
+主包**不含**有分发限制或体积较大的可选编码器，需要时另下 `ToneBox-1.6.1-extras-win64.zip`：
 
 | 工具 | 包内形式 | 许可 | 用途 |
 |---|---|---|---|
@@ -61,6 +61,7 @@ OptimFROG 双击一次 `install-ofr.cmd` 即可。装完回程序里点
   - 设备变体：**PSP**、**iPod (M4V)**
   - 纯视频裸流：**H.264 / H.265 / MPEG-2 / MPEG-4 / IVF / AVIF**（没有音轨）
   - 老游戏语音：**KVAG**（IMA ADPCM，22.05k 单声道）
+  - 1.6.1：**N64 VADPCM**（`.aifc`，外部 vadpcm）
 - 1.5 的能力全部保留：主机芯片音乐输入、PS1/PS2、任天堂容器、QOA、8 个视频容器
 - 纯视频容器不会再被自动补一条音轨（补了 ffmpeg 会直接报错）
 
@@ -78,7 +79,7 @@ OptimFROG 双击一次 `install-ofr.cmd` 即可。装完回程序里点
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
 | 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937、RF64、BWF、VOC、AAC-LATM、SMAF（MMF）、SoX、IRCAM |
 | 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、VCD、SVCD、PSP、iPod (M4V)、IVF、H.264 / H.265 / MPEG-2 / MPEG-4 裸流、AVIF |
-| 设备专用 | ATRAC1 / ATRAC3 / ATRAC3+（atracdenc）、PS1 XA / PS2 VAG（psxavenc）、BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli） |
+| 设备专用 | ATRAC1 / ATRAC3 / ATRAC3+（atracdenc）、PS1 XA / PS2 VAG（psxavenc）、BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli）、N64 VADPCM（vadpcm） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转
 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2 / DV，音轨逐条决定复制还是重编码。
@@ -203,6 +204,10 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 ---
 
 ## 更新日志
+
+### 1.6.1（2026-11）
+- 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）
+- N64 VADPCM 只收 16-bit 单声道；1.6 的能力全部保留
 
 ### 1.6.0（2026-11）
 - 可输出格式 **95 → 106**
