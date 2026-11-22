@@ -131,22 +131,6 @@ impl App {
         // 标题行 + 右侧「添加任务」：按钮不能放列底（播放栏展开会盖住底边）
         ui.horizontal(|ui| {
             ui.label(RichText::new(crate::tr!("输出")).size(11.0).color(DIM));
-            ui.add_space(6.0);
-            let summary_w = (ui.available_width() - 96.0).max(60.0);
-            ui.add_sized(
-                [summary_w, 18.0],
-                egui::Label::new(
-                    RichText::new(format!(
-                        "{} .{} · {}",
-                        self.target.name,
-                        self.ext_sel,
-                        self.knob_summary()
-                    ))
-                    .size(12.0)
-                    .color(accent()),
-                )
-                .truncate(),
-            );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let can = self
                     .items
@@ -158,6 +142,20 @@ impl App {
                 }
             });
         });
+        // 摘要单独一行，完整显示“会产出什么”；窄面板自动换行，不再截断
+        ui.add(
+            egui::Label::new(
+                RichText::new(format!(
+                    "{} .{} · {}",
+                    self.target.name,
+                    self.ext_sel,
+                    self.knob_summary()
+                ))
+                .size(11.5)
+                .color(accent()),
+            )
+            .wrap(),
+        );
         // 多后缀的格式（AAC 能出 .m4a 或裸 .aac）在这里选，只影响文件后缀
         let exts = fc_core::ext_choices(self.target);
         if exts.len() > 1 {
