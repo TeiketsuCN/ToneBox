@@ -628,7 +628,7 @@ impl App {
                                     }
                                     let link = ui.add(
                                         egui::Label::new(
-                                            RichText::new("TeiketsuCN / ToneBox")
+                                            RichText::new("TeiketsuCN / ToneLore")
                                                 .size(9.5)
                                                 .color(accent()),
                                         )
@@ -902,7 +902,7 @@ impl App {
                                 section(ui, crate::tr!("文件关联"));
                                 para(
                                     ui,
-                                    crate::tr!("注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。"),
+                                    crate::tr!("注册后 ToneLore 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。"),
                                     8.5,
                                     DIM,
                                 );
@@ -916,7 +916,7 @@ impl App {
                                     };
                                     if ui.add(mk(crate::tr!("注册到打开方式"))).clicked() {
                                         self.assoc_msg = Some(match crate::assoc::register() {
-                                            Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneBox。").to_string(),
+                                            Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneLore。").to_string(),
                                             Err(e) => crate::fmt2!("注册失败：{e}", "Registration failed: {e}"),
                                         });
                                     }
@@ -1401,7 +1401,7 @@ impl App {
                 .rounding(Rounding::same(8.0))
                 .min_size(egui::vec2(96.0, 26.0));
             if ui.add(gh).clicked() {
-                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneBox"));
+                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneLore"));
             }
             if ui
                 .add(
@@ -1413,7 +1413,7 @@ impl App {
                 )
                 .clicked()
             {
-                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneBox/issues"));
+                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneLore/issues"));
             }
         });
         ui.add_space(16.0);

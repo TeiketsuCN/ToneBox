@@ -9,7 +9,7 @@ pub fn already_running() -> bool {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows_sys::Win32::System::Threading::CreateMutexW;
 
-    let name: Vec<u16> = "Local\\ToneBox-single-instance\0".encode_utf16().collect();
+    let name: Vec<u16> = "Local\\ToneLore-single-instance\0".encode_utf16().collect();
     unsafe {
         let h = CreateMutexW(null_mut(), 0, name.as_ptr());
         if h.is_null() {

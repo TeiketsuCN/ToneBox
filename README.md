@@ -1,4 +1,4 @@
-﻿# ToneBox 声箱 — 音频格式顾问与转换器
+﻿# ToneLore 声识 — 音频格式顾问与转换器
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -6,7 +6,7 @@
 
 [English (short)](README.en.md) · [English (full)](#english) · [简体中文](README.md)
 
-![版本](https://img.shields.io/badge/版本-1.8.0-2ea44f)
+![版本](https://img.shields.io/badge/版本-2.0.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL--2.1%20(随包)-orange)
@@ -19,7 +19,7 @@
 - **手里有奇怪文件的人**：PSF/SPC/VGM 芯片音乐、PS1 XA、N64 VADPCM、BRSTM、MOD/XM、CUE 整轨。
 - **要批量归档的人**：需要保留标签、封面、ReplayGain，并且转完能回读自检。
 
-**不适合谁**：只想“点一下、稳定出活、别问问题”的生产用户。ToneBox 会把限制和风险摆在你面前，有时这很烦。
+**不适合谁**：只想“点一下、稳定出活、别问问题”的生产用户。ToneLore 会把限制和风险摆在你面前，有时这很烦。
 
 ---
 
@@ -52,11 +52,13 @@
 
 | 版本 | 包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
-| 1.8.0 可选工具 | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
+| **2.0.0** | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `024693BBAAC5332656C51D8ADC4D7BF3F198D5217FDA3FAF45D87C3F82360921` |
+| 2.0.0 可选工具 | [ToneLore-2.0.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-extras-win64.zip) | 13.1 MB | `AEBCE34F480135FF39089FFD424E78BD4EBC0FF0588A13AD5D5BE9A6DF1470F3` |
+| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
+| 1.8.0 可选工具 | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
 
 - **Windows 10 / 11 x64**，解压即用，不需要安装
-- 解压后双击 `format-converter.exe`；不要单独移动 `ffmpeg\`、`speex\`、`wavpack\`、`musepack\` 四个目录
+- 解压后双击 `ToneLore.exe`；不要单独移动 `ffmpeg\`、`speex\`、`wavpack\`、`musepack\` 四个目录
 - 解压即用、不写注册表、不装服务；删掉文件夹就是卸载
 
 ### 为什么只有 Windows
@@ -79,7 +81,7 @@
 | **openmpt123** | BSD-3-Clause | MOD / XM / IT / S3M 等模块输入 |
 | **OptimFROG** | 闭源免费 | `install-ofr.cmd` 从官网下载 + SHA-1 校验，不再分发 |
 
-用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），除 OptimFROG 外都立刻可用；
+用法：把 extras 包**解压到 ToneLore 目录**（和 `ToneLore.exe` 同级），除 OptimFROG 外都立刻可用；
 OptimFROG 双击一次 `install-ofr.cmd`。装完回程序里点 **设置 → 依赖 / 外部工具 → 重新检测**。
 
 > **Beta 阶段**：核心转换路径有测试覆盖，边界组合（如 24bit FLAC + 滤镜、特殊容器）仍可能踩坑。
@@ -163,18 +165,18 @@ DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
 ## 命令行
 
 ```
-format-converter.exe --version                 显示版本
-format-converter.exe --help                    列出全部参数
-format-converter.exe --formats                 列出可输出格式（id / 名称 / 后缀）
-format-converter.exe --convert in.flac out.mpc --to musepack [--vcodec prores]
-format-converter.exe --tools                   探测 ffmpeg / 各外部编码器
-format-converter.exe --devices                 列出音频设备
-format-converter.exe --play <file> [秒数]       直接试听
-format-converter.exe --health <file>           内容体检
-format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]   按 CUE 分轨
-format-converter.exe --register                注册到「打开方式」
-format-converter.exe --unregister              移除注册
-format-converter.exe <文件>                     打开并直接试听（双击文件的效果）
+ToneLore.exe --version                 显示版本
+ToneLore.exe --help                    列出全部参数
+ToneLore.exe --formats                 列出可输出格式（id / 名称 / 后缀）
+ToneLore.exe --convert in.flac out.mpc --to musepack [--vcodec prores]
+ToneLore.exe --tools                   探测 ffmpeg / 各外部编码器
+ToneLore.exe --devices                 列出音频设备
+ToneLore.exe --play <file> [秒数]       直接试听
+ToneLore.exe --health <file>           内容体检
+ToneLore.exe --split-cue <cue> [--to flac] [--out-dir 目录]   按 CUE 分轨
+ToneLore.exe --register                注册到「打开方式」
+ToneLore.exe --unregister              移除注册
+ToneLore.exe <文件>                     打开并直接试听（双击文件的效果）
 ```
 
 格式 id 见 `--formats`；`--convert` 会自动分派给 ffmpeg 或对应的外部编码器。
@@ -269,6 +271,11 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 
 ## 更新日志
 
+### 2.0.0（2026-11）
+- 品牌统一为 **ToneLore（声识）**：窗口、启动进度条、关于页、exe、配置目录、文件关联、安装包
+- 旧 `%APPDATA%\FormatConverter` 配置自动迁移到 `%APPDATA%\ToneLore`（歌单/预设不丢）
+- 收录 1.8/1.9 的可靠性、格式顾问、歌单与设置页改动
+
 ### 1.8.0（2026-11）
 - 1.8 可靠性：合成测试资产 + 10 例真实编码矩阵、自检真解码、无损 PCM 校验、同名策略、临时清理、错误分类/重试、原子输出
 - 1.9 顾问：Tags 扩展、容器标签能力表与丢失警告、Rule/Prediction 分级、场景推荐（归档/手机/车载/语音）+ 多方案
@@ -345,7 +352,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 
 # English
 
-﻿# ToneBox — an audio format advisor and converter
+﻿# ToneLore — an audio format advisor and converter
 
 > A converter that tells you what a conversion will cost **before** you commit.
 >
@@ -366,7 +373,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - **People with odd files**: PSF/SPC/VGM chiptunes, PS1 XA, N64 VADPCM, BRSTM, MOD/XM, CUE sheets.
 - **People archiving in bulk**: keep tags, cover art and ReplayGain, and re-probe every output afterwards.
 
-**Not for** people who just want "one click, stable output, no questions". ToneBox puts limits and
+**Not for** people who just want "one click, stable output, no questions". ToneLore puts limits and
 trade-offs in front of you, which can be annoying.
 
 ---
@@ -403,11 +410,13 @@ typical use. Read-only formats are greyed out on the left, with a reason on hove
 
 | Version | Package | Size | SHA256 |
 |---|---|---|---|
-| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
-| 1.7.1 extras | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
+| **2.0.0** | [ToneLore-2.0.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-win64.zip) | 28.3 MB | `024693BBAAC5332656C51D8ADC4D7BF3F198D5217FDA3FAF45D87C3F82360921` |
+| 2.0.0 可选工具 | [ToneLore-2.0.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v2.0.0/ToneLore-2.0.0-extras-win64.zip) | 13.1 MB | `AEBCE34F480135FF39089FFD424E78BD4EBC0FF0588A13AD5D5BE9A6DF1470F3` |
+| **1.8.0** | [ToneBox-1.8.0-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-win64.zip) | 28.3 MB | `007C9C2D0E1AB69A4258409E935C610E2F722AB87E0BAA7FF0A24DD158FBA65B` |
+| 1.7.1 extras | [ToneBox-1.8.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneLore/releases/download/v1.8.0/ToneBox-1.8.0-extras-win64.zip) | 13.1 MB | `1E3A6F4625D53F2B1748C39E14D697998BC4B8DA9E33B1549CE1DF8A44134512` |
 
 - **Windows 10 / 11 x64**, portable, no installation
-- Unzip and run `format-converter.exe`; do not move `ffmpeg\`, `speex\`, `wavpack\`, `musepack\` separately
+- Unzip and run `ToneLore.exe`; do not move `ffmpeg\`, `speex\`, `wavpack\`, `musepack\` separately
 - Writes no registry keys, installs no service; delete the folder to uninstall
 
 ### Why Windows only
@@ -432,7 +441,7 @@ The main package omits tools that are large or have redistribution limits. Grab
 | **openmpt123** | BSD-3-Clause | MOD / XM / IT / S3M input |
 | **OptimFROG** | freeware, closed | `install-ofr.cmd` downloads it from the official site with SHA-1 check; not redistributed |
 
-Unzip the extras package **into the ToneBox folder** (next to `format-converter.exe`). Everything except
+Unzip the extras package **into the ToneLore folder** (next to `ToneLore.exe`). Everything except
 OptimFROG works immediately; double-click `install-ofr.cmd` once for that one. Then open
 **Settings → Dependencies / external tools → Re-detect**.
 
@@ -521,18 +530,18 @@ use **Settings → Dependencies / external tools → Re-detect**; no restart nee
 ## Command line
 
 ```
-format-converter.exe --version                 show version
-format-converter.exe --help                    list all arguments
-format-converter.exe --formats                 list output formats (id / name / extension)
-format-converter.exe --convert in.flac out.mpc --to musepack [--vcodec prores]
-format-converter.exe --tools                   detect ffmpeg / external encoders
-format-converter.exe --devices                 list audio devices
-format-converter.exe --play <file> [seconds]   play directly
-format-converter.exe --health <file>           content health check
-format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]   split by CUE
-format-converter.exe --register                register in "Open with"
-format-converter.exe --unregister             remove the registration
-format-converter.exe <file>                    open and play (same as double-click)
+ToneLore.exe --version                 show version
+ToneLore.exe --help                    list all arguments
+ToneLore.exe --formats                 list output formats (id / name / extension)
+ToneLore.exe --convert in.flac out.mpc --to musepack [--vcodec prores]
+ToneLore.exe --tools                   detect ffmpeg / external encoders
+ToneLore.exe --devices                 list audio devices
+ToneLore.exe --play <file> [seconds]   play directly
+ToneLore.exe --health <file>           content health check
+ToneLore.exe --split-cue <cue> [--to flac] [--out-dir DIR]   split by CUE
+ToneLore.exe --register                register in "Open with"
+ToneLore.exe --unregister             remove the registration
+ToneLore.exe <file>                    open and play (same as double-click)
 ```
 
 Format ids come from `--formats`; `--convert` dispatches to ffmpeg or the matching external encoder.

@@ -44,7 +44,7 @@ fn find_samples() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let local = PathBuf::from(r"D:\FormatConverter\samples");
+    let local = PathBuf::from(r"D:\ToneLore\samples");
     if local.join("manifest_synthetic.json").is_file() {
         return Some(local);
     }

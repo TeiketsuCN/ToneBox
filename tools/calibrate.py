@@ -12,8 +12,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 import csv
 from analyze import analyze
 
-ROOT = r"D:\FormatConverter\samples"
-OUT = r"D:\FormatConverter\out"
+ROOT = r"D:\ToneLore\samples"
+OUT = r"D:\ToneLore\out"
 
 
 def collect():

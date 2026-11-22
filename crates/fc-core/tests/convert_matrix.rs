@@ -23,8 +23,8 @@ fn repo_root() -> PathBuf {
 
 fn tools() -> Option<Tools> {
     if let (Ok(ffmpeg), Ok(ffprobe)) = (
-        std::env::var("TONEBOX_FFMPEG"),
-        std::env::var("TONEBOX_FFPROBE"),
+        std::env::var("TONELORE_FFMPEG"),
+        std::env::var("TONELORE_FFPROBE"),
     ) {
         return Some(Tools {
             ffmpeg: PathBuf::from(ffmpeg),
@@ -81,7 +81,7 @@ fn run_case(tools: &Tools, input: &Path, format_id: &str) -> (PathBuf, String) {
 #[ignore]
 fn convert_matrix() {
     let Some(tools) = tools() else {
-        eprintln!("skip: ffmpeg not found (target/release/ffmpeg or TONEBOX_FFMPEG)");
+        eprintln!("skip: ffmpeg not found (target/release/ffmpeg or TONELORE_FFMPEG)");
         return;
     };
     let a = assets();

@@ -1,7 +1,7 @@
 # 随包 FFmpeg 的构建与 LGPL 合规
 
 发布包里的 FFmpeg 是 **LGPL v3** 构建（`--enable-version3`，未启用 `--enable-gpl`），以 shared DLL
-形式放在 `ffmpeg\` 目录。ToneBox 通过 `ffmpeg.exe` / `ffprobe.exe` 子进程调用它，不静态链接。
+形式放在 `ffmpeg\` 目录。ToneLore 通过 `ffmpeg.exe` / `ffprobe.exe` 子进程调用它，不静态链接。
 
 ## 版本
 

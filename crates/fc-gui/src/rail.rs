@@ -275,14 +275,14 @@ impl App {
     pub(crate) fn export_profiles(&mut self) {
         self.cfg.snapshot_active();
         let Some(path) = rfd::FileDialog::new()
-            .set_file_name("format-converter-profiles.json")
+            .set_file_name("ToneLore-profiles.json")
             .add_filter("JSON", &["json"])
             .save_file()
         else {
             return;
         };
         let payload = serde_json::json!({
-            "app": "format-converter",
+            "app": "ToneLore",
             "version": 1,
             "active": self.cfg.active_profile,
             "profiles": self.cfg.profiles,

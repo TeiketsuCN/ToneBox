@@ -8,7 +8,7 @@ import os
 
 from PIL import Image, ImageDraw
 
-OUT = r"D:\FormatConverter\crates\fc-gui\assets\icon.ico"
+OUT = r"D:\ToneLore\crates\fc-gui\assets\icon.ico"
 S = 1024  # 先画大图，再缩
 
 BG = (20, 22, 29, 255)
@@ -55,6 +55,6 @@ os.makedirs(os.path.dirname(OUT), exist_ok=True)
 im.save(OUT, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 # 顺手存一张 PNG 给窗口图标和文档用
 im.resize((256, 256), Image.LANCZOS).save(
-    r"D:\FormatConverter\crates\fc-gui\assets\icon.png"
+    r"D:\ToneLore\crates\fc-gui\assets\icon.png"
 )
 print("icon written:", OUT, os.path.getsize(OUT), "bytes")

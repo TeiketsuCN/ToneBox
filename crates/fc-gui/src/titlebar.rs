@@ -33,7 +33,7 @@ impl App {
     /// 自绘标题栏。系统标题栏已经去掉，拖动/按钮都在这里。
     pub(crate) fn titlebar(&mut self, ui: &mut egui::Ui) {
         let full = ui.available_rect_before_wrap();
-        let app_name = crate::i18n::tr("声箱ToneBox");
+        let app_name = crate::i18n::tr("声识ToneLore");
         ui.set_height(TITLEBAR_H);
 
         // 先注册拖动区（后注册的按钮会覆盖在上面，优先接点击）
@@ -101,7 +101,7 @@ impl App {
             TEXT,
         );
         // 版本与风险提示（测试版，所有操作请自行备份）
-        let beta_text = crate::i18n::tr("版本 1.8.0 · 建议先备份你的文件");
+        let beta_text = crate::i18n::tr("版本 2.0.0 · 建议先备份你的文件");
         let beta_font = egui::FontId::proportional(9.0);
         let beta_x = logo.right() + 10.0 + name_w + 16.0;
         ui.painter().text(

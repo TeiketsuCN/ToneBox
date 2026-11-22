@@ -34,10 +34,10 @@ if (-not $Ver) {
 }
 
 if (-not $Out) {
-    $Out = Join-Path $src "dist\ToneBox-$Ver-extras-win64.zip"
+    $Out = Join-Path $src "dist\ToneLore-$Ver-extras-win64.zip"
 }
 
-$stage = Join-Path $src "dist\ToneBox-$Ver-extras"
+$stage = Join-Path $src "dist\ToneLore-$Ver-extras"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
@@ -225,7 +225,7 @@ $cmd = @'
 @echo off
 chcp 65001 >nul
 echo.
-echo  ToneBox - install OptimFROG encoder (ofr.exe)
+echo  ToneLore - install OptimFROG encoder (ofr.exe)
 echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-ofr.ps1"
 echo.
@@ -251,11 +251,11 @@ losslessaudio.org 下载下来、用官方 SHA-1 校验、只取出 ofr.exe 放�
 Set-Content -Path (Join-Path $stage 'OFR-许可说明.txt') -Value $ofrNote -Encoding UTF8
 
 $readme = @"
-ToneBox 可选外部工具包
+ToneLore 可选外部工具包
 ======================
 
 这个包里是八样**不随主程序一起发**的工具（编码器 + 解码器）。
-把整个压缩包解压到 ToneBox 目录（format-converter.exe 所在的那层），然后：
+把整个压缩包解压到 ToneLore 目录（ToneLore.exe 所在的那层），然后：
 
 1) ATRAC（atracdenc）
    已包含在 atracdenc\ 里，解压完就能用。

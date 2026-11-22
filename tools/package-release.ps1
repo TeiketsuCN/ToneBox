@@ -1,7 +1,7 @@
 ﻿# Build a Windows release zip (exe + ffmpeg + short readme).
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
-#   powershell ... -Out D:\ToneBox-beta1.2-win64.zip
+#   powershell ... -Out D:\ToneLore-beta1.2-win64.zip
 #   powershell ... -Ver beta1.3          # 默认从 Cargo.toml 取
 
 param(
@@ -27,7 +27,7 @@ if (-not $Ver) {
 }
 $ver = $Ver
 if (-not $Out) {
-    $Out = Join-Path $src "dist\ToneBox-$ver-win64.zip"
+    $Out = Join-Path $src "dist\ToneLore-$ver-win64.zip"
 }
 
 Write-Host "== 1/4 cargo build --release ==" -ForegroundColor Cyan
@@ -41,7 +41,7 @@ try {
     Pop-Location
 }
 $targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $src 'target' }
-$exe = Join-Path $targetRoot 'release\format-converter.exe'
+$exe = Join-Path $targetRoot 'release\ToneLore.exe'
 if (-not (Test-Path $exe)) { throw "missing $exe" }
 
 $ffmpeg = Join-Path $src 'vendor\ffmpeg'
@@ -49,16 +49,16 @@ if (-not (Test-Path (Join-Path $ffmpeg 'ffmpeg.exe'))) {
     throw "ffmpeg not found; run tools\fetch-ffmpeg.ps1 first"
 }
 
-$stage = Join-Path $src "dist\ToneBox-$ver-win64"
+$stage = Join-Path $src "dist\ToneLore-$ver-win64"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $stage 'ffmpeg') | Out-Null
 
 Write-Host "== 2/4 copy exe + ffmpeg ==" -ForegroundColor Cyan
-Copy-Item $exe (Join-Path $stage 'format-converter.exe') -Force
+Copy-Item $exe (Join-Path $stage 'ToneLore.exe') -Force
 # 英文启动器（免命令行）
-$enCmd = "@echo off`r`nstart """" ""%~dp0format-converter.exe"" --lang en`r`n"
-Set-Content -Path (Join-Path $stage 'ToneBox English.cmd') -Value $enCmd -Encoding ASCII
+$enCmd = "@echo off`r`nstart """" ""%~dp0ToneLore.exe"" --lang en`r`n"
+Set-Content -Path (Join-Path $stage 'ToneLore English.cmd') -Value $enCmd -Encoding ASCII
 Copy-Item (Join-Path $ffmpeg '*') (Join-Path $stage 'ffmpeg') -Recurse -Force
 
 # ATRAC 编码器（atracdenc）是可选组件，只随 extras 包发出，不进主包
@@ -84,12 +84,12 @@ if (Test-Path $musepack) {
 Write-Host "== 3/4 write readme ==" -ForegroundColor Cyan
 $disp = $ver -replace '^beta', ''
 $readme = @"
-ToneBox beta $disp (Windows x64)
+ToneLore beta $disp (Windows x64)
 
 TEST BUILD. Back up your files before converting or playing.
 You are responsible for any device/file damage.
 
-Run: double-click format-converter.exe
+Run: double-click ToneLore.exe
 First start uses the Aurora gradient and the Large window size.
 
 ffmpeg is bundled in .\ffmpeg and found automatically. Do not move it.

@@ -1,6 +1,6 @@
 # 第三方组件与署名
 
-ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下，感谢原作者。
+ToneLore 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下，感谢原作者。
 
 ## FFmpeg
 
@@ -99,7 +99,7 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 主页：<https://github.com/WonderfulToolchain/psxavenc>
 - 许可：Zlib
 - 用途：`psxavenc.exe` 输出 PS1 XA-ADPCM（`.xa`）与 PS2 VAG（`.vag`）
-- 分发：Zlib 允许随包，放在 `ToneBox-x.y.z-extras-win64.zip` 的 `psxavenc\` 里
+- 分发：Zlib 允许随包，放在 `ToneLore-x.y.z-extras-win64.zip` 的 `psxavenc\` 里
 - 版本：v0.3.1（官方 Windows release）
 - 许可证全文：`vendor/psxavenc/LICENSE-psxavenc.txt`
 
@@ -150,7 +150,7 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 用途：OptimFROG 无损输出（ffmpeg 连完整解码器都没有）
 - **分发限制**：官方 `license.html` 与 `ofr.exe --help` 均写明
   "distribution of command-line Encoders with other software may need permission"，
-  所以 **ToneBox 不随包分发 ofr.exe**，只检测用户自己安装的版本。
+  所以 **ToneLore 不随包分发 ofr.exe**，只检测用户自己安装的版本。
 - 版本：5.100（Win/x64, 2016-09-02），官方 zip 的 SHA-1：
   `abf21227c5417c984ee51ba391e2bcb5546d033b`
 
@@ -165,6 +165,6 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 
 ## 说明
 
-- ToneBox 调用这些程序时使用子进程，不修改其源码。
+- ToneLore 调用这些程序时使用子进程，不修改其源码。
 - 如果你重新分发本项目的安装包，请一并保留本文件和 `vendor/*/LICENSE-*`。
 - 如果只使用系统已安装的 ffmpeg/speexenc/wavpack，则对应组件的许可由系统安装包负责。

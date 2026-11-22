@@ -2,7 +2,7 @@
 
 ## 这一版是什么
 
-ToneBox 测试版 beta 1.0。首次公开的 Windows 构建，重点是把「格式判断 + 解释」和播放/设备链路跑通；
+ToneLore 测试版 beta 1.0。首次公开的 Windows 构建，重点是把「格式判断 + 解释」和播放/设备链路跑通；
 **不是稳定版**，转码和播放前请自行备份文件。
 
 > 建议所有操作备份 · 慎防设备损坏，请自己负责
@@ -23,7 +23,7 @@ ToneBox 测试版 beta 1.0。首次公开的 Windows 构建，重点是把「格
 ## 清空个人配置（打包/截图前）
 
 ```powershell
-$cfg = "$env:APPDATA\FormatConverter"
+$cfg = "$env:APPDATA\ToneLore"
 Remove-Item "$cfg\config.json*" -Force -ErrorAction SilentlyContinue
 ```
 
@@ -36,20 +36,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\fetch-ffmpeg.ps1   # �
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\package-release.ps1
 ```
 
-产物：`dist\ToneBox-beta1.0-win64.zip`（exe + ffmpeg + 运行说明）。
+产物：`dist\ToneLore-beta1.0-win64.zip`（exe + ffmpeg + 运行说明）。
 
 ## 上传 GitHub
 
 仓库目前是本地远端，需要先建 GitHub 仓库：
 
 ```bash
-git remote add github https://github.com/<你的用户名>/ToneBox.git
+git remote add github https://github.com/<你的用户名>/ToneLore.git
 git push -u github main
-git tag -a v1.0.0-beta.1 -m "ToneBox beta 1.0"
+git tag -a v1.0.0-beta.1 -m "ToneLore beta 1.0"
 git push github v1.0.0-beta.1
 ```
 
-然后在 GitHub Releases 里新建 `v1.0.0-beta.1`，上传 `dist\ToneBox-beta1.0-win64.zip`，
+然后在 GitHub Releases 里新建 `v1.0.0-beta.1`，上传 `dist\ToneLore-beta1.0-win64.zip`，
 发布说明直接引用本文件 + `README.md` 的能力表。
 
 ## 已知限制（发布说明里要写）

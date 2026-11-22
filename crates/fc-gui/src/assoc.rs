@@ -1,13 +1,13 @@
-//! 「打开方式」注册：让 ToneBox 出现在右键「打开方式」和系统默认应用里。
+//! 「打开方式」注册：让 ToneLore 出现在右键「打开方式」和系统默认应用里。
 //!
 //! 只写 HKCU，不碰 HKLM；**不静默抢默认**——Windows 10/11 要求用户在
 //! 「设置 → 默认应用」里自己确认，这里只负责把 ProgID 和 OpenWithProgids 写好。
 //!
 //! 注册内容：
-//!   HKCU\Software\Classes\ToneBox.Audio\shell\open\command  -> "exe" "%1"
-//!   HKCU\Software\Classes\.<ext>\OpenWithProgids            -> ToneBox.Audio
-//!   HKCU\Software\RegisteredApplications                   -> ToneBox
-//!   HKCU\Software\ToneBox\Capabilities\FileAssociations    -> .<ext> = ToneBox.Audio
+//!   HKCU\Software\Classes\ToneLore.Audio\shell\open\command  -> "exe" "%1"
+//!   HKCU\Software\Classes\.<ext>\OpenWithProgids            -> ToneLore.Audio
+//!   HKCU\Software\RegisteredApplications                   -> ToneLore
+//!   HKCU\Software\ToneLore\Capabilities\FileAssociations    -> .<ext> = ToneLore.Audio
 
 use std::process::Command;
 
@@ -16,7 +16,7 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-const PROGID: &str = "ToneBox.Audio";
+const PROGID: &str = "ToneLore.Audio";
 
 /// 能当输入播的扩展名（音频 + 视频 + 主机音乐）。
 const EXTS: &[&str] = &[
@@ -55,7 +55,7 @@ fn exe_path() -> Result<String, String> {
 pub fn register() -> Result<(), String> {
     let exe = exe_path()?;
     let base = format!(r"HKCU\Software\Classes\{PROGID}");
-    reg(&["add", &base, "/ve", "/t", "REG_SZ", "/d", crate::tr!("ToneBox 音频文件"), "/f"])?;
+    reg(&["add", &base, "/ve", "/t", "REG_SZ", "/d", crate::tr!("ToneLore 音频文件"), "/f"])?;
     reg(&[
         "add",
         &format!(r"{base}\DefaultIcon"),
@@ -85,30 +85,30 @@ pub fn register() -> Result<(), String> {
 
     reg(&[
         "add",
-        r"HKCU\Software\ToneBox\Capabilities",
+        r"HKCU\Software\ToneLore\Capabilities",
         "/v",
         "ApplicationName",
         "/t",
         "REG_SZ",
         "/d",
-        "ToneBox",
+        "ToneLore",
         "/f",
     ])?;
     reg(&[
         "add",
-        r"HKCU\Software\ToneBox\Capabilities",
+        r"HKCU\Software\ToneLore\Capabilities",
         "/v",
         "ApplicationDescription",
         "/t",
         "REG_SZ",
         "/d",
-        crate::tr!("声箱 ToneBox — 音频格式转换与试听"),
+        crate::tr!("声识 ToneLore — 音频格式转换与试听"),
         "/f",
     ])?;
     for ext in EXTS {
         reg(&[
             "add",
-            r"HKCU\Software\ToneBox\Capabilities\FileAssociations",
+            r"HKCU\Software\ToneLore\Capabilities\FileAssociations",
             "/v",
             &format!(".{ext}"),
             "/t",
@@ -122,11 +122,11 @@ pub fn register() -> Result<(), String> {
         "add",
         r"HKCU\Software\RegisteredApplications",
         "/v",
-        "ToneBox",
+        "ToneLore",
         "/t",
         "REG_SZ",
         "/d",
-        r"Software\ToneBox\Capabilities",
+        r"Software\ToneLore\Capabilities",
         "/f",
     ])?;
     Ok(())
@@ -138,13 +138,13 @@ pub fn unregister() -> Result<(), String> {
         let key = format!(r"HKCU\Software\Classes\.{ext}\OpenWithProgids");
         let _ = reg(&["delete", &key, "/v", PROGID, "/f"]);
     }
-    let _ = reg(&["delete", r"HKCU\Software\RegisteredApplications", "/v", "ToneBox", "/f"]);
+    let _ = reg(&["delete", r"HKCU\Software\RegisteredApplications", "/v", "ToneLore", "/f"]);
     let _ = reg(&["delete", &format!(r"HKCU\Software\Classes\{PROGID}"), "/f"]);
-    let _ = reg(&["delete", r"HKCU\Software\ToneBox\Capabilities", "/f"]);
+    let _ = reg(&["delete", r"HKCU\Software\ToneLore\Capabilities", "/f"]);
     Ok(())
 }
 
-/// 打开 Windows 的「默认应用」设置页（用户自己把 ToneBox 设为默认）。
+/// 打开 Windows 的「默认应用」设置页（用户自己把 ToneLore 设为默认）。
 pub fn open_default_apps() {
     let mut cmd = Command::new("cmd.exe");
     cmd.args(["/c", "start", "", "ms-settings:defaultapps"]);

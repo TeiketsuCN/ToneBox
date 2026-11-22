@@ -1,11 +1,11 @@
-# 声箱 ToneBox —— 应用总结
+# 声识 ToneLore —— 应用总结
 
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.8.0**（112 个可输出；English UI + 新格式/输入）
+- 文档版本：对应应用 **2.0.0**（112 个可输出；English UI + 新格式/输入）
 - 整理时间：2026-11
-- 仓库：<https://github.com/TeiketsuCN/ToneBox>
+- 仓库：<https://github.com/TeiketsuCN/ToneLore>
 
 ---
 
@@ -88,14 +88,14 @@
 ### 3.7 命令行（同目录 exe）
 
 ```
-format-converter.exe --version                  显示版本（1.4.1 起）
-format-converter.exe --help                     列出全部命令行参数
-format-converter.exe --formats                  列出所有可输出格式
-format-converter.exe --convert in.flac out.mpc --to musepack
-format-converter.exe --tools                    探测 ffmpeg / atracdenc / speexenc / wavpack / ofr / mpcenc
-format-converter.exe --devices                  列出音频设备
-format-converter.exe --play <file>              直接播放
-format-converter.exe --health <file>            内容体检
+ToneLore.exe --version                  显示版本（1.4.1 起）
+ToneLore.exe --help                     列出全部命令行参数
+ToneLore.exe --formats                  列出所有可输出格式
+ToneLore.exe --convert in.flac out.mpc --to musepack
+ToneLore.exe --tools                    探测 ffmpeg / atracdenc / speexenc / wavpack / ofr / mpcenc
+ToneLore.exe --devices                  列出音频设备
+ToneLore.exe --play <file>              直接播放
+ToneLore.exe --health <file>            内容体检
 ```
 
 ---
@@ -146,7 +146,7 @@ APE、TAK、OptimFROG 旧条目、Shorten、WMA Lossless/Pro/Voice、DSD（DSF/D
 
 关于两个"不能随包"的：
 
-- **atracdenc**：LGPL 可再分发，放在 `ToneBox-x.y.z-extras-win64.zip` 的 `atracdenc\` 里
+- **atracdenc**：LGPL 可再分发，放在 `ToneLore-x.y.z-extras-win64.zip` 的 `atracdenc\` 里
 - **OptimFROG**：官方 license 写明 *"distribution of command-line Encoders with other software may need permission"*，所以 extras 里放的是 `install-ofr.cmd` —— 双击后从官网下载、用官方 SHA-1 校验、放进 `optimfrog\`
 
 程序查找顺序统一为：**程序目录 → 对应子目录（atracdenc\ / speex\ / wavpack\ / optimfrog\ / musepack\）→ PATH**。

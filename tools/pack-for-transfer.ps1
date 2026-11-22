@@ -9,7 +9,7 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tools\pack-for-transfer.ps1
-#   powershell ... -WithSamples -Out E:\ToneBox-transfer.zip
+#   powershell ... -WithSamples -Out E:\ToneLore-transfer.zip
 
 param(
     [string]$Out = "",
@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 
 $src = Split-Path -Parent $PSScriptRoot
 if (-not $Out) {
-    $Out = Join-Path ([Environment]::GetFolderPath('Desktop')) 'FormatConverter-transfer.zip'
+    $Out = Join-Path ([Environment]::GetFolderPath('Desktop')) 'ToneLore-transfer.zip'
 }
 
 $stage = Join-Path $env:TEMP ("fc-transfer-" + [guid]::NewGuid().ToString('N').Substring(0, 6))

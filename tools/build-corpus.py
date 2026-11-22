@@ -14,8 +14,8 @@ build-corpus.py —— 用本机无损母版生成"已知真值"的对照样本�
 import subprocess, os, json
 
 FFMPEG = os.environ.get("FFMPEG", r"C:\Users\23501\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe")
-ROOT   = r"D:\FormatConverter\samples"
-WORK   = r"D:\FormatConverter\out\work"
+ROOT   = r"D:\ToneLore\samples"
+WORK   = r"D:\ToneLore\out\work"
 SEC, START = 30, 30          # 取第 30~60 秒
 
 SOURCES = [

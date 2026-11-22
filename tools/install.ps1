@@ -5,7 +5,7 @@
 #   现在装到用户目录（D:\Apps），免提权；等发布给外人时再出 Inno Setup 安装包。
 #
 # 名字策略：
-#   exe 用 ASCII（format-converter.exe），避免某些工具处理中文文件名出问题；
+#   exe 用 ASCII（ToneLore.exe），避免某些工具处理中文文件名出问题；
 #   快捷方式用中文（格式转换器），用户看到的是中文。
 
 $ErrorActionPreference = 'Stop'
@@ -13,11 +13,11 @@ $ErrorActionPreference = 'Stop'
 # 脚本在 tools\ 下，项目根目录 = 上一级；换机器、换盘符都不用改
 $src = Split-Path -Parent $PSScriptRoot
 # D 盘没有就装到用户目录（新机器可能只有 C:）
-$AppDir = if (Test-Path 'D:\') { 'D:\Apps\FormatConverter' } else { Join-Path $env:LOCALAPPDATA 'Programs\FormatConverter' }
+$AppDir = if (Test-Path 'D:\') { 'D:\Apps\ToneLore' } else { Join-Path $env:LOCALAPPDATA 'Programs\ToneLore' }
 
 $Version  = '1.8.0'
-$ExeName  = 'format-converter.exe'
-$Display  = 'ToneBox'
+$ExeName  = 'ToneLore.exe'
+$Display  = 'ToneLore'
 # 老名字的快捷方式要在安装时删掉，不然桌面上会并排两个
 $OldDisplay = '格式转换器'
 
@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Continue'
 & (Join-Path $src "build.ps1") release 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
 $targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $src 'target' }
-$built = Join-Path $targetRoot 'release\format-converter.exe'
+$built = Join-Path $targetRoot 'release\ToneLore.exe'
 if (-not (Test-Path $built)) { throw "构建产物不存在: $built" }
 
 Write-Host "== 2/4 安装到 $AppDir ==" -ForegroundColor Cyan
@@ -36,11 +36,11 @@ New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
 New-Item -ItemType Directory -Force -Path "$AppDir\ffmpeg" | Out-Null
 New-Item -ItemType Directory -Force -Path "$AppDir\speex" | Out-Null
 
-Get-Process -Name 'format-converter','格式转换器' -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name 'ToneLore','格式转换器' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 Copy-Item -LiteralPath $built -Destination "$AppDir\$ExeName" -Force
-Copy-Item -LiteralPath (Join-Path $src 'crates\fc-gui\assets\icon.ico') -Destination "$AppDir\ToneBox.ico" -Force
+Copy-Item -LiteralPath (Join-Path $src 'crates\fc-gui\assets\icon.ico') -Destination "$AppDir\ToneLore.ico" -Force
 Copy-Item -LiteralPath (Join-Path $src 'THIRD_PARTY_NOTICES.md') -Destination "$AppDir\THIRD_PARTY_NOTICES.md" -Force
 
 # 随包 ffmpeg（LGPL 共享版，由 tools\fetch-ffmpeg.ps1 下载）
@@ -87,7 +87,7 @@ if (Test-Path (Join-Path $mpcSrc "mpcenc.exe")) {
 }
 
 @"
-ToneBox $Version
+ToneLore $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
 源码: $src
 "@ | Set-Content -Path "$AppDir\version.txt" -Encoding UTF8
@@ -103,12 +103,12 @@ foreach ($lnk in $targets) {
   $s.TargetPath       = "$AppDir\$ExeName"
   $s.WorkingDirectory = $AppDir
   $s.Description      = $Display
-  $s.IconLocation     = "$AppDir\ToneBox.ico"
+  $s.IconLocation     = "$AppDir\ToneLore.ico"
   $s.Save()
   Write-Host "  $lnk"
 }
 # 老名字的桌面/开始菜单快捷方式删掉，避免重名两个
-# 注意：NTFS 不区分大小写，"tonebox.lnk" 会匹配到刚到建的 "ToneBox.lnk"，
+# 注意：NTFS 不区分大小写，"tonebox.lnk" 会匹配到刚到建的 "ToneLore.lnk"，
 # 所以这里只能删真正的旧名字（中文），不能按大小写变体删。
 foreach ($lnk in @(
   (Join-Path ([Environment]::GetFolderPath('Desktop'))  "$OldDisplay.lnk"),
@@ -118,11 +118,11 @@ foreach ($lnk in @(
 }
 
 Write-Host "== 4/4 注册卸载项 ==" -ForegroundColor Cyan
-$key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\FormatConverter'
+$key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ToneLore'
 New-Item -Path $key -Force | Out-Null
 Set-ItemProperty -Path $key -Name DisplayName     -Value $Display
 Set-ItemProperty -Path $key -Name DisplayVersion  -Value $Version
-Set-ItemProperty -Path $key -Name Publisher       -Value 'FormatConverter (open source)'
+Set-ItemProperty -Path $key -Name Publisher       -Value 'ToneLore (open source)'
 Set-ItemProperty -Path $key -Name InstallLocation -Value $AppDir
 Set-ItemProperty -Path $key -Name DisplayIcon     -Value "$AppDir\$ExeName"
 Set-ItemProperty -Path $key -Name NoModify        -Value 1 -Type DWord

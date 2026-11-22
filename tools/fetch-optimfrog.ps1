@@ -1,7 +1,7 @@
 ﻿# 下载 OptimFROG 的命令行编码器（ofr.exe）到 vendor\optimfrog
 #
 # 注意：官方许可写明"把命令行编码器随其他软件分发可能需要授权"，
-# 所以 ToneBox **不随发布包分发** ofr.exe。这个脚本只是给本地开发/测试用，
+# 所以 ToneLore **不随发布包分发** ofr.exe。这个脚本只是给本地开发/测试用，
 # 你自己发布时不要把 optimfrog\ 目录打进 zip。
 #
 # 用法：
@@ -47,7 +47,7 @@ SHA-1（原 zip）：$expect
   "Free for non-commercial and commercial use. However, distribution
    of command-line Encoders with other software may need permission."
 
-因此 ToneBox **不随发布包分发 ofr.exe**：
+因此 ToneLore **不随发布包分发 ofr.exe**：
 - 仓库里的 vendor/optimfrog/ 只用于本地开发测试（vendor/ 已 gitignore）
 - 发布包里不含它；用户需要自己从官网下载放到程序目录或 optimfrog\ 子目录
 - 程序只在检测到它时调用，不做任何再分发

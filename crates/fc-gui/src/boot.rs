@@ -441,7 +441,7 @@ impl Boot {
         p.text(
             egui::pos2(nx, logo_rect.center().y - 6.0),
             Align2::LEFT_CENTER,
-            crate::i18n::tr("声箱ToneBox"),
+            crate::i18n::tr("声识ToneLore"),
             FontId::proportional(15.0),
             TEXT,
         );

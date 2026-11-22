@@ -27,19 +27,19 @@
 
 | 共享 | 内容 | 权限 |
 |---|---|---|
-| `\\192.168.31.192\FormatConverterGit` | git 裸仓库 | 读写 |
-| `\\192.168.31.192\FormatConverterSamples` | 样本数据（56 MB） | 只读 |
+| `\\192.168.31.192\ToneLoreGit` | git 裸仓库 | 读写 |
+| `\\192.168.31.192\ToneLoreSamples` | 样本数据（56 MB） | 只读 |
 
 先连一次，会提示输入密码：
 
 ```powershell
-net use \\192.168.31.192\FormatConverterGit /user:KOALA\fcsync Fc-2026-sync
+net use \\192.168.31.192\ToneLoreGit /user:KOALA\fcsync Fc-2026-sync
 ```
 
 验证：
 
 ```powershell
-dir \\192.168.31.192\FormatConverterGit
+dir \\192.168.31.192\ToneLoreGit
 ```
 
 ---
@@ -71,10 +71,10 @@ winget install --id Gyan.FFmpeg -e --silent
 
 ```powershell
 # 先给 git 放行 UNC 路径（否则报 dubious ownership）
-git config --global --add safe.directory '\\192.168.31.192\FormatConverterGit\FormatConverter.git'
+git config --global --add safe.directory '\\192.168.31.192\ToneLoreGit\ToneLore.git'
 
-git clone \\192.168.31.192\FormatConverterGit\FormatConverter.git D:\FormatConverter
-cd D:\FormatConverter
+git clone \\192.168.31.192\ToneLoreGit\ToneLore.git D:\ToneLore
+cd D:\ToneLore
 ```
 
 ---
@@ -97,10 +97,10 @@ cd D:\FormatConverter
 ## 六、验证（不开界面）
 
 ```powershell
-robocopy \\192.168.31.192\FormatConverterSamples D:\FormatConverter\samples /E
+robocopy \\192.168.31.192\ToneLoreSamples D:\ToneLore\samples /E
 
-.\target\debug\format-converter.exe --convert samples\mp3\pop48k_mp3_64k.mp3 D:\out.flac
-.\target\debug\format-converter.exe --play samples\atrac\oma_at3p_01.oma 3
+.\target\debug\ToneLore.exe --convert samples\mp3\pop48k_mp3_64k.mp3 D:\out.flac
+.\target\debug\ToneLore.exe --play samples\atrac\oma_at3p_01.oma 3
 ```
 
 第一条打印 `输入: MP3 / 64 kbps ...` 和 `完成:`，第二条打印位置在推进，

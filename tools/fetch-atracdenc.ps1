@@ -20,7 +20,7 @@
 # 全失败就打印手动下载地址，不假装成功。
 
 param(
-    [string]$Dir = "D:\Apps\FormatConverter\atracdenc",
+    [string]$Dir = "D:\Apps\ToneLore\atracdenc",
     [string]$Version = "0.2.3"
 )
 

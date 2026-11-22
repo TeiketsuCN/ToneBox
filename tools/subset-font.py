@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(r"D:\FormatConverter")
+ROOT = Path(r"D:\ToneLore")
 SRC_DIRS = [ROOT / "crates"]
 CACHE = ROOT / "tools" / "fontcache"
 ASSETS = ROOT / "crates" / "fc-gui" / "assets"

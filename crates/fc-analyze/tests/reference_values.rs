@@ -64,7 +64,7 @@ const CASES: &[Expect] = &[
 fn samples_dir() -> Option<PathBuf> {
     for p in [
         env::var_os("FC_SAMPLES_DIR").map(PathBuf::from),
-        Some(PathBuf::from(r"D:\FormatConverter\samples")),
+        Some(PathBuf::from(r"D:\ToneLore\samples")),
         Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples")),
     ]
     .into_iter()

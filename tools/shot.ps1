@@ -1,6 +1,6 @@
 ﻿param(
   [string]$Out = "",
-  [string]$Proc = "format-converter",
+  [string]$Proc = "ToneLore",
   [int]$Pad = 0
 )
 # 脚本在 tools\ 下，项目根目录 = 上一级；换目录、换盘符都不用改

@@ -1,4 +1,4 @@
-ToneBox 迁移包
+ToneLore 迁移包
 
 源码 + 全部文档 + .git 历史 + vendor\ffmpeg（打包时加 -WithSamples 才会带 samples）。
 不含 target / out / 已安装的程序。
@@ -12,4 +12,4 @@ ToneBox 迁移包
    powershell -ExecutionPolicy Bypass -File tools\install.ps1
 4) 验证清单、可选配置、已知坑，全在 docs\迁移-新电脑.md
 
-推荐解压到 D:\FormatConverter（文档里的示例路径按这个写）。
+推荐解压到 D:\ToneLore（文档里的示例路径按这个写）。

@@ -4,8 +4,8 @@ import pathlib
 
 D = {
     # 标题栏 / 导航 / 通用
-    "声箱ToneBox": "ToneBox",
-    "版本 1.8.0 · 建议先备份你的文件": "v1.8.0 · back up your files first",
+    "声识ToneLore": "ToneLore",
+    "版本 2.0.0 · 建议先备份你的文件": "v2.0.0 · back up your files first",
     "建议所有操作备份 · 慎防设备损坏 请自己负责": "Back up everything; device damage is your own risk",
     "音乐库": "Library",
     "编解码": "Encoding",
@@ -158,8 +158,8 @@ D = {
 D.update({
     # 徽章 / 设备
     "reg 失败": "reg failed",
-    "ToneBox 音频文件": "ToneBox audio file",
-    "声箱 ToneBox — 音频格式转换与试听": "ToneBox — audio format conversion and preview",
+    "ToneLore 音频文件": "ToneLore audio file",
+    "声识 ToneLore — 音频格式转换与试听": "ToneLore — audio format conversion and preview",
     "杜比全景声 TrueHD 无损": "Dolby Atmos TrueHD lossless",
     "菁彩声 Audio Vivid 有损": "Audio Vivid lossy",
     "杜比 AC-3 有损": "Dolby AC-3 lossy",
@@ -638,7 +638,7 @@ D.update({
     "找不到 ffprobe": "ffprobe not found",
     "找不到 ffmpeg": "ffmpeg not found",
     "读不到音频信息": "Cannot read audio info",
-    "声箱ToneBox Vulkan": "ToneBox Vulkan",
+    "声识ToneLore Vulkan": "ToneLore Vulkan",
     "后缀": "Extension",
     "只改后缀和封装，编码参数不变": "Changes only extension/container; codec settings unchanged",
     "重命名": "Rename",
@@ -668,9 +668,9 @@ D.update({
     "放到程序目录或 vgaudio 子目录": "Place it in the program folder or vgaudio subfolder",
     "放到程序目录或 vadpcm 子目录": "Place it in the program folder or vadpcm subfolder",
     "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。": "atracdenc is a community ATRAC encoder (LGPL-2.1+). It is not bundled: whether and which version to install is up to you; the app only calls it when present.",
-    "注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。": "After registering, ToneBox appears under \"Open with\"; double-click a file to open and preview. Windows 10/11 requires you to confirm the default in Settings.",
+    "注册后 ToneLore 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。": "After registering, ToneLore appears under \"Open with\"; double-click a file to open and preview. Windows 10/11 requires you to confirm the default in Settings.",
     "注册到打开方式": "Register in \"Open with\"",
-    "已注册：右键「打开方式」里能看到 ToneBox。": "Registered: ToneBox now appears under \"Open with\".",
+    "已注册：右键「打开方式」里能看到 ToneLore。": "Registered: ToneLore now appears under \"Open with\".",
     "移除注册": "Remove registration",
     "已移除注册。": "Registration removed.",
     "打开默认应用设置": "Open default apps",

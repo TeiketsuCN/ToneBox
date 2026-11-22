@@ -3,14 +3,14 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 # 卸载脚本就装在 $AppDir 里，路径从自己位置推；换机器、换目录都不用改
 $AppDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not (Test-Path (Join-Path $AppDir 'format-converter.exe'))) {
+if (-not (Test-Path (Join-Path $AppDir 'ToneLore.exe'))) {
     Write-Host "这里看起来不是安装目录：$AppDir"; exit 1
 }
-$Display = 'ToneBox'
-# 只有真正的旧中文名要额外删；'tonebox' 在 NTFS 上和 'ToneBox' 是同一个文件
+$Display = 'ToneLore'
+# 只有真正的旧中文名要额外删；'tonebox' 在 NTFS 上和 'ToneLore' 是同一个文件
 $OldDisplay = '格式转换器'
 
-Get-Process -Name 'format-converter','格式转换器' | Stop-Process -Force
+Get-Process -Name 'ToneLore','格式转换器' | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 # 快捷方式
@@ -24,7 +24,7 @@ foreach ($lnk in @(
 }
 
 # 注册表
-Remove-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\FormatConverter' -Recurse -Force
+Remove-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ToneLore' -Recurse -Force
 
 # 程序目录（先删自己，再删目录）
 $me = $MyInvocation.MyCommand.Path

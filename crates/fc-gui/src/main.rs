@@ -134,10 +134,10 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 
 // ── 品牌 ────────────────────────────────────────────────
 /// 应用名：窗口标题 / 任务栏 / 标题栏都用它。改名只改这一行
-/// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
-pub const APP_NAME: &str = "声箱ToneBox";
+/// （配置目录还叫 ToneLore，改了会丢用户数据，等真换名再一起迁）。
+pub const APP_NAME: &str = "声识ToneLore";
 /// 版本号只写这一处：关于页、启动过场都读它，别再多抄几份
-pub(crate) const VERSION: &str = "1.8.0";
+pub(crate) const VERSION: &str = "2.0.0";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
@@ -239,10 +239,10 @@ impl Item {
     fn media_path(&self) -> &Path {
         self.media.as_deref().unwrap_or(&self.path)
     }
-    /// 删掉为这个文件生成的临时 WAV（只删 %TEMP%\ToneBox 下的，绝不碰源文件）
+    /// 删掉为这个文件生成的临时 WAV（只删 %TEMP%\ToneLore 下的，绝不碰源文件）
     pub(crate) fn forget_media(&self) {
         let Some(m) = &self.media else { return };
-        let root = std::env::temp_dir().join("ToneBox");
+        let root = std::env::temp_dir().join("ToneLore");
         if m.starts_with(&root) {
             let _ = std::fs::remove_file(m);
         }
@@ -660,7 +660,7 @@ impl App {
         clean_stale_temp();
         let boot = boot::Boot::start();
         let cfg = settings::Settings::load();
-        if std::env::var_os("TONEBOX_LANG").is_none() {
+        if std::env::var_os("TONELORE_LANG").is_none() {
             i18n::set_lang(&cfg.lang);
         }
         fc_analyze::set_en(i18n::is_en());
@@ -774,7 +774,7 @@ impl App {
             media_tx: mtx,
             media_rx: mrx,
             cfg,
-            settings_open: std::env::var("TONEBOX_OPEN_SETTINGS").is_ok(),
+            settings_open: std::env::var("TONELORE_OPEN_SETTINGS").is_ok(),
             settings_t: 0.0,
             meta_open: true,
             notices: Vec::new(),
@@ -2541,56 +2541,56 @@ pub(crate) fn apply_backdrop() -> bool {
 /// 命令行帮助。加新参数时记得同步这里，以及 docs/接手说明.md 的常用命令。
 fn print_usage() {
     if i18n::is_en() {
-        println!("ToneBox {} — Windows audio format converter", VERSION);
+        println!("ToneLore {} — Windows audio format converter", VERSION);
         println!();
         println!("Usage:");
-        println!("  format-converter.exe                          open the GUI");
-        println!("  format-converter.exe --convert <in> <out> [--to <format-id>] [--vcodec <codec>]");
-        println!("  format-converter.exe --formats                list output formats");
-        println!("  format-converter.exe --tools                  detect ffmpeg / external encoders");
-        println!("  format-converter.exe --devices                list audio devices");
-        println!("  format-converter.exe --engines                list playback engines");
-        println!("  format-converter.exe --asio-probe             probe ASIO drivers");
-        println!("  format-converter.exe --play <file> [secs]     preview (default 4s)");
-        println!("  format-converter.exe --tags <file>            tags and cover info
-  format-converter.exe --verify-lossless ...     compare decoded PCM for lossless targets");
-        println!("  format-converter.exe --identify <file>        encryption/source detection");
-        println!("  format-converter.exe --health <file>          content health check");
-        println!("  format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
-        println!("  format-converter.exe --warnings <file>        per-format quality warnings");
-        println!("  format-converter.exe --version                show version");
-        println!("  format-converter.exe --help                   show this help");
-        println!("  format-converter.exe --register               register in \"Open with\"");
-        println!("  format-converter.exe --unregister             remove the registration");
+        println!("  ToneLore.exe                          open the GUI");
+        println!("  ToneLore.exe --convert <in> <out> [--to <format-id>] [--vcodec <codec>]");
+        println!("  ToneLore.exe --formats                list output formats");
+        println!("  ToneLore.exe --tools                  detect ffmpeg / external encoders");
+        println!("  ToneLore.exe --devices                list audio devices");
+        println!("  ToneLore.exe --engines                list playback engines");
+        println!("  ToneLore.exe --asio-probe             probe ASIO drivers");
+        println!("  ToneLore.exe --play <file> [secs]     preview (default 4s)");
+        println!("  ToneLore.exe --tags <file>            tags and cover info
+  ToneLore.exe --verify-lossless ...     compare decoded PCM for lossless targets");
+        println!("  ToneLore.exe --identify <file>        encryption/source detection");
+        println!("  ToneLore.exe --health <file>          content health check");
+        println!("  ToneLore.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
+        println!("  ToneLore.exe --warnings <file>        per-format quality warnings");
+        println!("  ToneLore.exe --version                show version");
+        println!("  ToneLore.exe --help                   show this help");
+        println!("  ToneLore.exe --register               register in \"Open with\"");
+        println!("  ToneLore.exe --unregister             remove the registration");
         return;
     }
-    println!("ToneBox {} — Windows 音频格式转换器", VERSION);
+    println!("ToneLore {} — Windows 音频格式转换器", VERSION);
     println!();
     println!("用法:");
-    println!("  format-converter.exe                          打开图形界面");
-    println!("  format-converter.exe --convert <输入> <输出> [--to <格式id>] [--vcodec <编码>]");
-    println!("  format-converter.exe --formats                列出可输出格式");
-    println!("  format-converter.exe --tools                  探测 ffmpeg / 外部编码器");
-    println!("  format-converter.exe --devices                列出音频设备");
-    println!("  format-converter.exe --engines                列出播放引擎");
-    println!("  format-converter.exe --asio-probe             ASIO 驱动探测");
-    println!("  format-converter.exe --play <文件> [秒数]      试听（默认 4 秒）");
-    println!("  format-converter.exe --tags <文件>            标签与封面信息");
-    println!("  format-converter.exe --identify <文件>        加密/来源识别");
-    println!("  format-converter.exe --health <文件>          内容体检");
-    println!("  format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]");
-    println!("  format-converter.exe --warnings <文件>        各格式的质量提示");
-    println!("  format-converter.exe --version                显示版本");
-    println!("  format-converter.exe --help                   显示本帮助");
-    println!("  format-converter.exe --register               注册到「打开方式」");
-    println!("  format-converter.exe --unregister             移除注册");
+    println!("  ToneLore.exe                          打开图形界面");
+    println!("  ToneLore.exe --convert <输入> <输出> [--to <格式id>] [--vcodec <编码>]");
+    println!("  ToneLore.exe --formats                列出可输出格式");
+    println!("  ToneLore.exe --tools                  探测 ffmpeg / 外部编码器");
+    println!("  ToneLore.exe --devices                列出音频设备");
+    println!("  ToneLore.exe --engines                列出播放引擎");
+    println!("  ToneLore.exe --asio-probe             ASIO 驱动探测");
+    println!("  ToneLore.exe --play <文件> [秒数]      试听（默认 4 秒）");
+    println!("  ToneLore.exe --tags <文件>            标签与封面信息");
+    println!("  ToneLore.exe --identify <文件>        加密/来源识别");
+    println!("  ToneLore.exe --health <文件>          内容体检");
+    println!("  ToneLore.exe --split-cue <cue> [--to flac] [--out-dir 目录]");
+    println!("  ToneLore.exe --warnings <文件>        各格式的质量提示");
+    println!("  ToneLore.exe --version                显示版本");
+    println!("  ToneLore.exe --help                   显示本帮助");
+    println!("  ToneLore.exe --register               注册到「打开方式」");
+    println!("  ToneLore.exe --unregister             移除注册");
 }
 
-/// vgmstream 解码用的临时 WAV 路径（每次唯一，放 %TEMP%\ToneBox）。
+/// vgmstream 解码用的临时 WAV 路径（每次唯一，放 %TEMP%\ToneLore）。
 fn vgm_temp_path() -> PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static SEQ: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join("ToneBox");
+    let dir = std::env::temp_dir().join("ToneLore");
     let _ = std::fs::create_dir_all(&dir);
     dir.join(format!(
         "vgm_{}_{}.wav",
@@ -2625,11 +2625,11 @@ fn main() -> eframe::Result<()> {
     // --lang en / --lang zh：命令行临时切界面语言（也会从 args 里移除，避免被当文件路径）
     if let Some(pos) = args.iter().position(|a| a == "--lang") {
         let value = args.get(pos + 1).cloned().unwrap_or_default();
-        std::env::set_var("TONEBOX_LANG", &value);
+        std::env::set_var("TONELORE_LANG", &value);
         let end = (pos + 2).min(args.len());
         args.drain(pos..end);
     }
-    if let Ok(lang) = std::env::var("TONEBOX_LANG") {
+    if let Ok(lang) = std::env::var("TONELORE_LANG") {
         i18n::set_lang(&lang);
         fc_analyze::set_en(i18n::is_en());
         fc_core::format::set_en(i18n::is_en());
@@ -2654,7 +2654,7 @@ fn main() -> eframe::Result<()> {
 
     // 命令行：版本与帮助。以前 --version 会当 GUI 启动并挂住，脚本只能去翻文件
     if matches!(args.first().map(|s| s.as_str()), Some("--version") | Some("-V")) {
-        println!("ToneBox {}", VERSION);
+        println!("ToneLore {}", VERSION);
         return Ok(());
     }
     if matches!(args.first().map(|s| s.as_str()), Some("--help") | Some("-h")) {
@@ -2677,7 +2677,7 @@ fn main() -> eframe::Result<()> {
     if args.first().map(|s| s.as_str()) == Some("--unregister") {
         match assoc::unregister() {
             Ok(()) => {
-                crate::say2!("已移除 ToneBox 的打开方式注册。", "ToneBox registration removed.");
+                crate::say2!("已移除 ToneLore 的打开方式注册。", "ToneLore registration removed.");
                 return Ok(());
             }
             Err(e) => {
@@ -2772,8 +2772,8 @@ fn main() -> eframe::Result<()> {
         }
         let _vgm_cleanup = TempCleanup(vgm_tmp);
         let (Some(input), Some(output)) = (args.get(1), args.get(2)) else {
-            crate::say2!("用法: format-converter --convert <输入> <输出> [--to <格式id>]", "Usage: format-converter --convert <in> <out> [--to <format-id>]");
-            crate::say2!("例:   format-converter --convert a.flac b.aptx --to aptx", "e.g.  format-converter --convert a.flac b.aptx --to aptx");
+            crate::say2!("用法: ToneLore --convert <输入> <输出> [--to <格式id>]", "Usage: ToneLore --convert <in> <out> [--to <format-id>]");
+            crate::say2!("例:   ToneLore --convert a.flac b.aptx --to aptx", "e.g.  ToneLore --convert a.flac b.aptx --to aptx");
             std::process::exit(2);
         };
         // --to 可选：不写就是默认目标（FLAC）。id 见左侧输出格式列表。
@@ -3149,7 +3149,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：打印标签与封面信息（调试用）
     if args.first().map(|s| s.as_str()) == Some("--tags") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter --tags <文件>", "Usage: format-converter --tags <file>");
+            crate::say2!("用法: ToneLore --tags <文件>", "Usage: ToneLore --tags <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffprobe"));
@@ -3168,7 +3168,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：只做加密识别，不开界面
     if args.first().map(|s| s.as_str()) == Some("--identify") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter --identify <文件>", "Usage: format-converter --identify <file>");
+            crate::say2!("用法: ToneLore --identify <文件>", "Usage: ToneLore --identify <file>");
             std::process::exit(2);
         };
         let path = Path::new(input);
@@ -3186,7 +3186,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：内容体检（测试用，也方便脚本批跑）
     if args.first().map(|s| s.as_str()) == Some("--wave") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter.exe --wave <文件>", "Usage: format-converter.exe --wave <file>");
+            crate::say2!("用法: ToneLore.exe --wave <文件>", "Usage: ToneLore.exe --wave <file>");
             std::process::exit(2);
         };
         let Some(tools) = fc_core::locate() else {
@@ -3255,7 +3255,7 @@ fn main() -> eframe::Result<()> {
     }
     if args.first().map(|s| s.as_str()) == Some("--split-cue") {
         let Some(cue) = args.get(1) else {
-            crate::say2!("用法: format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]", "Usage: format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
+            crate::say2!("用法: ToneLore.exe --split-cue <cue> [--to flac] [--out-dir 目录]", "Usage: ToneLore.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
             std::process::exit(2);
         };
         let mut target = "flac";
@@ -3297,7 +3297,7 @@ fn main() -> eframe::Result<()> {
     }
     if args.first().map(|s| s.as_str()) == Some("--health") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter --health <文件>", "Usage: format-converter --health <file>");
+            crate::say2!("用法: ToneLore --health <文件>", "Usage: ToneLore --health <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
@@ -3327,7 +3327,7 @@ fn main() -> eframe::Result<()> {
     // 命令行：列出所有格式在当前源文件上的质量提示（测试用）
     if args.first().map(|s| s.as_str()) == Some("--warnings") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter --warnings <文件>", "Usage: format-converter --warnings <file>");
+            crate::say2!("用法: ToneLore --warnings <文件>", "Usage: ToneLore --warnings <file>");
             std::process::exit(2);
         };
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
@@ -3348,7 +3348,7 @@ fn main() -> eframe::Result<()> {
 
     if args.first().map(|s| s.as_str()) == Some("--play") {
         let Some(input) = args.get(1) else {
-            crate::say2!("用法: format-converter --play <文件> [秒数]", "Usage: format-converter --play <file> [seconds]");
+            crate::say2!("用法: ToneLore --play <文件> [秒数]", "Usage: ToneLore --play <file> [seconds]");
             std::process::exit(2);
         };
         let secs: f64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(4.0);
@@ -3454,7 +3454,7 @@ fn main() -> eframe::Result<()> {
     }
 
     let title = if cfg!(feature = "vulkan") {
-        crate::tr!("声箱ToneBox Vulkan")
+        crate::tr!("声识ToneLore Vulkan")
     } else {
         APP_NAME
     };
@@ -3478,9 +3478,9 @@ fn main() -> eframe::Result<()> {
         }),
     )
 }
-/// 启动时清掉 %TEMP%\ToneBox 里超过 24 小时的文件（上次异常退出留下的）。
+/// 启动时清掉 %TEMP%\ToneLore 里超过 24 小时的文件（上次异常退出留下的）。
 fn clean_stale_temp() {
-    let dir = std::env::temp_dir().join("ToneBox");
+    let dir = std::env::temp_dir().join("ToneLore");
     let Ok(rd) = std::fs::read_dir(&dir) else { return };
     let now = std::time::SystemTime::now();
     for e in rd.flatten() {

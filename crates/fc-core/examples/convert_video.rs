@@ -2,7 +2,7 @@
 //!
 //! 用法：
 //! ```text
-//! set FC_FFMPEG=D:\Apps\FormatConverter\ffmpeg
+//! set FC_FFMPEG=D:\Apps\ToneLore\ffmpeg
 //! cargo run -p fc-core --example convert_video -- in.mp4 out.mkv [copy|h264|hevc|vp9|av1]
 //! ```
 //!

@@ -1,6 +1,6 @@
 //! 设置项与持久化。
 //!
-//! 存到 `%APPDATA%\FormatConverter\config.json`。
+//! 存到 `%APPDATA%\ToneLore\config.json`。
 //! 只放**界面侧**的设置；影响 ffmpeg 参数的（位深、压缩等级）等契约变更后再加。
 //!
 //! ## 用户配置（Profile）
@@ -384,9 +384,9 @@ impl Default for Settings {
 impl Settings {
     pub fn dir() -> Option<PathBuf> {
         let folder = if cfg!(feature = "vulkan") {
-            "FormatConverter-Vulkan"
+            "ToneLore-Vulkan"
         } else {
-            "FormatConverter"
+            "ToneLore"
         };
         std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join(folder))
     }

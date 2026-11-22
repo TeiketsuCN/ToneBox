@@ -17,9 +17,9 @@ d.polygon([(206, 262), (258, 226), (258, 298)], fill=dark)
 for r in (46, 82):
     d.arc((300 - r, 256 - r, 300 + r, 256 + r), start=-52, end=52, fill=dark, width=20)
 
-im.save(r'D:\FormatConverter\crates\fc-gui\assets\icon.png')
+im.save(r'D:\ToneLore\crates\fc-gui\assets\icon.png')
 im.save(
-    r'D:\FormatConverter\crates\fc-gui\assets\icon.ico',
+    r'D:\ToneLore\crates\fc-gui\assets\icon.ico',
     sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)],
 )
 print('written')

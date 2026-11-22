@@ -1,7 +1,7 @@
 # HANDOFF —— 新会话从这里开始
 
-> 显示名 **ToneBox**（原来的"格式转换器"）。改名只改 `crates/fc-gui/src/main.rs` 里的
-> `APP_NAME`；exe 名 / 安装目录 / 配置目录还叫 format-converter / FormatConverter，
+> 显示名 **ToneLore**（原来的"格式转换器"）。改名只改 `crates/fc-gui/src/main.rs` 里的
+> `APP_NAME`；exe 名 / 安装目录 / 配置目录还叫 ToneLore / ToneLore，
 > 为的是不丢用户配置、不断快捷方式。
 
 > 这份文件让你 30 秒接上全部上下文。**不需要读任何聊天记录**，所有决定都在这份
@@ -19,7 +19,7 @@
 >   → WASAPI 共享写设备（不经过 cpal）。重采样有 3 个单测（升/降/同率）。
 > - **Core Audio**：macOS 构建走 cpal 的 coreaudio（真 Apple 实现）；Windows 上是
 >   **兼容层**（`coreaudio.rs`：ASBD 形状 → WASAPI），界面上照实写「不是 Apple 的实现」。
->   自检：`format-converter.exe --engines`。
+>   自检：`ToneLore.exe --engines`。
 > **2026-11-12 布局大改（最新，覆盖下文里“五列 / 悬浮播放栏 / 任务列”的描述）**：
 > - 布局从五列回到**四列**：侧栏 216 | 队列 | 详情 300 | 输出 300。**「任务」列已删除**。
 > - 播放栏不再悬浮、不再拖：**贴底一条 46px 细条**（封面 / 走带 / 标题 / 进度 / 时间），
@@ -73,7 +73,7 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 | 视频输出（MKV/MP4/WEBM/AVI） | ✅ copy + H.264/H.265/VP9/AV1，端到端验过 |
 | 音频设备检测（输出/输入、耳机/蓝牙） | ✅ WASAPI 枚举，`编解码`页 |
 | 独占输出 / 设备选择 / ReplayGain | ✅ WASAPI 直通（s32）、按源采样率；ASIO 未支持 |
-| 安装包 | ✅ `D:\Apps\FormatConverter`，**157 MB**（自带 ffmpeg） |
+| 安装包 | ✅ `D:\Apps\ToneLore`，**157 MB**（自带 ffmpeg） |
 
 **测试**：`cargo test -p fc-core --lib` = 65 个；`cargo test -p fc-player --lib` = 6 个（设备/蓝牙协议分类）；`cargo test -p fc-analyze` = 标定 60/60（约 55 秒）。
 **分支**：`main` 工作区干净，已 push。
@@ -91,7 +91,7 @@ Rust + egui（eframe 0.29 / glow），FFmpeg **子进程**，cargo workspace。
 - **任务**：把文件按当前参数加进来（快照），显示进度/完成/失败，底部「开始转换」只转这里的待办。
 
 
-标题栏左上角是 **logo（青色圆角方块 + 三根电平条）+ 名字 ToneBox + 铃铛**，不再是最初的两行文字。
+标题栏左上角是 **logo（青色圆角方块 + 三根电平条）+ 名字 ToneLore + 铃铛**，不再是最初的两行文字。
 铃铛有未读通知时右上角亮红点，点开是通知面板（完成/失败都记在这里，详情底部不再放完成卡片）。
 
 左侧顶部是**三个大项**：**音乐库 / 编解码 / 引擎和设备**。
@@ -294,7 +294,7 @@ Win11 + HDR 下退出后整个桌面会变暗。
    `[System.IO.File]::ReadAllText($p, [Text.Encoding]::UTF8)`。
 6. **新版格式必须同步更新 `format/mod.rs` 的 `encoder_for()`**，
    否则运行时探测判成"没有编码器"，界面画横线把功能挡住。
-7. **验证编码能力要用随包那份 ffmpeg**（`D:\Apps\FormatConverter\ffmpeg\ffmpeg.exe`），
+7. **验证编码能力要用随包那份 ffmpeg**（`D:\Apps\ToneLore\ffmpeg\ffmpeg.exe`），
    不是开发机 PATH 里那份——两份构建的编码器集合不一样。**视频尤其明显：随包这份没有 libx264/libx265**。
 8. **强调色一律用 `accent()`**（`util.rs` 的全局原子值，`update()` 每帧开头按背景刷新）。
    不要再加 `const ACCENT`；压在强调色上的文字用 `on_accent()`，写死深色在亮底/深强调色上会看不见。
@@ -352,7 +352,7 @@ JPEG/PNG，读它不涉及解密。界面上队列缩略图、详情卡、播放
 - **按实际声道数解码**。单声道如果用 `-ac 2` 上混，ffmpeg 会做 -3dB 等功率处理，峰值/削波全错。
 - 频谱窗加 **Hann**，否则纯音旁瓣摊开，"单频占比"上不去。
 - 判定为异常时，**频谱判档结果不显示**（静音文件也能"频谱到 22.1kHz"，不能说它无损）。
-- `format-converter --health <文件>` 可以命令行跑。
+- `ToneLore --health <文件>` 可以命令行跑。
 
 ## 响度（EBU R128）
 
@@ -367,36 +367,36 @@ K 加权（高架 + 38 Hz 高通，48 kHz 系数表）→ 400 ms 块 / 100 ms �
 
 ```powershell
 # 构建（需要 WinLibs 的 dlltool，build.ps1 里已处理）
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\FormatConverter\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\ToneLore\build.ps1
 
 # 安装（含随包 ffmpeg）
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\FormatConverter\tools\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\ToneLore\tools\install.ps1
 
 # ffmpeg 首次拉取（约 73 MB → 解压 152 MB，进 vendor/，不进 git）
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\FormatConverter\tools\fetch-ffmpeg.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\ToneLore\tools\fetch-ffmpeg.ps1
 
 # 视频转换的端到端验证（走 GUI 同一条 probe → args → convert 路径）
 # 可以用 FC_FFMPEG 指向随包那份，避免开发机 PATH 里的 ffmpeg 混进来
-$env:FC_FFMPEG='D:\Apps\FormatConverter\ffmpeg'
+$env:FC_FFMPEG='D:\Apps\ToneLore\ffmpeg'
 cargo run -p fc-core --example convert_video -- in.mp4 out.mkv [copy|h264|hevc|vp9|av1]
 # 可选 FC_HEIGHT=720 / FC_FPS=30 验证缩放和改帧率
 
 # 音频设备检测（和「编解码」页同一条枚举）
 cargo run -p fc-player --example devices
 # 独占输出冒烟测试：打印设备描述 + 位置是否在走（不需要耳朵）
-$env:FC_FFMPEG='D:\Apps\FormatConverter\ffmpeg'
+$env:FC_FFMPEG='D:\Apps\ToneLore\ffmpeg'
 cargo run -p fc-player --example exclusive_test -- <文件> [秒数] [源采样率]
 ```
 
 **命令行**（不起界面，方便排查）：
 
 ```
-format-converter --tools              # 当前用的 ffmpeg/ffprobe 路径
-format-converter --devices            # 输出/输入设备、耳机/蓝牙、格式
-format-converter --identify <文件>     # 是不是加密的、哪家的
-format-converter --tags <文件>         # 标签与封面
-format-converter --convert in out     # 转 FLAC
-format-converter --play <文件>         # 试听（跟随设置里的设备/独占/ReplayGain，会打印实际输出）
+ToneLore --tools              # 当前用的 ffmpeg/ffprobe 路径
+ToneLore --devices            # 输出/输入设备、耳机/蓝牙、格式
+ToneLore --identify <文件>     # 是不是加密的、哪家的
+ToneLore --tags <文件>         # 标签与封面
+ToneLore --convert in out     # 转 FLAC
+ToneLore --play <文件>         # 试听（跟随设置里的设备/独占/ReplayGain，会打印实际输出）
 ```
 
 ---

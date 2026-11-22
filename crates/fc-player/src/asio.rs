@@ -463,11 +463,11 @@ pub fn list_drivers() -> Vec<AsioDriver> {
         }
     }
 
-    // 便携驱动：把 *.dll 丢进 `%APPDATA%\FormatConverter\asio\` 或程序目录的 `asio\`，
+    // 便携驱动：把 *.dll 丢进 `%APPDATA%\ToneLore\asio\` 或程序目录的 `asio\`，
     // 不装驱动、不要管理员也能被认到（ASIO4ALL 的 DLL 直接就能用）。
     let mut dirs: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(appdata) = std::env::var("APPDATA") {
-        dirs.push(std::path::PathBuf::from(appdata).join("FormatConverter").join("asio"));
+        dirs.push(std::path::PathBuf::from(appdata).join("ToneLore").join("asio"));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(d) = exe.parent() {
@@ -687,7 +687,7 @@ fn open_and_run(
         let hwnd = CreateWindowExW(
             0,
             wide("STATIC").as_ptr(),
-            wide("ToneBox ASIO").as_ptr(),
+            wide("ToneLore ASIO").as_ptr(),
             0,
             0,
             0,
@@ -907,7 +907,7 @@ fn probe_one(clsid: Guid, dll: Option<std::path::PathBuf>) -> String {
         let hwnd = CreateWindowExW(
             0,
             wide("STATIC").as_ptr(),
-            wide("ToneBox ASIO").as_ptr(),
+            wide("ToneLore ASIO").as_ptr(),
             0,
             0,
             0,
