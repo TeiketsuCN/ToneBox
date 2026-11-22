@@ -757,6 +757,7 @@ D.update({
     "目标已存在": "If output exists",
     "歌单": "Playlists",
     "歌词": "Lyrics",
+    "编辑歌词": "Edit lyrics",
     "歌词管理": "Lyrics",
     "产出与存储": "Output & storage",
     "默认导出位置": "Default export location",

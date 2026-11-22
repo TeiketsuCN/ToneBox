@@ -564,6 +564,72 @@ impl App {
         // 完成/失败不再在详情底部堆卡片：状态在队列行（✓ / ✗），通知进标题栏铃铛
 
         // 选中即分析（结果进缓存，切回来不重跑）。纯视频文件没有音轨，别白跑一遍
+        // 歌词：同目录 .lrc，播放时按时间轴高亮
+        let song_path = it.path.clone();
+        let lrc = song_path.with_extension("lrc");
+        if lrc.exists() {
+            ui.add_space(14.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(crate::tr!("歌词")).size(10.5).color(MUTED).strong());
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(crate::tr!("编辑歌词")).size(8.5).color(DIM),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(Stroke::new(1.0, tint(Color32::WHITE, 16)))
+                        .rounding(Rounding::same(6.0)),
+                    )
+                    .clicked()
+                {
+                    self.page = crate::Page::Lyrics;
+                    self.lyr_sel = Some(song_path.clone());
+                    self.lyr_text = std::fs::read_to_string(&lrc).unwrap_or_default();
+                    self.lyr_dirty = false;
+                }
+            });
+            if self
+                .detail_lyrics
+                .as_ref()
+                .map(|(p, _)| p != &song_path)
+                .unwrap_or(true)
+            {
+                if let Ok(text) = std::fs::read_to_string(&lrc) {
+                    self.detail_lyrics = Some((song_path.clone(), crate::lyrics::parse_lrc(&text)));
+                }
+            }
+            let pos = if self.player_for.as_deref() == Some(song_path.as_path()) {
+                self.player.as_ref().map(|p| p.position_s())
+            } else {
+                None
+            };
+            if let Some((_, lines)) = &self.detail_lyrics {
+                let cur = pos.map(|p| {
+                    lines
+                        .iter()
+                        .rposition(|(t, _)| *t <= p)
+                        .unwrap_or(0)
+                });
+                egui::ScrollArea::vertical()
+                    .id_salt("detail_lyrics")
+                    .max_height(220.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for (i, (_, text)) in lines.iter().enumerate() {
+                            let on = cur == Some(i);
+                            let resp = ui.label(
+                                RichText::new(text)
+                                    .size(9.5)
+                                    .color(if on { accent() } else { MUTED }),
+                            );
+                            if on {
+                                resp.scroll_to_me(Some(egui::Align::Center));
+                            }
+                        }
+                    });
+            }
+        }
+
         if self.cfg.auto_analyze
             && self
                 .items

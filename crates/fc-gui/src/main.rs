@@ -401,6 +401,7 @@ pub(crate) struct App {
     pub(crate) lyr_text: String,
     pub(crate) lyr_dirty: bool,
     pub(crate) lyr_msg: String,
+    pub(crate) detail_lyrics: Option<(PathBuf, Vec<(f64, String)>)>,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -735,6 +736,7 @@ impl App {
             lyr_text: String::new(),
             lyr_dirty: false,
             lyr_msg: String::new(),
+            detail_lyrics: None,
             log_path: { 
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
                 let p = std::env::var_os("APPDATA")
