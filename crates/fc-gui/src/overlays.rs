@@ -1105,7 +1105,45 @@ impl App {
                                         .color(DIM),
                                 );
                             }
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(crate::tr2!("控制台", "Console"))
+                                            .size(8.5)
+                                            .color(if self.console_open { accent() } else { MUTED }),
+                                    )
+                                    .fill(Color32::TRANSPARENT)
+                                    .stroke(line(Color32::WHITE, 16))
+                                    .rounding(Rounding::same(6.0)),
+                                )
+                                .clicked()
+                            {
+                                self.console_open = !self.console_open;
+                            }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new(crate::tr2!("钉住", "Pin"))
+                                                .size(8.0)
+                                                .color(if self.notices_pinned { accent() } else { MUTED }),
+                                        )
+                                        .fill(if self.notices_pinned {
+                                            tint(accent(), 24)
+                                        } else {
+                                            Color32::TRANSPARENT
+                                        })
+                                        .stroke(line(Color32::WHITE, 16))
+                                        .rounding(Rounding::same(6.0)),
+                                    )
+                                    .on_hover_text(crate::tr2!(
+                                        "钉住后点面板外面不会关闭",
+                                        "Pinned: clicking outside will not close this panel"
+                                    ))
+                                    .clicked()
+                                {
+                                    self.notices_pinned = !self.notices_pinned;
+                                }
                                 let failed = self
                                     .tasks
                                     .iter()
@@ -1421,7 +1459,7 @@ impl App {
             self.notices_open = false;
         } else if ctx.input(|i| i.pointer.any_click()) {
             if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if !panel_rect.contains(pos) && !self.bell_rect.contains(pos) {
+                if !panel_rect.contains(pos) && !self.bell_rect.contains(pos) && !self.console_rect.contains(pos) && !self.notices_pinned {
                     self.notices_open = false;
                 }
             }

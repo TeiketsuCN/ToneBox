@@ -387,6 +387,8 @@ pub(crate) struct App {
     /// 诊断控制台：本次会话的转换事件，最多保留 2000 行
     pub(crate) console: Vec<String>,
     pub(crate) console_open: bool,
+    pub(crate) notices_pinned: bool,
+    pub(crate) console_rect: egui::Rect,
     pub(crate) log_path: PathBuf,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
@@ -713,6 +715,8 @@ impl App {
             qr_alipay: None,
             console: Vec::new(),
             console_open: false,
+            notices_pinned: false,
+            console_rect: egui::Rect::NOTHING,
             log_path: { 
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
                 let p = std::env::var_os("APPDATA")
