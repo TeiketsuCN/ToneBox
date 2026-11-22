@@ -3131,6 +3131,13 @@ fn main() -> eframe::Result<()> {
         }
         return Ok(());
     }
+    // 诊断/脚本用：在资源管理器里定位文件（和库里按钮同一条路径）
+    if args.first().map(|s| s.as_str()) == Some("--reveal") {
+        if let Some(p) = args.get(1) {
+            library::reveal_in_explorer(Path::new(p));
+        }
+        return Ok(());
+    }
     if args.first().map(|s| s.as_str()) == Some("--split-cue") {
         let Some(cue) = args.get(1) else {
             eprintln!("用法: format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]");

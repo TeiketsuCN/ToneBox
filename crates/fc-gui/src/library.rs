@@ -907,9 +907,35 @@ pub(crate) fn spawn_lib_cover(
     });
 }
 
-/// 在资源管理器里定位文件
+/// 在资源管理器里定位文件。
+///
+/// 两个坑：
+/// 1. `/select,路径` 必须是**一个未加引号整体**，路径含空格时 `Command::arg` 会自动
+///    给整串加引号，explorer 解析失败就退回“文档”文件夹——所以用 raw_arg 自己拼引号。
+/// 2. 库里的条目可能已经失效；文件没了就退到父目录，父目录也没了才退回文档。
 pub(crate) fn reveal_in_explorer(path: &Path) {
-    let _ = std::process::Command::new("explorer.exe")
-        .arg(format!("/select,{}", path.display()))
-        .spawn();
+    let target = if path.exists() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .filter(|p| p.exists())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| path.to_path_buf())
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("explorer.exe");
+        if target.is_file() {
+            // 引号只包住路径本身，/select, 不能进引号
+            cmd.raw_arg(format!("/select,\"{}\"", target.display()));
+        } else {
+            cmd.arg(&target);
+        }
+        let _ = cmd.spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = target;
+    }
 }
