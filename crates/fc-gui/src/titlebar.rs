@@ -22,6 +22,7 @@ use crate::overlays::*;
 pub(crate) enum TitleBtn {
     Pin,
     Settings,
+    Console,
     Minimize,
     Maximize,
     Restore,
@@ -174,7 +175,18 @@ impl App {
             self.settings_open = !self.settings_open;
         }
 
-        // 转换进度小圆环：在设置左边，尺寸小一点
+        // 控制台：设置左边，点了直接展开活动面板里的 Console
+        rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
+        if title_button(ui, rect, TitleBtn::Console, self.console_open && self.notices_open) {
+            if self.console_open && self.notices_open {
+                self.notices_open = false;
+            } else {
+                self.notices_open = true;
+                self.console_open = true;
+            }
+        }
+
+        // 转换进度小圆环：在控制台左边，尺寸小一点
         rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
         self.bell_rect = rect;
         #[cfg(windows)]
@@ -300,6 +312,15 @@ pub(crate) fn title_button(ui: &mut egui::Ui, rect: egui::Rect, kind: TitleBtn, 
                 [head + egui::vec2(0.0, 3.8), head + egui::vec2(0.0, 8.0)],
                 Stroke::new(1.2, col),
             );
+        }
+        TitleBtn::Console => {
+            // 终端窗口：外框 + ">_"
+            let tl = c + egui::vec2(-6.5, -5.0);
+            let br = c + egui::vec2(6.5, 5.0);
+            p.rect_stroke(egui::Rect::from_min_max(tl, br), Rounding::same(2.0), Stroke::new(1.1, col));
+            p.line_segment([c + egui::vec2(-3.2, -1.8), c + egui::vec2(-1.2, 0.0)], Stroke::new(1.1, col));
+            p.line_segment([c + egui::vec2(-1.2, 0.0), c + egui::vec2(-3.2, 1.8)], Stroke::new(1.1, col));
+            p.line_segment([c + egui::vec2(0.2, 2.0), c + egui::vec2(3.2, 2.0)], Stroke::new(1.1, col));
         }
         TitleBtn::Settings => {
             // 三条滑杆（设置图标）。画成齿轮也行，但滑杆在小尺寸下更清楚。
