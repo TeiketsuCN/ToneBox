@@ -575,6 +575,165 @@ Keeps full bandwidth at low bitrates. Decode only.",
 不是高保真格式，认它的播放器还很少。" => "Quite OK Audio: 4-bit LMS lossy coding, about 3.5 bits/sample.
 Very fast to decode and only a few hundred lines, good for indie games and embedded;
 not hi-fi, and few players support it.",
+        "初代 MD 的编码（1992），292kbps 固定。
+要外部的 atracdenc 才能编码，没装只能解码。" => "First-generation MD codec (1992), fixed 292 kbps.
+Requires external atracdenc; without it, decode only.",
+        "索尼 1999 年的 MDLP 编码（LP2 132k / LP4 66k）。
+需要外部的 atracdenc，没装就只能解码。" => "Sony's 1999 MDLP codec (LP2 132k / LP4 66k).
+Requires external atracdenc; without it, decode only.",
+        "索尼 2003 年的编码，Hi-MD / Walkman 用。
+atracdenc 目前只到 352k 一档；.oma 有加密和不加密两种。" => "Sony's 2003 codec, used by Hi-MD / Walkman.
+atracdenc only supports the 352k profile; .oma comes in encrypted and unencrypted variants.",
+        "索尼 2006 年的无损编码（ATRAC Advanced Lossless）。
+.oma 里通常是「有损核 + 无损残差」，解出来能还原 CD。
+只能解码，没有开源编码器。" => "Sony's 2006 lossless codec (ATRAC Advanced Lossless).
+.oma usually holds a lossy core plus a lossless residual that restores CD quality.
+Decode only; no open-source encoder.",
+        "索尼 2013 年的编码，PS4 / Vita 用。
+专利还在保护期，只做识别。" => "Sony's 2013 codec, used by PS4 / Vita.
+Patents are still active; identification only.",
+        "PS1 游戏光盘里的 XA-ADPCM 音频（2336 字节扇区）。
+要外部的 psxavenc 才能编码，没装是灰的。
+常见 37.8kHz 立体声或 18.9kHz 单声道。" => "XA-ADPCM audio on PS1 game discs (2336-byte sectors).
+Requires external psxavenc; greyed out without it.
+Typically 37.8 kHz stereo or 18.9 kHz mono.",
+        "PS2 的 SPU-ADPCM 容器（.vag），游戏语音/音效最常见。
+要外部的 psxavenc 才能编码；这里输出单声道（立体声要双流）。" => "PS2's SPU-ADPCM container (.vag), common for game speech and SFX.
+Requires external psxavenc; output is mono here (stereo needs two streams).",
+        "Wii 的游戏音乐流（BRSTM），里面是 DSP-ADPCM。
+要外部的 VGAudioCli 才能编码；ffmpeg 能解但编不了。" => "Wii game music stream (BRSTM) containing DSP-ADPCM.
+Requires external VGAudioCli; ffmpeg can decode but not encode.",
+        "3DS 的游戏音乐流（BCSTM），DSP-ADPCM。
+要外部的 VGAudioCli 才能编码；换机器前先在目标机上确认能放。" => "3DS game music stream (BCSTM), DSP-ADPCM.
+Requires external VGAudioCli; verify playback on the target device first.",
+        "Wii U 的游戏音乐流（BFSTM），DSP-ADPCM。
+要外部的 VGAudioCli 才能编码；ffmpeg 也能解。" => "Wii U game music stream (BFSTM), DSP-ADPCM.
+Requires external VGAudioCli; ffmpeg can also decode it.",
+        "GameCube 的 DSP-ADPCM 原始音频（.dsp）。
+要外部的 VGAudioCli 才能编码；没有容器头，靠约定命名。" => "GameCube raw DSP-ADPCM audio (.dsp).
+Requires external VGAudioCli; no container header, relies on naming conventions.",
+        "DSP-ADPCM 的另一种封装（IDSP）。
+要外部的 VGAudioCli 才能编码；常见于老任系工具链。" => "Another DSP-ADPCM wrapper (IDSP).
+Requires external VGAudioCli; common in older Nintendo toolchains.",
+        "N64 的 VADPCM（4.5 bit/样本），LibDragon / 官方 SDK 都用它。
+要外部的 vadpcm 才能编码；只收 16-bit 单声道，输出 .aifc。
+质量介于 ADPCM 和现代有损编码之间。" => "N64 VADPCM (4.5 bits/sample), used by LibDragon and the official SDK.
+Requires external vadpcm; 16-bit mono only, writes .aifc.
+Quality sits between ADPCM and modern lossy codecs.",
+        "广播行业的标准封装（Material Exchange Format）。
+画面 MPEG-2、声音 PCM 48kHz——电视台/后期流程要的就是它。
+MXF 规范只接受 48kHz，源是 44.1k 时会重采样。" => "Broadcast-standard container (Material Exchange Format).
+MPEG-2 video and 48 kHz PCM audio—what TV and post workflows expect.
+The MXF spec only accepts 48 kHz, so 44.1k sources are resampled.",
+        "Matroska：什么都能装，音轨/字幕都留得住。
+默认直接复制，不重编码画面。" => "Matroska: holds almost anything, audio tracks and subtitles included.
+Video is copied by default, no re-encode.",
+        "手机、苹果设备、剪辑软件最认的容器。
+只收 H.264/H.265/AV1 和 AAC/AC-3/ALAC。" => "The container phones, Apple devices and editors prefer.
+Only H.264/H.265/AV1 and AAC/AC-3/ALAC.",
+        "网页用的开放容器，只收 VP9/AV1 + Opus/Vorbis。
+浏览器里直接播，剪辑软件支持一般。" => "Open web container, only VP9/AV1 + Opus/Vorbis.
+Plays directly in browsers; editor support is average.",
+        "苹果 QuickTime 容器，剪辑软件/相机最认。
+编码组合和 MP4 接近，但更宽松。" => "Apple QuickTime container, favored by editors and cameras.
+Codec combinations are close to MP4 but more permissive.",
+        "MPEG-TS：电视录制/机顶盒/直播流用。
+只收 H.264/H.265 + AAC/AC-3，不带索引，剪辑软件不好啃。" => "MPEG-TS: TV recording, set-top boxes and live streams.
+Only H.264/H.265 + AAC/AC-3, no index—editors struggle with it.",
+        "蓝光/AVCHD 用的 TS 变体（192 字节包）。
+老播放器和蓝光机认，电脑上支持一般。" => "The TS variant used by Blu-ray/AVCHD (192-byte packets).
+Old players and Blu-ray decks accept it; PC support is average.",
+        "老式网页视频容器，只认 H.264 + AAC/MP3。
+现在基本只在旧系统和推流回放里见到。" => "Legacy web video container, only H.264 + AAC/MP3.
+Mostly seen in old systems and stream replays now.",
+        "老播放器/老设备用。编码组合很有限，
+画面只能 copy 或 H.264，音频基本只认 MP3/AC-3。" => "For old players and devices. Very limited codec combinations:
+video copy or H.264, audio mostly MP3/AC-3.",
+        "MPEG 节目流，VCD / DVD 时代最常见。
+画面 MPEG-2、声音 MP2，老播放器和车载屏都认。" => "MPEG program stream, common in the VCD/DVD era.
+MPEG-2 video and MP2 audio; old players and car screens accept it.",
+        "DVD-Video 的容器（MPEG-PS 变体）。
+画面固定 MPEG-2、声音 AC-3，方便直接刻盘。" => "DVD-Video container (an MPEG-PS variant).
+Fixed MPEG-2 video and AC-3 audio, ready for disc authoring.",
+        "Ogg 的视频容器（RFC 5334 定义的 .ogv）。
+画面 Theora、声音 Vorbis，全开源，但认它的设备很少。" => "Ogg video container (.ogv per RFC 5334).
+Theora video and Vorbis audio, fully open, but few devices support it.",
+        "Windows Media（ASF 容器）。
+画面 WMV2、声音 WMA，给老 Windows 播放器和老设备用。" => "Windows Media (ASF container).
+WMV2 video and WMA audio for old Windows players and devices.",
+        "3GPP 的手机视频容器，功能机时代的标准。
+画面 MPEG-4、声音 AAC，体积小。" => "3GPP mobile video container, the feature-phone standard.
+MPEG-4 video and AAC audio, small files.",
+        "DV 摄像机/老采集卡的格式（.dv）。
+画面固定 720×576/25fps、声音 PCM 48kHz 立体声，码率约 25Mbps。
+为了装进 DV，画面会被缩放、音频会重采样——不是无损封装。" => "Format for DV camcorders and old capture cards (.dv).
+Fixed 720×576/25fps, 48 kHz PCM stereo, about 25 Mbps.
+Video is scaled and audio resampled to fit DV—this is not lossless packing.",
+        "Grass Valley 的广播交换容器（SMPTE 360M），电视台/后期流程用。
+画面 MPEG-2，声音 PCM 48kHz **单声道**（GXF 规范只收单声道）。" => "Grass Valley broadcast exchange container (SMPTE 360M) for TV/post workflows.
+MPEG-2 video and 48 kHz PCM **mono** audio (GXF allows mono only).",
+        "ffmpeg 自家的开放容器（.nut），什么流都能装。
+适合做实验和中间文件；播放器支持很差，别当成品格式发人。" => "ffmpeg's own open container (.nut) that holds any stream.
+Good for experiments and intermediate files; player support is poor—do not ship it as a deliverable.",
+        "MXF 的 OPAtom 变体（Avid 常用），一个文件一条流。
+画面 MPEG-2、声音 PCM 48kHz；导入 Avid/后期流程时用。" => "MXF OPAtom variant (common in Avid), one stream per file.
+MPEG-2 video and 48 kHz PCM audio; used when importing into Avid/post workflows.",
+        "CDMA 手机的 3GPP2 容器（.3g2），和 3GP 是姊妹标准。
+画面 MPEG-4/H.264、声音 AAC/AMR；老 CDMA 手机只认它。" => "3GPP2 container for CDMA phones (.3g2), a sibling of 3GP.
+MPEG-4/H.264 video and AAC/AMR audio; old CDMA phones only accept this.",
+        "Flash 用的 MP4 变体（F4V），H.264 + AAC。
+Flash 已经死了，只在老网页/老课件里还能见到。" => "Flash's MP4 variant (F4V), H.264 + AAC.
+Flash is dead; only found in old web pages and courseware.",
+        "IIS Smooth Streaming 的分片 MP4（.ismv），H.264 + AAC。
+给 Windows/IIS 的老流媒体服务用；普通播放器也能放。" => "IIS Smooth Streaming fragmented MP4 (.ismv), H.264 + AAC.
+For old Windows/IIS streaming services; normal players can also play it.",
+        "Windows Media Center 的录制容器（.wtv）。
+MPEG-2/H.264 + AC-3/AAC 都能装；Win10 之后基本没人用了。" => "Windows Media Center recording container (.wtv).
+Holds MPEG-2/H.264 + AC-3/AAC; barely used after Windows 10.",
+        "Video CD：MPEG-1 + MP2，固定 352×288/25fps。
+老影碟机、车载屏和 2000 年代的播放器都认。" => "Video CD: MPEG-1 + MP2, fixed 352×288/25fps.
+Old disc players, car screens and 2000s hardware accept it.",
+        "Super VCD：MPEG-2 + MP2，固定 480×576/25fps。
+比 VCD 清楚，但支持的设备少得多。" => "Super VCD: MPEG-2 + MP2, fixed 480×576/25fps.
+Sharper than VCD, but far fewer devices support it.",
+        "PSP 的 MP4 变体：H.264 + AAC，480×272 最稳。
+给仍在使用 PSP 的人；普通播放器也能放。" => "PSP's MP4 variant: H.264 + AAC, 480×272 is the safest size.
+For people still using a PSP; normal players can play it too.",
+        "iPod/老 iTunes 的 M4V：H.264 + AAC。
+苹果设备同步用；机器本身能放 H.264 就行。" => "M4V for iPod/old iTunes: H.264 + AAC.
+For syncing Apple devices; the device only needs H.264 support.",
+        "IVF 裸流：VP8/VP9/AV1 的简单容器，**没有音轨**。
+给编码器测试和 WebM 工具链用。" => "IVF raw stream: a simple VP8/VP9/AV1 container, **no audio**.
+For encoder tests and the WebM toolchain.",
+        "H.264 Annex B 裸流（.h264），**没有音轨**。
+剪辑软件、硬件编码器和老播放器常见。" => "H.264 Annex B raw stream (.h264), **no audio**.
+Common in editors, hardware encoders and old players.",
+        "H.265/HEVC 裸流（.h265），**没有音轨**。
+设备能不能放取决于解码器；老设备别用。" => "H.265/HEVC raw stream (.h265), **no audio**.
+Playback depends on the decoder; avoid old devices.",
+        "MPEG-2 视频裸流（.m2v），**没有音轨**。
+老广播、光盘制作工具常见。" => "MPEG-2 raw video stream (.m2v), **no audio**.
+Common in old broadcast and disc-authoring tools.",
+        "MPEG-4 Part 2 裸流（.m4v），**没有音轨**。
+老 divx 工具链和早期播放器用。" => "MPEG-4 Part 2 raw stream (.m4v), **no audio**.
+Used by old DivX toolchains and early players.",
+        "AVIF 动图：AV1 编码的图片序列，**没有音轨**。
+给网页/图片工具用；不是视频，别指望播放器当视频放。" => "AVIF animation: an AV1-encoded image sequence, **no audio**.
+For web/image tools; it is not video—do not expect players to treat it as one.",
+        "AMV：国产 MP4/MP3 播放器（2005~2010）专用的视频容器。
+画面 AMV（160×120/30fps），声音 IMA ADPCM 22.05kHz 单声道。
+现在的设备都不认，只适合老播放器。" => "AMV: a video container for Chinese MP4/MP3 players (2005–2010).
+AMV video at 160×120/30fps, IMA ADPCM 22.05 kHz mono audio.
+No modern device accepts it; only for old players.",
+        "Flash 动画容器（.swf）：FLV1 视频 + MP3 音频。
+Flash 已于 2020 年停止支持；只在老课件/老动画里还能见到。" => "Flash animation container (.swf): FLV1 video + MP3 audio.
+Flash support ended in 2020; only found in old courseware and animations.",
+        "GIF 动图：256 色、没有音轨。
+做表情包/网页动图可以，别拿它存视频。" => "GIF animation: 256 colors, no audio.
+Fine for memes and web animations—do not use it to store video.",
+        "APNG 动图：PNG 的无损动画，没有音轨。
+颜色比 GIF 好，但文件通常更大。" => "APNG animation: PNG's lossless animation, no audio.
+Better colors than GIF, but usually larger files.",
         _ => key,
     }
 }
