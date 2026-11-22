@@ -197,6 +197,8 @@ pub(crate) enum State {
 
 pub(crate) struct Item {
     path: PathBuf,
+    /// vgmstream 解出来的临时 WAV；没有就是 None（大多数格式直接读原文件）
+    media: Option<PathBuf>,
     info: Option<MediaInfo>,
     error: Option<String>,
     state: State,
@@ -230,6 +232,10 @@ impl Item {
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default()
+    }
+    /// 真正拿来解码/播放的文件：vgmstream 解过的用临时 WAV，否则就是原文件
+    fn media_path(&self) -> &Path {
+        self.media.as_deref().unwrap_or(&self.path)
     }
 }
 
@@ -342,6 +348,8 @@ pub(crate) struct Notice {
 /// 队列负责选文件，任务列表负责真正要转的东西。
 pub(crate) struct Task {
     pub path: PathBuf,
+    /// 实际解码用的文件（vgmstream 临时 WAV）；输出命名仍用 path
+    pub src: PathBuf,
     pub name: String,
     pub spec_id: &'static str,
     pub opts: fc_core::ConvertOptions,
@@ -832,7 +840,22 @@ impl App {
                 continue;
             }
             let mut encrypted = None;
-            let (info, error) = match fc_core::probe(&tools, &p) {
+            // vgmstream 能读、ffmpeg 读不了的游戏音频：先解成临时 WAV 再 probe
+            let mut media: Option<PathBuf> = None;
+            let mut probe_path = p.clone();
+            if fc_core::is_vgmstream_ext(&p) {
+                if let Some(exe) = fc_core::find_vgmstream() {
+                    let tmp = vgm_temp_path();
+                    match fc_core::vgmstream_decode(&exe, &p, &tmp) {
+                        Ok(()) => {
+                            probe_path = tmp.clone();
+                            media = Some(tmp);
+                        }
+                        Err(e) => eprintln!("vgmstream 解码失败：{e:#}"),
+                    }
+                }
+            }
+            let (info, error) = match fc_core::probe(&tools, &probe_path) {
                 Ok(i) => (Some(i), None),
                 Err(e) => {
                     // 读不出来时先问一句"是不是加密的"，能答就答得比报错清楚
@@ -847,9 +870,10 @@ impl App {
                 }
             };
             let idx = self.items.len();
-            spawn_media_load(&tools, &p, idx, self.media_tx.clone());
+            spawn_media_load(&tools, media.as_deref().unwrap_or(&p), idx, self.media_tx.clone());
             self.items.push(Item {
                 path: p,
+                media,
                 info,
                 error,
                 state: State::Pending,
@@ -884,12 +908,14 @@ impl App {
         let spec = it.spec(self.target);
         let name = it.tags.display_title(&it.name());
         let path = it.path.clone();
+        let src = it.media_path().to_path_buf();
         let dur = it.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0);
         if self.tasks.iter().any(|t| t.path == path && t.spec_id == spec.id) {
             return;
         }
         self.tasks.push(Task {
             path,
+            src,
             name,
             spec_id: spec.id,
             opts: self.cfg.opts.clone(),
@@ -938,7 +964,7 @@ impl App {
             if let Some(codec) = fc_core::external::codec_for(spec.id, atrac3_kbps) {
                 jobs.push(Job::Atrac {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     codec,
                     dur,
@@ -957,7 +983,7 @@ impl App {
                 }
                 jobs.push(Job::Wavpack {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                     kbps: self.tasks[i].opts.wavpack_bitrate,
@@ -977,7 +1003,7 @@ impl App {
                 }
                 jobs.push(Job::Ofr {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                     preset: self.tasks[i].opts.ofr_preset,
@@ -995,7 +1021,7 @@ impl App {
                 }
                 jobs.push(Job::Mpc {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                     profile: self.tasks[i].opts.mpc_profile,
@@ -1015,7 +1041,7 @@ impl App {
                 }
                 jobs.push(Job::Psx {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                     kind: if spec.id == "xa" { "xa" } else { "vag" },
@@ -1033,7 +1059,7 @@ impl App {
                 }
                 jobs.push(Job::Qoa {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                 });
@@ -1051,7 +1077,7 @@ impl App {
                 }
                 jobs.push(Job::Vgaudio {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                 });
@@ -1069,7 +1095,7 @@ impl App {
                 }
                 jobs.push(Job::Vadpcm {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                 });
@@ -1086,7 +1112,7 @@ impl App {
                 }
                 jobs.push(Job::Speex {
                     idx: i,
-                    input: self.tasks[i].path.clone(),
+                    input: self.tasks[i].src.clone(),
                     out,
                     dur,
                 });
@@ -1181,7 +1207,7 @@ impl App {
 
             jobs.push(Job::Ffmpeg {
                 idx: i,
-                input: self.tasks[i].path.clone(),
+                input: self.tasks[i].src.clone(),
                 out,
                 args,
                 dur,
@@ -1630,7 +1656,7 @@ impl App {
             dop_lsb_first: info.codec.contains("lsbf"),
         };
         let mut opening =
-            fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts);
+            fc_player::Player::open_with(&tools.ffmpeg, it.media_path(), info.duration_s, &opts);
         // DoP 失败（设备没 176.4k / 独占被占）：明确回退 PCM，不假装在播 DSD
         if opening.is_err() && opts.dop {
             let why = opening.err().map(|e| format!("{e:#}")).unwrap_or_default();
@@ -1639,7 +1665,7 @@ impl App {
             opts.engine = self.cfg.engine_enum();
             self.play_error = Some(format!("DSD DoP 不可用（{why}）· 已回退 PCM"));
             opening =
-                fc_player::Player::open_with(&tools.ffmpeg, &it.path, info.duration_s, &opts);
+                fc_player::Player::open_with(&tools.ffmpeg, it.media_path(), info.duration_s, &opts);
         }
         match opening {
             Ok(p) => {
@@ -1663,22 +1689,18 @@ impl App {
             return;
         };
         let Some(p) = self.player.as_ref() else { return };
-        let (dur, gain) = self
-            .items
-            .iter()
-            .find(|i| i.path == next_path)
-            .map(|i| {
-                (
-                    i.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0),
-                    if self.cfg.replaygain {
-                        i.tags.replaygain_db
-                    } else {
-                        None
-                    },
-                )
-            })
-            .unwrap_or((0.0, None));
-        p.set_next(&next_path, dur, gain);
+        let Some(next_item) = self.items.iter().find(|i| i.path == next_path) else {
+            return;
+        };
+        let (dur, gain) = (
+            next_item.info.as_ref().map(|m| m.duration_s).unwrap_or(0.0),
+            if self.cfg.replaygain {
+                next_item.tags.replaygain_db
+            } else {
+                None
+            },
+        );
+        p.set_next(next_item.media_path(), dur, gain);
     }
 
     fn poll_media(&mut self, ctx: &egui::Context) {
@@ -1996,12 +2018,15 @@ impl eframe::App for App {
         {
             if tn != self.play_track_seen {
                 self.play_track_seen = tn;
-                self.player_for = Some(cp.clone());
-                if let Some(i) = self.items.iter().position(|it| it.path == cp) {
-                    self.selected = i;
-                }
-                if let Some(pi) = self.playlist.iter().position(|x| x == &cp) {
-                    self.play_idx = pi;
+                // cp 是解码用的路径（vgmstream 时是临时 WAV），映射回队列项
+                if let Some(item) = self.items.iter().find(|it| it.media_path() == cp) {
+                    self.player_for = Some(item.path.clone());
+                    if let Some(i) = self.items.iter().position(|it| it.path == item.path) {
+                        self.selected = i;
+                    }
+                    if let Some(pi) = self.playlist.iter().position(|x| x == &item.path) {
+                        self.play_idx = pi;
+                    }
                 }
                 self.request_wave(&cp, ctx);
                 self.arm_next();
@@ -2427,10 +2452,34 @@ fn print_usage() {
     println!("  format-converter.exe --unregister             移除注册");
 }
 
+/// vgmstream 解码用的临时 WAV 路径（每次唯一，放 %TEMP%\ToneBox）。
+fn vgm_temp_path() -> PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join("ToneBox");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join(format!(
+        "vgm_{}_{}.wav",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+/// 命令行临时文件清理：离开作用域时删掉。
+struct TempCleanup(Option<PathBuf>);
+
+impl Drop for TempCleanup {
+    fn drop(&mut self) {
+        if let Some(p) = &self.0 {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 fn main() -> eframe::Result<()> {
     #[cfg(feature = "vulkan")]
     std::env::set_var("WGPU_BACKEND", "vulkan");
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它
     set_zoom(if screen_logical_height() >= 1150.0 { 1.2 } else { 1.0 });
@@ -2505,6 +2554,7 @@ fn main() -> eframe::Result<()> {
         show("qoaconv", fc_core::find_qoaconv());
         show("vgaudio", fc_core::find_vgaudio());
         show("vadpcm", fc_core::find_vadpcm());
+        show("vgmstream", fc_core::find_vgmstream());
         return Ok(());
     }
 
@@ -2517,6 +2567,30 @@ fn main() -> eframe::Result<()> {
     }
 
     if args.first().map(|s| s.as_str()) == Some("--convert") {
+        // vgmstream 能读、ffmpeg 读不了的游戏音频：先解成临时 WAV，再走正常流程
+        let mut vgm_tmp: Option<PathBuf> = None;
+        if let Some(p) = args.get(1) {
+            if fc_core::is_vgmstream_ext(Path::new(p)) {
+                if let Some(exe) = fc_core::find_vgmstream() {
+                    let tmp = std::env::temp_dir().join(format!(
+                        "tb_vgm_{}_{}.wav",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0)
+                    ));
+                    match fc_core::vgmstream_decode(&exe, Path::new(p), &tmp) {
+                        Ok(()) => {
+                            args[1] = tmp.to_string_lossy().into_owned();
+                            vgm_tmp = Some(tmp);
+                        }
+                        Err(e) => eprintln!("vgmstream 解码失败，继续用 ffmpeg 试：{e:#}"),
+                    }
+                }
+            }
+        }
+        let _vgm_cleanup = TempCleanup(vgm_tmp);
         let (Some(input), Some(output)) = (args.get(1), args.get(2)) else {
             eprintln!("用法: format-converter --convert <输入> <输出> [--to <格式id>]");
             eprintln!("例:   format-converter --convert a.flac b.aptx --to aptx");

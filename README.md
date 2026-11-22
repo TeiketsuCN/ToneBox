@@ -44,6 +44,7 @@
 | **psxavenc** | `psxavenc\psxavenc.exe` | Zlib | PS1 XA-ADPCM / PS2 VAG |
 | **VGAudioCli** | `vgaudio\VGAudioCli.exe` | MIT | BRSTM / BCSTM / BFSTM / DSP / IDSP |
 | **qoaconv** | `qoa\qoaconv.exe` | MIT | QOA |
+| **vgmstream** | `vgmstream\vgmstream-cli.exe` | ISC | PSF / ADS / BRSTM / BCSTM / HCA 等输入 |
 | **OptimFROG** | `install-ofr.cmd` 一键下载 | 闭源免费 | OptimFROG（官网下载 + SHA-1 校验，不涉及再分发） |
 
 用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），前四个立刻可用；
@@ -105,6 +106,7 @@ DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
 | `psxavenc` | 📦 extras | PS1 XA-ADPCM / PS2 VAG（Zlib） |
 | `VGAudioCli` | 📦 extras | BRSTM / BCSTM / BFSTM / DSP / IDSP（MIT） |
 | `qoaconv` | 📦 extras | QOA（MIT） |
+| `vgmstream` | 📦 extras | PSF / ADS / BRSTM / BCSTM / HCA 等输入（ISC） |
 | `ofr` | ⬇️ extras 内一键下载 | OptimFROG（官方许可限制再分发） |
 
 程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。
@@ -157,6 +159,7 @@ powershell -ExecutionPolicy Bypass -File tools\fetch-atracdenc.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-psxavenc.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-vgaudio.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-qoa.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-vgmstream.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-optimfrog.ps1
 
 # 2. 编译
@@ -212,7 +215,8 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - 可输出格式 **107 → 112**：Argonaut ASF、AMV、SWF、GIF、APNG；MOV/MKV/MXF/WebM/AVI 新增 ProRes / FFV1 / DNxHR / VP8 / MJPEG 编码
 - **双击文件直接播放**：带文件路径启动会入队并自动试听
 - **注册到「打开方式」**：`--register` / 设置页按钮；不静默抢默认（Windows 要求用户确认）
-- vgmstream 输入、转换后自检正在做
+- **vgmstream 输入**：PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 可以先解成 WAV 再转（extras 里带）
+- 转换后自检、ReplayGain 正在做
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）

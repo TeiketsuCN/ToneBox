@@ -30,6 +30,7 @@ pub use external::find_psxavenc;
 pub use external::find_qoaconv;
 pub use external::find_vgaudio;
 pub use external::find_vadpcm;
+pub use external::{find_vgmstream, is_vgmstream_ext, vgmstream_decode};
 pub use identify::{identify, Encrypted};
 pub use metadata::{metadata_args, MetaWrite};
 pub use wiki::long_blurb;

@@ -759,6 +759,69 @@ pub fn vgaudio_convert(
     Ok(size)
 }
 
+/// 找 vgmstream-cli（游戏流式音频解码器，ISC 许可）。
+pub fn find_vgmstream() -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "vgmstream-cli.exe"
+    } else {
+        "vgmstream-cli"
+    };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("vgmstream").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 这些扩展名 ffmpeg 读不了（或读得不好），交给 vgmstream 先解成 WAV。
+pub fn is_vgmstream_ext(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "psf" | "psf2" | "minipsf" | "minipsf2" | "ssf" | "minissf" | "brstm" | "bcstm"
+            | "bfstm" | "bfwav" | "bcwav" | "hca" | "ads" | "ss2" | "svag" | "genh" | "dsp"
+            | "idsp" | "vadpcm"
+    )
+}
+
+/// 用 vgmstream-cli 把一个游戏音频文件解成 WAV（16-bit PCM）。
+///
+/// 输出文件名由调用方给；成功后可以直接拿它去 probe / 转码。
+pub fn vgmstream_decode(exe: &Path, input: &Path, output: &Path) -> Result<()> {
+    let mut cmd = Command::new(exe);
+    cmd.args(["-o"])
+        .arg(output)
+        .arg(input)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd.output().context("启动 vgmstream-cli 失败")?;
+    if !out.status.success() || !output.is_file() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let mut tail: Vec<&str> = err.lines().rev().take(3).collect();
+        tail.reverse();
+        return Err(anyhow!(
+            "vgmstream 解码失败（退出码 {:?}）：\n{}",
+            out.status.code(),
+            tail.join("\n")
+        ));
+    }
+    Ok(())
+}
+
 /// 找 N64 VADPCM 编解码器（vadpcm.exe，MPL-2.0）。
 pub fn find_vadpcm() -> Option<PathBuf> {
     let exe = if cfg!(windows) { "vadpcm.exe" } else { "vadpcm" };

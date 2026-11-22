@@ -41,7 +41,7 @@ $stage = Join-Path $src "dist\ToneBox-$Ver-extras"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Write-Host "== 1/7 ATRAC 编码器 ==" -ForegroundColor Cyan
+Write-Host "== 1/8 ATRAC 编码器 ==" -ForegroundColor Cyan
 $atracSrc = Join-Path $src 'vendor\atracdenc'
 $atracExe = Join-Path $atracSrc 'atracdenc.exe'
 if (-not (Test-Path $atracExe)) {
@@ -64,7 +64,7 @@ atracdenc —— ATRAC1 / ATRAC3 / ATRAC3+ 编码器
 "@
 Set-Content -Path (Join-Path $atracDst 'SOURCE-说明.txt') -Value $srcNote -Encoding UTF8
 
-Write-Host "== 2/7 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
+Write-Host "== 2/8 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
 $psxSrc = Join-Path $src 'vendor\psxavenc'
 $psxExe = Join-Path $psxSrc 'psxavenc.exe'
 if (-not (Test-Path $psxExe)) {
@@ -84,7 +84,7 @@ psxavenc —— PS1 XA-ADPCM / PS2 VAG 编码器
 "@
 Set-Content -Path (Join-Path $psxDst 'SOURCE-说明.txt') -Value $psxNote -Encoding UTF8
 
-Write-Host "== 3/7 VGAudioCli（任天堂容器）==" -ForegroundColor Cyan
+Write-Host "== 3/8 VGAudioCli（任天堂容器）==" -ForegroundColor Cyan
 $vgSrc = Join-Path $src 'vendor\vgaudio'
 $vgExe = Join-Path $vgSrc 'VGAudioCli.exe'
 if (-not (Test-Path $vgExe)) {
@@ -104,7 +104,7 @@ VGAudioCli —— BRSTM / BCSTM / BFSTM / DSP / IDSP 编码器
 "@
 Set-Content -Path (Join-Path $vgDst 'SOURCE-说明.txt') -Value $vgNote -Encoding UTF8
 
-Write-Host "== 4/7 qoaconv（QOA）==" -ForegroundColor Cyan
+Write-Host "== 4/8 qoaconv（QOA）==" -ForegroundColor Cyan
 $qoaSrc = Join-Path $src 'vendor\qoa'
 $qoaExe = Join-Path $qoaSrc 'qoaconv.exe'
 if (-not (Test-Path $qoaExe)) {
@@ -124,7 +124,7 @@ qoaconv —— Quite OK Audio（QOA）编码/解码器
 "@
 Set-Content -Path (Join-Path $qoaDst 'SOURCE-说明.txt') -Value $qoaNote -Encoding UTF8
 
-Write-Host "== 5/7 vadpcm（N64 VADPCM）==" -ForegroundColor Cyan
+Write-Host "== 5/8 vadpcm（N64 VADPCM）==" -ForegroundColor Cyan
 $vadSrc = Join-Path $src 'vendor\vadpcm'
 $vadExe = Join-Path $vadSrc 'vadpcm.exe'
 if (-not (Test-Path $vadExe)) {
@@ -144,7 +144,29 @@ vadpcm —— N64 VADPCM 编解码器
 "@
 Set-Content -Path (Join-Path $vadDst 'SOURCE-说明.txt') -Value $vadNote -Encoding UTF8
 
-Write-Host "== 6/7 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
+Write-Host "== 6/8 vgmstream（游戏音频输入）==" -ForegroundColor Cyan
+$vgmSrc = Join-Path $src 'vendor\vgmstream'
+$vgmExe = Join-Path $vgmSrc 'vgmstream-cli.exe'
+if (-not (Test-Path $vgmExe)) {
+    $alt = Join-Path $src 'target\release\vgmstream\vgmstream-cli.exe'
+    if (Test-Path $alt) { $vgmSrc = Split-Path $alt -Parent } else { throw "找不到 vgmstream-cli.exe" }
+}
+$vgmDst = Join-Path $stage 'vgmstream'
+New-Item -ItemType Directory -Force -Path $vgmDst | Out-Null
+Get-ChildItem $vgmSrc -File | Where-Object { $_.Extension -in @('.exe', '.dll') -or $_.Name -eq 'COPYING' } | ForEach-Object {
+    Copy-Item $_.FullName $vgmDst -Force
+}
+Copy-Item (Join-Path $vgmSrc 'COPYING') (Join-Path $vgmDst 'LICENSE-vgmstream.txt') -Force
+$vgmNote = @"
+vgmstream-cli —— 游戏流式音频解码器
+项目主页：https://github.com/vgmstream/vgmstream
+许可：见同目录 LICENSE-vgmstream.txt（ISC 为主，含若干第三方许可）
+用途：把 PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 等解成 WAV，再交给 ffmpeg 转码
+说明：程序自动调用，不需要手动跑。
+"@
+Set-Content -Path (Join-Path $vgmDst 'SOURCE-说明.txt') -Value $vgmNote -Encoding UTF8
+
+Write-Host "== 7/8 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
 $ofrPs1 = @'
 # 下载 OptimFROG 的 ofr.exe 到本目录下的 optimfrog\（不涉及再分发）
 # 由 install-ofr.cmd 调用；需要联网。
@@ -214,7 +236,7 @@ $readme = @"
 ToneBox 可选外部工具包
 ======================
 
-这个包里是六样**不随主程序一起发**的编码器。
+这个包里是七样**不随主程序一起发**的工具（编码器 + 解码器）。
 把整个压缩包解压到 ToneBox 目录（format-converter.exe 所在的那层），然后：
 
 1) ATRAC（atracdenc）
@@ -234,26 +256,30 @@ ToneBox 可选外部工具包
 5) N64 VADPCM（vadpcm）
    已包含在 vadpcm\ 里，让 .aifc（VADPCM）可输出。
 
-6) OptimFROG（ofr.exe）
+6) vgmstream（游戏音频输入）
+   已包含在 vgmstream\ 里，PSF / ADS / BRSTM / BCSTM / HCA 可以直接拖进来。
+
+7) OptimFROG（ofr.exe）
    双击 install-ofr.cmd，脚本会从官网下载并校验，放到 optimfrog\。
    需要联网。
 
 装完后回到程序：设置 → 依赖 / 外部工具 → 重新检测，
-就能看到 atracdenc / psxavenc / vgaudio / qoaconv / vadpcm / ofr 亮起来。
+就能看到 atracdenc / psxavenc / vgaudio / qoaconv / vadpcm / vgmstream / ofr 亮起来。
 
-这六个工具都是可选的：
+这七个工具都是可选的：
 - 没有 atracdenc：ATRAC1 / ATRAC3 / ATRAC3+ 不能输出（其它格式不受影响）
 - 没有 psxavenc：PS1 XA / PS2 VAG 不能输出（其它格式不受影响）
 - 没有 VGAudioCli：BRSTM / BCSTM / BFSTM / DSP / IDSP 不能输出
 - 没有 qoaconv：QOA 不能输出
 - 没有 vadpcm：N64 VADPCM 不能输出
+- 没有 vgmstream：PSF / ADS / BRSTM / BCSTM / HCA 等不能当输入（其它格式不受影响）
 - 没有 ofr.exe：OptimFROG 不能输出（其它格式不受影响）
 
 许可说明见各子目录里的文本。
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
-Write-Host "== 7/7 zip ==" -ForegroundColor Cyan
+Write-Host "== 8/8 zip ==" -ForegroundColor Cyan
 $dist = Split-Path -Parent $Out
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Force -Path $dist | Out-Null }
 if (Test-Path $Out) { Remove-Item $Out -Force }

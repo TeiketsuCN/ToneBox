@@ -122,6 +122,16 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 用途：`qoaconv.exe` 输出 `.qoa`（4-bit LMS 有损，约 3.5 bit/样本）
 - 来源：用 MSYS2 gcc 从官方 `qoa.h` + `qoaconv.c` 编译（源码在 `vendor/qoa/`）
 - 许可证全文：`vendor/qoa/LICENSE-qoa.txt`
+## vgmstream（游戏音频输入，可选，在 extras 包）
+
+- 项目：vgmstream
+- 主页：<https://github.com/vgmstream/vgmstream>
+- 许可：ISC 为主，含若干第三方许可（见 `vendor/vgmstream/COPYING`）
+- 用途：`vgmstream-cli.exe` 把 PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 等解成 WAV，
+  再交给 ffmpeg 转码（ffmpeg 读不了这些容器）
+- 版本：r2168（官方 Windows x64 release）
+- 许可证全文：`vendor/vgmstream/COPYING`
+
 ## OptimFROG（ofr.exe，可选，不随包）
 
 - 项目：OptimFROG / Lossless Audio
