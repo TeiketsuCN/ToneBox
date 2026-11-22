@@ -36,7 +36,7 @@ fn reg(args: &[&str]) -> Result<(), String> {
         .stderr(std::process::Stdio::piped());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let out = cmd.output().map_err(|e| format!("启动 reg.exe 失败：{e}"))?;
+    let out = cmd.output().map_err(|e| crate::fmt2!("启动 reg.exe 失败：{e}", "Failed to start reg.exe: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -48,7 +48,7 @@ fn reg(args: &[&str]) -> Result<(), String> {
 fn exe_path() -> Result<String, String> {
     std::env::current_exe()
         .map(|p| p.display().to_string())
-        .map_err(|e| format!("拿不到程序路径：{e}"))
+        .map_err(|e| crate::fmt2!("拿不到程序路径：{e}", "Cannot get program path: {e}"))
 }
 
 /// 注册到「打开方式」。可重复调用。

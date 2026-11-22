@@ -126,7 +126,7 @@ impl App {
                 ui.add_space(4.0);
 
                 if let Some(e) = &self.devices_error {
-                    para(ui, &format!("设备检测失败：{e}"), 9.0, DANGER);
+                    para(ui, &crate::fmt2!("设备检测失败：{e}", "Device detection failed: {e}"), 9.0, DANGER);
                     ui.add_space(8.0);
                 }
 
@@ -228,11 +228,11 @@ impl App {
                 self.bt_action_rx = None;
                 match res {
                     Ok(s) => {
-                        self.bt_msg = Some(format!("结果：{s}"));
+                        self.bt_msg = Some(crate::fmt2!("结果：{s}", "Result: {s}"));
                         self.devices_loaded = false;
                         self.bt_paired_loaded = false;
                     }
-                    Err(e) => self.bt_msg = Some(format!("失败：{e:#}")),
+                    Err(e) => self.bt_msg = Some(crate::fmt2!("失败：{e:#}", "Failed: {e:#}")),
                 }
             }
         }
@@ -241,7 +241,7 @@ impl App {
             self.bt_paired_loaded = true;
             match fc_player::bluetooth::list(true) {
                 Ok(v) => self.bt_paired = v,
-                Err(e) => self.bt_msg = Some(format!("读已配对设备失败：{e:#}")),
+                Err(e) => self.bt_msg = Some(crate::fmt2!("读已配对设备失败：{e:#}", "Failed to read paired devices: {e:#}")),
             }
         }
         if !self.bt_paired.is_empty() {
@@ -274,11 +274,11 @@ impl App {
                 match res {
                     Ok(v) => {
                         self.bt_found = v;
-                        self.bt_msg = Some(format!("扫描到 {} 台未配对设备", self.bt_found.len()));
+                        self.bt_msg = Some(crate::fmt2!("扫描到 {} 台未配对设备", "Found {} unpaired devices", self.bt_found.len()));
                     }
                     Err(e) => {
                         self.bt_found.clear();
-                        self.bt_msg = Some(format!("扫描失败：{e:#}"));
+                        self.bt_msg = Some(crate::fmt2!("扫描失败：{e:#}", "Scan failed: {e:#}"));
                     }
                 }
             }
@@ -581,7 +581,7 @@ impl App {
                         Ok(()) => {
                             self.asio_status = None; // 面板关掉后重新探测
                         }
-                        Err(e) => self.asio_status = Some((false, format!("控制面板：{e}"))),
+                        Err(e) => self.asio_status = Some((false, crate::fmt2!("控制面板：{e}", "Control panel: {e}"))),
                     }
                 }
                 ui.label(
@@ -638,8 +638,8 @@ impl App {
                     Some(p) => row(ui, crate::tr!("ATRAC 编码"), &p.display().to_string()),
                     None => row(ui, crate::tr!("ATRAC 编码"), crate::tr!("未安装 atracdenc")),
                 }
-                row(ui, crate::tr!("可用编码器"), &format!("{} 个", self.encoders.len()));
-                row(ui, crate::tr!("格式表"), &format!("{} 条", fc_core::all().count()));
+                row(ui, crate::tr!("可用编码器"), &crate::fmt2!("{} 个", "{} encoders", self.encoders.len()));
+                row(ui, crate::tr!("格式表"), &crate::fmt2!("{} 条", "{} entries", fc_core::all().count()));
             });
 
         ui.add_space(14.0);
@@ -1226,11 +1226,11 @@ fn pose_hint(ui: &mut egui::Ui, text: &str) {
 fn probe_asio_isolated() -> (Vec<(String, String)>, Option<String>) {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
-        Err(e) => return (Vec::new(), Some(format!("找不到自身程序：{e}"))),
+        Err(e) => return (Vec::new(), Some(crate::fmt2!("找不到自身程序：{e}", "Cannot locate this program: {e}"))),
     };
     let out = match std::process::Command::new(exe).arg("--asio-probe").output() {
         Ok(o) => o,
-        Err(e) => return (Vec::new(), Some(format!("启动 ASIO 探测进程失败：{e}"))),
+        Err(e) => return (Vec::new(), Some(crate::fmt2!("启动 ASIO 探测进程失败：{e}", "Failed to start ASIO probe: {e}"))),
     };
     if !out.status.success() {
         return (

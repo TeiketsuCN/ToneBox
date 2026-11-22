@@ -2503,6 +2503,29 @@ pub(crate) fn apply_backdrop() -> bool {
 
 /// 命令行帮助。加新参数时记得同步这里，以及 docs/接手说明.md 的常用命令。
 fn print_usage() {
+    if i18n::is_en() {
+        println!("ToneBox {} — Windows audio format converter", VERSION);
+        println!();
+        println!("Usage:");
+        println!("  format-converter.exe                          open the GUI");
+        println!("  format-converter.exe --convert <in> <out> [--to <format-id>] [--vcodec <codec>]");
+        println!("  format-converter.exe --formats                list output formats");
+        println!("  format-converter.exe --tools                  detect ffmpeg / external encoders");
+        println!("  format-converter.exe --devices                list audio devices");
+        println!("  format-converter.exe --engines                list playback engines");
+        println!("  format-converter.exe --asio-probe             probe ASIO drivers");
+        println!("  format-converter.exe --play <file> [secs]     preview (default 4s)");
+        println!("  format-converter.exe --tags <file>            tags and cover info");
+        println!("  format-converter.exe --identify <file>        encryption/source detection");
+        println!("  format-converter.exe --health <file>          content health check");
+        println!("  format-converter.exe --split-cue <cue> [--to flac] [--out-dir DIR]");
+        println!("  format-converter.exe --warnings <file>        per-format quality warnings");
+        println!("  format-converter.exe --version                show version");
+        println!("  format-converter.exe --help                   show this help");
+        println!("  format-converter.exe --register               register in \"Open with\"");
+        println!("  format-converter.exe --unregister             remove the registration");
+        return;
+    }
     println!("ToneBox {} — Windows 音频格式转换器", VERSION);
     println!();
     println!("用法:");

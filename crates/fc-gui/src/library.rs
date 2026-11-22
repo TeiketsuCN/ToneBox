@@ -48,7 +48,7 @@ impl App {
                     );
                 } else {
                     ui.label(
-                        RichText::new(format!("{} 首", self.lib_entries.len()))
+                        RichText::new(crate::fmt2!("{} 首", "{} tracks", self.lib_entries.len()))
                             .size(9.0)
                             .color(DIM),
                     );
@@ -595,7 +595,7 @@ impl App {
                 LibMsg::Entry(e) => self.lib_entries.push(e),
                 LibMsg::Done => {
                     self.lib_scanning = false;
-                    self.lib_status = format!("扫描完成：{} 首", self.lib_entries.len());
+                    self.lib_status = crate::fmt2!("扫描完成：{} 首", "Scan complete: {} tracks", self.lib_entries.len());
                     // 结果写进配置：下次启动直接铺出来，不用再扫
                     self.cfg.library_cache = self
                         .lib_entries
@@ -648,7 +648,7 @@ impl App {
     pub(crate) fn play_path(&mut self, path: PathBuf, _ctx: &egui::Context) {
         if !path.exists() {
             // 缓存里记着的文件可能已经被移走/删掉，明确告诉用户，别静默失败
-            self.lib_status = format!("文件不在了：{}", path.display());
+            self.lib_status = crate::fmt2!("文件不在了：{}", "File is gone: {}", path.display());
             return;
         }
         if !self.items.iter().any(|i| i.path == path) {
@@ -810,7 +810,7 @@ pub(crate) fn lib_group(ui: &mut egui::Ui, title: &str, count: usize) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(title).size(11.5).color(TEXT).strong());
         ui.add_space(6.0);
-        ui.label(RichText::new(format!("{count} 首")).size(9.0).color(DIM));
+        ui.label(RichText::new(crate::fmt2!("{count} 首", "{count} tracks")).size(9.0).color(DIM));
     });
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), 1.0),

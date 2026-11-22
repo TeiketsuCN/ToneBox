@@ -198,9 +198,9 @@ impl App {
                                             let is_target = spec.id == self.target.id;
                                             let btn = egui::Button::new(
                                                 RichText::new(if is_target {
-                                                    format!("{} 就是当前输出格式", spec.name)
+                                                    crate::fmt2!("{} 就是当前输出格式", "{} is the current output format", spec.name)
                                                 } else {
-                                                    format!("把输出格式设为 {}", spec.name)
+                                                    crate::fmt2!("把输出格式设为 {}", "Set output format to {}", spec.name)
                                                 })
                                                 .size(10.5)
                                                 .color(on_accent()),
@@ -414,7 +414,7 @@ impl App {
                                             );
                                             if ui
                                                 .add(
-                                                    egui::Button::new(RichText::new(*name).size(
+                                                    egui::Button::new(RichText::new(crate::i18n::tr(*name)).size(
                                                         10.5,
                                                     ).color(if on {
                                                         on_accent()
@@ -871,13 +871,13 @@ impl App {
                                     if ui.add(mk(crate::tr!("注册到打开方式"))).clicked() {
                                         self.assoc_msg = Some(match crate::assoc::register() {
                                             Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneBox。").to_string(),
-                                            Err(e) => format!("注册失败：{e}"),
+                                            Err(e) => crate::fmt2!("注册失败：{e}", "Registration failed: {e}"),
                                         });
                                     }
                                     if ui.add(mk(crate::tr!("移除注册"))).clicked() {
                                         self.assoc_msg = Some(match crate::assoc::unregister() {
                                             Ok(()) => crate::tr!("已移除注册。").to_string(),
-                                            Err(e) => format!("移除失败：{e}"),
+                                            Err(e) => crate::fmt2!("移除失败：{e}", "Removal failed: {e}"),
                                         });
                                     }
                                     if ui.add(mk(crate::tr!("打开默认应用设置"))).clicked() {
@@ -1048,7 +1048,7 @@ impl App {
                                 .count();
                             if pending > 0 && !self.running {
                                 ui.label(
-                                    RichText::new(format!("{pending} 个待转换"))
+                                    RichText::new(crate::fmt2!("{pending} 个待转换", "{pending} pending"))
                                         .size(9.0)
                                         .color(DIM),
                                 );
@@ -1205,7 +1205,7 @@ impl App {
                             ui,
                             "CPU",
                             &format!("{:.0}%", s.cpu_total * 100.0),
-                            &format!("本程序 {:.1}%", s.cpu_self * 100.0),
+                            &crate::fmt2!("本程序 {:.1}%", "This app {:.1}%", s.cpu_self * 100.0),
                             s.cpu_total,
                         );
                         let used = s.mem_total.saturating_sub(s.mem_avail);
@@ -1223,7 +1223,7 @@ impl App {
                                 s.mem_total as f64 / 1_073_741_824.0,
                                 mfrac * 100.0
                             ),
-                            &format!("本程序 {} MB", s.mem_self / 1_048_576),
+                            &crate::fmt2!("本程序 {} MB", "This app {} MB", s.mem_self / 1_048_576),
                             mfrac,
                         );
                         Self::stat_row(
@@ -1231,7 +1231,7 @@ impl App {
                             crate::tr!("编解码压力"),
                             &format!("{:.0}%", s.cpu_children * 100.0),
                             &if s.codec_procs > 0 {
-                                format!("{} 个进程", s.codec_procs)
+                                crate::fmt2!("{} 个进程", "{} processes", s.codec_procs)
                             } else {
                                 crate::tr!("空闲（无编解码任务）").to_string()
                             },

@@ -121,7 +121,7 @@ pub(crate) fn quality_label(q: Quality, kbps: u64) -> String {
             if spec == "TrueHD" {
                 crate::tr!("杜比全景声 TrueHD 无损").to_string()
             } else {
-                format!("杜比全景声 {spec} 有损")
+                crate::fmt2!("杜比全景声 {spec} 有损", "Dolby Atmos {spec} lossy")
             }
         }
         Quality::Vivid => crate::tr!("菁彩声 Audio Vivid 有损").to_string(),
@@ -132,7 +132,7 @@ pub(crate) fn quality_label(q: Quality, kbps: u64) -> String {
         Quality::Cd => crate::tr!("CD 无损").to_string(),
         Quality::Hq | Quality::Std | Quality::Lq => {
             if kbps > 0 {
-                format!("有损 {kbps}k")
+                crate::fmt2!("有损 {kbps}k", "Lossy {kbps}k")
             } else {
                 crate::tr!("有损").to_string()
             }

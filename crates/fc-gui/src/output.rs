@@ -242,7 +242,7 @@ impl App {
             {
                 let n = self.cfg.presets.len() + 1;
                 self.cfg.presets.push(settings::UserPreset {
-                    name: format!("预设 {n}"),
+                    name: crate::fmt2!("预设 {n}", "Preset {n}"),
                     format: self.target.id.to_string(),
                     opts: self.cfg.opts.clone(),
                 });
@@ -339,7 +339,7 @@ impl App {
             ui.add_space(4.0);
             para(
                 ui,
-                &format!("由外部编码器 {name} 完成（不随包，需你自己安装）。"),
+                &crate::fmt2!("由外部编码器 {name} 完成（不随包，需你自己安装）。", "Done by external encoder {name} (not bundled; install it yourself)."),
                 8.5,
                 DIM,
             );
@@ -378,9 +378,9 @@ impl App {
                 } else if n_tracks == 1 {
                     first_plan.label()
                 } else if encodes == 0 {
-                    format!("{n_tracks} 条音轨 · 全部复制")
+                    crate::fmt2!("{n_tracks} 条音轨 · 全部复制", "{n_tracks} tracks · all copied")
                 } else {
-                    format!("{n_tracks} 条音轨 · {} 条复制", n_tracks - encodes)
+                    crate::fmt2!("{n_tracks} 条音轨 · {} 条复制", "{n_tracks} tracks · {} copied", n_tracks - encodes)
                 };
                 ui.label(RichText::new(text).size(10.0).color(TEXT));
             });
@@ -392,13 +392,15 @@ impl App {
                 hint_below(
                     ui,
                     &if n_tracks > 1 {
-                        format!(
+                        crate::fmt2!(
                             "{} 条音轨里有 {encodes} 条不在这个容器支持的编码里，会转成 {enc_label}；其余原样复制。",
+                            "{} tracks: {encodes} use a codec this container does not support and will be encoded to {enc_label}; the rest are copied.",
                             n_tracks
                         )
                     } else {
-                        format!(
+                        crate::fmt2!(
                             "源的 {} 不在这个容器支持的音频编码里，音轨会转成 {enc_label}。",
+                            "Source {} is not a codec this container supports; the track will be encoded to {enc_label}.",
                             info.map(|m| m.codec_label().to_string())
                                 .unwrap_or_else(|| src_audio.clone())
                         )
@@ -537,7 +539,7 @@ impl App {
             hp.text(
                 hrect.left_center() + egui::vec2(44.0, 0.0),
                 egui::Align2::LEFT_CENTER,
-                format!("{} 项已填", filled),
+                crate::fmt2!("{} 项已填", "{} options set", filled),
                 egui::FontId::proportional(9.0),
                 accent(),
             );
@@ -748,7 +750,7 @@ impl App {
             })
             .sum::<u64>();
         if est > 0 {
-            para(ui, &format!("预计输出 {}", fmt_size(est)), 9.0, DIM);
+            para(ui, &crate::fmt2!("预计输出 {}", "Estimated output {}", fmt_size(est)), 9.0, DIM);
         }
 
         // 输出列的常驻说明：视频不是转视频，只是把音轨抽出来
@@ -909,7 +911,7 @@ impl App {
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
-                    RichText::new(format!("增益 {:+.1} dB", gain))
+                    RichText::new(crate::fmt2!("增益 {:+.1} dB", "Gain {:+.1} dB", gain))
                         .size(8.5)
                         .color(if limited { WARN } else { TEXT }),
                 );
@@ -920,7 +922,7 @@ impl App {
         } else if gain.abs() >= 0.05 {
             out_hint(
                 ui,
-                &format!("输出峰值 {:.1} dBFS（预留 1 dB 余量）", l.peak_dbfs + gain),
+                &crate::fmt2!("输出峰值 {:.1} dBFS（预留 1 dB 余量）", "Output peak {:.1} dBFS (1 dB headroom)", l.peak_dbfs + gain),
                 DIM,
             );
         } else {
@@ -1348,7 +1350,7 @@ fn flac_level_hint(level: u8) -> String {
         10..=12 => crate::tr!("编码最慢，体积只比默认再小一点点，长文件会慢好几倍"),
         _ => crate::tr!("默认档"),
     };
-    format!("当前 {level}：{what}；音质完全不变（无损）")
+    crate::fmt2!("当前 {level}：{what}；音质完全不变（无损）", "Current {level}: {what}; bit-perfect (lossless)")
 }
 
 /// Vorbis 质量 0~10 的人话解释（有损：越往右细节越多、文件越大）
@@ -1359,5 +1361,5 @@ fn vorbis_q_hint(q: u8) -> String {
         7..=9 => crate::tr!("高质量档，接近透明"),
         _ => crate::tr!("最高档，文件最大，和 8~9 档差别很小"),
     };
-    format!("当前 {q}：{what}")
+    crate::fmt2!("当前 {q}：{what}", "Current {q}: {what}")
 }

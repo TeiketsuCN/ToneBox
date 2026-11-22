@@ -289,10 +289,10 @@ impl App {
         });
         match serde_json::to_string_pretty(&payload) {
             Ok(s) => match std::fs::write(&path, s) {
-                Ok(_) => self.profile_msg = format!("已导出 {}", path.display()),
-                Err(e) => self.profile_msg = format!("导出失败：{e}"),
+                Ok(_) => self.profile_msg = crate::fmt2!("已导出 {}", "Exported {}", path.display()),
+                Err(e) => self.profile_msg = crate::fmt2!("导出失败：{e}", "Export failed: {e}"),
             },
-            Err(e) => self.profile_msg = format!("导出失败：{e}"),
+            Err(e) => self.profile_msg = crate::fmt2!("导出失败：{e}", "Export failed: {e}"),
         }
     }
 
@@ -312,7 +312,7 @@ impl App {
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
-                self.profile_msg = format!("导入失败：{e}");
+                self.profile_msg = crate::fmt2!("导入失败：{e}", "Import failed: {e}");
                 return;
             }
         };
@@ -349,7 +349,7 @@ impl App {
         self.cfg.active_profile = first.min(self.cfg.profiles.len() - 1);
         self.cfg.apply_active();
         self.cfg.save();
-        self.profile_msg = format!("已导入 {added} 套配置");
+        self.profile_msg = crate::fmt2!("已导入 {added} 套配置", "{added} profiles imported");
     }
 
     /// 转换页的格式列表（就是原来的 sidebar，底部提示已经提到 left_rail）
@@ -450,7 +450,7 @@ impl App {
             let total = self.lib_total.max(self.lib_entries.len());
             para(
                 ui,
-                &format!("扫描中… {}/{}", self.lib_entries.len(), total),
+                &crate::fmt2!("扫描中… {}/{}", "Scanning… {}/{}", self.lib_entries.len(), total),
                 9.0,
                 accent(),
             );

@@ -46,7 +46,7 @@ impl App {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
-                    RichText::new(format!("{} 个文件", count))
+                    RichText::new(crate::fmt2!("{} 个文件", "{} files", count))
                         .size(9.0)
                         .color(DIM),
                 );

@@ -703,6 +703,23 @@ D.update({
     "输出已生成，但自检没通过": "File written, but self-check failed",
 })
 
+D.update({
+    "极光": "Aurora",
+    "晚霞": "Sunset",
+    "青瓷": "Celadon",
+    "深海": "Deep sea",
+    "紫罗兰": "Violet",
+    "森林": "Forest",
+    "琥珀": "Amber",
+    "落樱": "Falling petals",
+    "钢蓝": "Steel blue",
+    "石墨": "Graphite",
+    "杜比全景声 AC-4": "Dolby Atmos AC-4",
+    "杜比全景声 E-AC-3": "Dolby Atmos E-AC-3",
+    "杜比全景声 TrueHD": "Dolby Atmos TrueHD",
+    "菁彩声 Audio Vivid": "Audio Vivid",
+})
+
 def rust_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 

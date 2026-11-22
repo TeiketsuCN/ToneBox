@@ -401,7 +401,7 @@ pub fn load() -> Self {
         if s.profiles.is_empty() {
             // 第一次用（或老配置）：拿当前设置生成三套，用户可以直接改名用
             let list: Vec<Profile> = (1..=3)
-                .map(|n| Profile::from_settings(&s, format!("配置 {n}")))
+                .map(|n| Profile::from_settings(&s, crate::fmt2!("配置 {n}", "Profile {n}")))
                 .collect();
             s.profiles = list;
             s.active_profile = 0;
@@ -476,7 +476,7 @@ pub fn load() -> Self {
     pub fn add_profile(&mut self) {
         self.snapshot_active();
         let n = self.profiles.len() + 1;
-        let p = Profile::from_settings(self, format!("配置 {n}"));
+        let p = Profile::from_settings(self, crate::fmt2!("配置 {n}", "Profile {n}"));
         self.profiles.push(p);
         self.active_profile = self.profiles.len() - 1;
         self.save();

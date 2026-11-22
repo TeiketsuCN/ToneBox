@@ -1109,3 +1109,23 @@ macro_rules! tr {
         format!($crate::i18n::tr($s), $($arg)*)
     };
 }
+
+/// 双语字面量：`tr2!("中文", "English")`
+#[macro_export]
+macro_rules! tr2 {
+    ($zh:literal, $en:literal) => {
+        if $crate::i18n::is_en() { $en } else { $zh }
+    };
+}
+
+/// 双语格式化：`fmt2!("{} 个", "{} files", n)`
+#[macro_export]
+macro_rules! fmt2 {
+    ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        if $crate::i18n::is_en() {
+            format!($en $(, $arg)*)
+        } else {
+            format!($zh $(, $arg)*)
+        }
+    };
+}

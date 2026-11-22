@@ -181,7 +181,7 @@ impl App {
                             .take(3)
                             .map(|t| t.label())
                             .collect();
-                        let mut text = format!("{n} 条：{}", list.join(" / "));
+                        let mut text = crate::fmt2!("{n} 条：{}", "{n} tracks: {}", list.join(" / "));
                         if n > 3 {
                             text.push_str(" …");
                         }
@@ -399,7 +399,7 @@ impl App {
                             let mut line = h.verdict.label().to_string();
                             // 一句话总结：像正常音乐 · 编码判档 90%
                             if !bad && r.dsd.is_none() && r.confidence > 0.0 {
-                                line.push_str(&format!(" · 编码判档 {:.0}%", r.confidence * 100.0));
+                                line.push_str(&crate::fmt2!(" · 编码判档 {:.0}%", " · codec confidence {:.0}%", r.confidence * 100.0));
                             }
                             para(ui, &line, 10.0, vcol);
                         });
@@ -603,7 +603,7 @@ impl App {
                     },
                 ),
                 Knob::WavpackBitrate => parts.push(format!("{}k", o.wavpack_bitrate)),
-                Knob::OfrPreset => parts.push(format!("预设 {}", o.ofr_preset)),
+                Knob::OfrPreset => parts.push(crate::fmt2!("预设 {}", "Preset {}", o.ofr_preset)),
                 Knob::MpcProfile => {
                     let names = ["thumb", "radio", "standard", "extreme", "insane"];
                     parts.push(
