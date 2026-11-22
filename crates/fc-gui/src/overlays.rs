@@ -888,6 +888,51 @@ impl App {
                                     para(ui, m, 8.5, DIM);
                                 }
 
+                                ui.add_space(16.0);
+                                section(ui, "CUE 分轨");
+                                para(
+                                    ui,
+                                    "选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。",
+                                    8.5,
+                                    DIM,
+                                );
+                                ui.add_space(6.0);
+                                let cue_btn = egui::Button::new(
+                                    RichText::new("选择 CUE 并分轨").size(9.0).color(MUTED),
+                                )
+                                .fill(tint(Color32::WHITE, 10))
+                                .stroke(line(Color32::WHITE, 18))
+                                .rounding(Rounding::same(7.0));
+                                if ui.add(cue_btn).clicked() {
+                                    if let Some(cue) = rfd::FileDialog::new()
+                                        .add_filter("CUE", &["cue"])
+                                        .pick_file()
+                                    {
+                                        let tools = self.tools.clone();
+                                        let target = self.target.id;
+                                        let out = cue
+                                            .parent()
+                                            .unwrap_or_else(|| std::path::Path::new("."))
+                                            .to_path_buf();
+                                        self.cue_msg = Some("正在分轨…".to_string());
+                                        let (tx, rx) = std::sync::mpsc::channel();
+                                        self.cue_rx = Some(rx);
+                                        std::thread::spawn(move || {
+                                            let res = match tools {
+                                                Some(t) => fc_core::cue::split(
+                                                    &t, &cue, &out, target, |_, _| {},
+                                                )
+                                                .map_err(|e| format!("{e:#}")),
+                                                None => Err("找不到 ffmpeg".to_string()),
+                                            };
+                                            let _ = tx.send(res);
+                                        });
+                                    }
+                                }
+                                if let Some(m) = &self.cue_msg {
+                                    para(ui, m, 8.5, DIM);
+                                }
+
                                 ui.add_space(18.0);
                                 section(ui, "支持开发");
                                 para(

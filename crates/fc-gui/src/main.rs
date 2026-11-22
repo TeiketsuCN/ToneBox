@@ -394,6 +394,9 @@ pub(crate) struct App {
     autoplay: bool,
     /// 文件关联注册的最近一条提示
     assoc_msg: Option<String>,
+    /// CUE 分轨线程的返回值
+    cue_rx: Option<std::sync::mpsc::Receiver<Result<Vec<PathBuf>, String>>>,
+    cue_msg: Option<String>,
     /// 正在看大图的队列下标（None = 没开）
     cover_view: Option<usize>,
     /// 大图开/关的动画进度 0~1
@@ -693,6 +696,8 @@ impl App {
             preload: Vec::new(),
             autoplay: false,
             assoc_msg: None,
+            cue_rx: None,
+            cue_msg: None,
             cover_view: None,
             cover_t: 0.0,
             cover_closing: false,
@@ -2040,6 +2045,19 @@ impl eframe::App for App {
             }
         }
         self.poll_media(ctx);
+        // CUE 分轨线程的结果
+        if let Some(rx) = self.cue_rx.take() {
+            match rx.try_recv() {
+                Ok(Ok(files)) => {
+                    self.cue_msg = Some(format!("分轨完成：{} 个文件", files.len()));
+                }
+                Ok(Err(e)) => self.cue_msg = Some(format!("分轨失败：{e}")),
+                Err(std::sync::mpsc::TryRecvError::Empty) => self.cue_rx = Some(rx),
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.cue_msg = Some("分轨线程结束".to_string());
+                }
+            }
+        }
         // 自动播放/首次进界面时 selected 没变化，不会触发“选中项变更”的波形请求；
         // 这里补一次，别让播放条一直空着
         if self.wave.is_none() && !self.items.is_empty() {

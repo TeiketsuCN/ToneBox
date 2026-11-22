@@ -1,4 +1,4 @@
-# 声箱 ToneBox
+﻿# 声箱 ToneBox
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -221,7 +221,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - **openmpt123 输入**：MOD / XM / IT / S3M 等模块音乐可以直接拖进来（extras 里带）
 - **转换后自检**：每个输出都重新 probe，坏文件/时长离谱直接标失败，不假装成功
 - **ReplayGain 标签写入**：源文件的 `replaygain_track_gain` 会带进 FLAC / MP3 等输出
-- **CUE 分轨**：`--split-cue album.cue --to flac --out-dir out` 按 TRACK/INDEX 切轨并写轨号/标题/艺术家
+- **CUE 分轨**：`--split-cue album.cue --to flac --out-dir out`，或设置页「CUE 分轨」按钮；按 TRACK/INDEX 切轨并写轨号/标题/艺术家
 
 ### 1.6.1（2026-11）
 - 可输出格式 **106 → 107**：新增 **N64 VADPCM**（`.aifc`，外部 vadpcm，MPL-2.0）
