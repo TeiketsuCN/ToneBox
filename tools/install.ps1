@@ -61,6 +61,31 @@ if (Test-Path (Join-Path $speexSrc "speexenc.exe")) {
     }
     Write-Host "已随包 speexenc"
 }
+
+# 随包 WavPack CLI（BSD；有损 hybrid 只有官方 CLI 支持，ffmpeg 只做无损）
+$wavpackSrc = Join-Path $src 'vendor\wavpack'
+if (Test-Path (Join-Path $wavpackSrc "wavpack.exe")) {
+    New-Item -ItemType Directory -Force -Path "$AppDir\wavpack" | Out-Null
+    Get-ChildItem -LiteralPath $wavpackSrc -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination "$AppDir\wavpack\$($_.Name)" -Force
+    }
+    Write-Host "已随包 wavpack"
+} else {
+    Write-Host "警告：没有 vendor\wavpack，WavPack 有损输出不可用"
+}
+
+# 随包 Musepack 编码器（LGPL-2.1；mpcenc + libmpcdec + 许可证）
+$mpcSrc = Join-Path $src 'vendor\musepack'
+if (Test-Path (Join-Path $mpcSrc "mpcenc.exe")) {
+    New-Item -ItemType Directory -Force -Path "$AppDir\musepack" | Out-Null
+    Get-ChildItem -LiteralPath $mpcSrc -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination "$AppDir\musepack\$($_.Name)" -Force
+    }
+    Write-Host "已随包 musepack"
+} else {
+    Write-Host "警告：没有 vendor\musepack，Musepack 输出不可用"
+}
+
 @"
 ToneBox $Version
 安装时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm')

@@ -108,4 +108,18 @@ if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Force -Path $dist | 
 if (Test-Path $Out) { Remove-Item $Out -Force }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $Out -CompressionLevel Optimal
 $mb = [math]::Round((Get-Item $Out).Length / 1MB, 1)
+
+# 发布校验文件：按版本累积，先删同名旧行再追加，跑一个或两个打包脚本都能得到完整列表
+$hash = (Get-FileHash $Out -Algorithm SHA256).Hash
+$name = Split-Path $Out -Leaf
+$sumFile = Join-Path $dist "SHA256SUMS-$ver.txt"
+$lines = @()
+if (Test-Path $sumFile) {
+    $lines = @(Get-Content $sumFile | Where-Object { $_ -and ($_ -notlike "*  $name") })
+}
+$lines += "$hash  $name"
+Set-Content -Path $sumFile -Value ($lines | Sort-Object) -Encoding ASCII
+
 Write-Host "done: $Out ($mb MB)" -ForegroundColor Green
+Write-Host "sha256: $hash" -ForegroundColor Green
+Write-Host "checksums: $sumFile" -ForegroundColor Green

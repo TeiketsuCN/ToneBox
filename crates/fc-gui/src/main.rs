@@ -2162,6 +2162,27 @@ pub(crate) fn apply_backdrop() -> bool {
     true
 }
 
+/// 命令行帮助。加新参数时记得同步这里，以及 docs/接手说明.md 的常用命令。
+fn print_usage() {
+    println!("ToneBox {} — Windows 音频格式转换器", VERSION);
+    println!();
+    println!("用法:");
+    println!("  format-converter.exe                          打开图形界面");
+    println!("  format-converter.exe --convert <输入> <输出> [--to <格式id>]");
+    println!("  format-converter.exe --formats                列出可输出格式");
+    println!("  format-converter.exe --tools                  探测 ffmpeg / 外部编码器");
+    println!("  format-converter.exe --devices                列出音频设备");
+    println!("  format-converter.exe --engines                列出播放引擎");
+    println!("  format-converter.exe --asio-probe             ASIO 驱动探测");
+    println!("  format-converter.exe --play <文件> [秒数]      试听（默认 4 秒）");
+    println!("  format-converter.exe --tags <文件>            标签与封面信息");
+    println!("  format-converter.exe --identify <文件>        加密/来源识别");
+    println!("  format-converter.exe --health <文件>          内容体检");
+    println!("  format-converter.exe --warnings <文件>        各格式的质量提示");
+    println!("  format-converter.exe --version                显示版本");
+    println!("  format-converter.exe --help                   显示本帮助");
+}
+
 fn main() -> eframe::Result<()> {
     #[cfg(feature = "vulkan")]
     std::env::set_var("WGPU_BACKEND", "vulkan");
@@ -2171,12 +2192,23 @@ fn main() -> eframe::Result<()> {
     set_zoom(if screen_logical_height() >= 1150.0 { 1.2 } else { 1.0 });
 
     // 只有 GUI 模式做单实例检查；任何 --xxx 命令行模式都允许多开
+    // -h / -V 也算命令行：不然已经有一个实例在跑时会被它吞掉
     let cli_mode = args
         .first()
-        .map(|s| s.starts_with("--"))
+        .map(|s| s.starts_with("--") || s == "-h" || s == "-V")
         .unwrap_or(false);
     if !cli_mode && single::already_running() {
         single::activate_existing();
+        return Ok(());
+    }
+
+    // 命令行：版本与帮助。以前 --version 会当 GUI 启动并挂住，脚本只能去翻文件
+    if matches!(args.first().map(|s| s.as_str()), Some("--version") | Some("-V")) {
+        println!("ToneBox {}", VERSION);
+        return Ok(());
+    }
+    if matches!(args.first().map(|s| s.as_str()), Some("--help") | Some("-h")) {
+        print_usage();
         return Ok(());
     }
 

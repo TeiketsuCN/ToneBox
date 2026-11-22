@@ -84,11 +84,14 @@
 ### 3.7 命令行（同目录 exe）
 
 ```
+format-converter.exe --version                  显示版本（1.4.1 起）
+format-converter.exe --help                     列出全部命令行参数
 format-converter.exe --formats                  列出所有可输出格式
 format-converter.exe --convert in.flac out.mpc --to musepack
 format-converter.exe --tools                    探测 ffmpeg / atracdenc / speexenc / wavpack / ofr / mpcenc
 format-converter.exe --devices                  列出音频设备
 format-converter.exe --play <file>              直接播放
+format-converter.exe --health <file>            内容体检
 ```
 
 ---
