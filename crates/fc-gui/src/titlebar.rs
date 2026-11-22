@@ -175,15 +175,10 @@ impl App {
             self.settings_open = !self.settings_open;
         }
 
-        // 控制台：设置左边，点了直接展开活动面板里的 Console
+        // 控制台：设置左边，点了单独开一个控制台窗口
         rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
-        if title_button(ui, rect, TitleBtn::Console, self.console_open && self.notices_open) {
-            if self.console_open && self.notices_open {
-                self.notices_open = false;
-            } else {
-                self.notices_open = true;
-                self.console_open = true;
-            }
+        if title_button(ui, rect, TitleBtn::Console, self.console_open) {
+            self.console_open = !self.console_open;
         }
 
         // 转换进度小圆环：在控制台左边，尺寸小一点

@@ -1105,21 +1105,6 @@ impl App {
                                         .color(DIM),
                                 );
                             }
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(crate::tr2!("控制台", "Console"))
-                                            .size(8.5)
-                                            .color(if self.console_open { accent() } else { MUTED }),
-                                    )
-                                    .fill(Color32::TRANSPARENT)
-                                    .stroke(line(Color32::WHITE, 16))
-                                    .rounding(Rounding::same(6.0)),
-                                )
-                                .clicked()
-                            {
-                                self.console_open = !self.console_open;
-                            }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if ui
                                     .add(
@@ -1213,101 +1198,7 @@ impl App {
                             });
 
                         ui.add_space(8.0);
-                        let mut copy = false;
-                        let mut clear = false;
-                        let mut open_dir = false;
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(crate::tr2!("控制台", "Console"))
-                                            .size(10.0)
-                                            .color(if self.console_open { accent() } else { MUTED }),
-                                    )
-                                    .fill(Color32::TRANSPARENT)
-                                    .stroke(line(Color32::WHITE, 16))
-                                    .rounding(Rounding::same(7.0)),
-                                )
-                                .clicked()
-                            {
-                                self.console_open = !self.console_open;
-                            }
-                            if self.console_open {
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                RichText::new(crate::tr2!("打开日志", "Open logs")).size(8.5).color(MUTED),
-                                            )
-                                            .fill(Color32::TRANSPARENT)
-                                            .stroke(line(Color32::WHITE, 14))
-                                            .rounding(Rounding::same(6.0)),
-                                        )
-                                        .clicked()
-                                    {
-                                        open_dir = true;
-                                    }
-                                    if ui
-                                        .add(
-                                            egui::Button::new(RichText::new(crate::tr2!("清空", "Clear")).size(8.5).color(MUTED))
-                                                .fill(Color32::TRANSPARENT)
-                                                .stroke(line(Color32::WHITE, 14))
-                                                .rounding(Rounding::same(6.0)),
-                                        )
-                                        .clicked()
-                                    {
-                                        clear = true;
-                                    }
-                                    if ui
-                                        .add(
-                                            egui::Button::new(RichText::new(crate::tr2!("复制", "Copy")).size(8.5).color(MUTED))
-                                                .fill(Color32::TRANSPARENT)
-                                                .stroke(line(Color32::WHITE, 14))
-                                                .rounding(Rounding::same(6.0)),
-                                        )
-                                        .clicked()
-                                    {
-                                        copy = true;
-                                    }
-                                });
-                            }
-                        });
-                        if copy {
-                            ui.ctx().copy_text(self.console.join("\n"));
-                        }
-                        if clear {
-                            self.console.clear();
-                        }
-                        if open_dir {
-                            if let Some(dir) = self.log_path.parent() {
-                                #[cfg(windows)]
-                                {
-                                    let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
-                                }
-                            }
-                        }
-                        if self.console_open {
-                            egui::ScrollArea::vertical()
-                                .id_salt("console_scroll")
-                                .max_height(150.0)
-                                .stick_to_bottom(true)
-                                .auto_shrink([false, true])
-                                .show(ui, |ui| {
-                                    if self.console.is_empty() {
-                                        para(ui, crate::tr2!("还没有日志。转换一次就会出现。", "No logs yet. Run a conversion."), 8.5, DIM);
-                                    }
-                                    for line in &self.console {
-                                        ui.label(
-                                            RichText::new(line)
-                                                .monospace()
-                                                .size(8.3)
-                                                .color(DIM),
-                                        );
-                                    }
-                                });
-                        }
-
-                        ui.add_space(10.0);
+                                                ui.add_space(10.0);
                         self.hairline(ui);
                         ui.add_space(8.0);
 
@@ -1573,5 +1464,125 @@ impl App {
                 .size(8.5)
                 .color(DIM),
         );
+    }
+}
+impl App {
+    /// 独立控制台窗口：像终端一样看日志，支持 clear/help/version/logs 命令。
+    pub(crate) fn console_overlay(&mut self, ctx: &egui::Context) {
+        if !self.console_open {
+            return;
+        }
+        let mut open = true;
+        let mut copy = false;
+        let mut clear = false;
+        let mut open_dir = false;
+        let mut submitted: Option<String> = None;
+
+        egui::Window::new(crate::tr2!("控制台", "Console"))
+            .id(egui::Id::new("console_window"))
+            .open(&mut open)
+            .default_pos(egui::pos2(
+                (ctx.screen_rect().right() - 760.0).max(20.0),
+                ctx.screen_rect().top() + 80.0,
+            ))
+            .default_size([720.0, 420.0])
+            .resizable(true)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(crate::tr2!("复制", "Copy")).clicked() {
+                        copy = true;
+                    }
+                    if ui.button(crate::tr2!("清空", "Clear")).clicked() {
+                        clear = true;
+                    }
+                    if ui.button(crate::tr2!("打开日志", "Open logs")).clicked() {
+                        open_dir = true;
+                    }
+                    ui.label(
+                        RichText::new(self.log_path.display().to_string())
+                            .size(8.0)
+                            .color(DIM),
+                    );
+                });
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("console_lines")
+                    .stick_to_bottom(true)
+                    .auto_shrink([false, false])
+                    .max_height(ui.available_height() - 34.0)
+                    .show(ui, |ui| {
+                        if self.console.is_empty() {
+                            ui.label(
+                                RichText::new(crate::tr2!(
+                                    "ToneLore 控制台。转换一次，这里会出现日志。输入 help 看命令。",
+                                    "ToneLore console. Run a conversion to see logs. Type help for commands."
+                                ))
+                                .monospace()
+                                .size(9.0)
+                                .color(DIM),
+                            );
+                        }
+                        for line in &self.console {
+                            ui.label(RichText::new(line).monospace().size(9.0).color(TEXT));
+                        }
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(">").monospace().color(accent()));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut self.console_input)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(f32::INFINITY)
+                            .hint_text(crate::tr2!("输入命令，回车执行", "Type a command, press Enter")),
+                    );
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        submitted = Some(std::mem::take(&mut self.console_input));
+                    }
+                });
+            });
+
+        if !open {
+            self.console_open = false;
+        }
+        if copy {
+            ctx.copy_text(self.console.join("\n"));
+        }
+        if clear {
+            self.console.clear();
+        }
+        if open_dir {
+            if let Some(dir) = self.log_path.parent() {
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
+                }
+            }
+        }
+        if let Some(line) = submitted {
+            self.run_console_command(line);
+        }
+    }
+
+    fn run_console_command(&mut self, line: String) {
+        let cmd = line.trim().to_lowercase();
+        self.log(format!("> {}", line.trim()));
+        match cmd.as_str() {
+            "" => {}
+            "clear" | "cls" => self.console.clear(),
+            "help" | "?" => self.log(
+                "commands: help, version, logs, clear".to_string(),
+            ),
+            "version" => self.log(format!("ToneLore {}", crate::VERSION)),
+            "logs" | "open" => {
+                if let Some(dir) = self.log_path.parent() {
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
+                    }
+                }
+            }
+            other => self.log(format!("unknown command: {other}")),
+        }
     }
 }
