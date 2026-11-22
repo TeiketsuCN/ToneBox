@@ -2492,6 +2492,7 @@ fn print_usage() {
     println!("  format-converter.exe --tags <文件>            标签与封面信息");
     println!("  format-converter.exe --identify <文件>        加密/来源识别");
     println!("  format-converter.exe --health <文件>          内容体检");
+    println!("  format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]");
     println!("  format-converter.exe --warnings <文件>        各格式的质量提示");
     println!("  format-converter.exe --version                显示版本");
     println!("  format-converter.exe --help                   显示本帮助");
@@ -3111,6 +3112,48 @@ fn main() -> eframe::Result<()> {
             }
         }
         return Ok(());
+    }
+    if args.first().map(|s| s.as_str()) == Some("--split-cue") {
+        let Some(cue) = args.get(1) else {
+            eprintln!("用法: format-converter.exe --split-cue <cue> [--to flac] [--out-dir 目录]");
+            std::process::exit(2);
+        };
+        let mut target = "flac";
+        let mut out_dir: Option<PathBuf> = None;
+        if let Some(pos) = args.iter().position(|a| a == "--to") {
+            if let Some(v) = args.get(pos + 1) {
+                target = v.as_str();
+            }
+        }
+        if let Some(pos) = args.iter().position(|a| a == "--out-dir") {
+            if let Some(v) = args.get(pos + 1) {
+                out_dir = Some(PathBuf::from(v));
+            }
+        }
+        let out_dir = out_dir.unwrap_or_else(|| {
+            Path::new(cue)
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        });
+        let Some(tools) = fc_core::locate() else {
+            eprintln!("找不到 ffmpeg");
+            std::process::exit(1);
+        };
+        match fc_core::cue::split(&tools, Path::new(cue), &out_dir, target, |done, total| {
+            println!("  分轨 {done}/{total}");
+        }) {
+            Ok(files) => {
+                for f in &files {
+                    println!("完成: {}", f.display());
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("分轨失败: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
     if args.first().map(|s| s.as_str()) == Some("--health") {
         let Some(input) = args.get(1) else {

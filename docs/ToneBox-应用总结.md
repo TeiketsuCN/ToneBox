@@ -319,6 +319,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 |---|---|
 | 转换后自检 | 每个输出重新 probe，坏文件/时长偏差 > max(2s, 8%) 标失败 |
 | ReplayGain | 源标签 `replaygain_track_gain` 写入输出（FLAC/MP3 实测保留） |
+| CUE 分轨 | `--split-cue` 解析 FILE/TRACK/INDEX，按轨切 FLAC 等并写轨号/标题/艺术家（实测 3s+7s 两轨、标签正确） |
 
 ### 10.4 1.6.1（已发布）
 

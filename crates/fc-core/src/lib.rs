@@ -15,6 +15,7 @@ pub mod dsd;
 pub mod loudness;
 pub mod ncm;
 pub mod qmc;
+pub mod cue;
 
 pub use ffmpeg::{convert, locate, probe, verify_output, AudioTrackInfo, MediaInfo, ProgressFn, Tools};
 pub use dsd::{bit_rate_hz as dsd_bit_rate_hz, tier as dsd_tier};
