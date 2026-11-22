@@ -1,4 +1,4 @@
-# 声箱 ToneBox
+﻿# 声箱 ToneBox
 
 > 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
 >
@@ -107,6 +107,7 @@ DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
 | `VGAudioCli` | 📦 extras | BRSTM / BCSTM / BFSTM / DSP / IDSP（MIT） |
 | `qoaconv` | 📦 extras | QOA（MIT） |
 | `vgmstream` | 📦 extras | PSF / ADS / BRSTM / BCSTM / HCA 等输入（ISC） |
+| `openmpt123` | 📦 extras | MOD / XM / IT / S3M 等模块输入（BSD-3-Clause） |
 | `ofr` | ⬇️ extras 内一键下载 | OptimFROG（官方许可限制再分发） |
 
 程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。
@@ -216,6 +217,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 - **双击文件直接播放**：带文件路径启动会入队并自动试听
 - **注册到「打开方式」**：`--register` / 设置页按钮；不静默抢默认（Windows 要求用户确认）
 - **vgmstream 输入**：PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 可以先解成 WAV 再转（extras 里带）
+- **openmpt123 输入**：MOD / XM / IT / S3M 等模块音乐可以直接拖进来（extras 里带）
 - 转换后自检、ReplayGain 正在做
 
 ### 1.6.1（2026-11）

@@ -759,6 +759,79 @@ pub fn vgaudio_convert(
     Ok(size)
 }
 
+/// 找 openmpt123（模块音乐渲染器，libopenmpt / BSD-3-Clause）。
+pub fn find_openmpt123() -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "openmpt123.exe"
+    } else {
+        "openmpt123"
+    };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("openmpt123").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 模块音乐扩展名（MOD / XM / IT / S3M 等 tracker 格式）。
+pub fn is_module_ext(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        ext.as_str(),
+        "mod" | "xm" | "it" | "s3m" | "mptm" | "mo3" | "umx" | "669" | "amf" | "ams" | "c67"
+            | "dbm" | "digi" | "dmf" | "dsym" | "dtm" | "far" | "fmt" | "gdm" | "imf" | "ice"
+            | "j2b" | "m15" | "mdl" | "med" | "mg" | "mmcmp" | "mt2" | "mtm" | "nst" | "okta"
+            | "plm" | "psm" | "pt36" | "ptm" | "sfx" | "sfx2" | "st26" | "stk" | "stm" | "stp"
+            | "ult" | "uw" | "xpk"
+    )
+}
+
+/// 用 openmpt123 把模块音乐渲染成 44.1kHz 立体声 16-bit WAV。
+pub fn openmpt_decode(exe: &Path, input: &Path, output: &Path) -> Result<()> {
+    let mut cmd = Command::new(exe);
+    cmd.args([
+        "--batch",
+        "--force",
+        "--quiet",
+        "--samplerate",
+        "44100",
+        "--channels",
+        "2",
+        "--no-float",
+        "-o",
+    ])
+    .arg(output)
+    .arg(input)
+    .stdout(Stdio::null())
+    .stderr(Stdio::piped());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd.output().context("启动 openmpt123 失败")?;
+    if !out.status.success() || !output.is_file() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let mut tail: Vec<&str> = err.lines().rev().take(3).collect();
+        tail.reverse();
+        return Err(anyhow!(
+            "openmpt123 渲染失败（退出码 {:?}）：\n{}",
+            out.status.code(),
+            tail.join("\n")
+        ));
+    }
+    Ok(())
+}
+
 /// 找 vgmstream-cli（游戏流式音频解码器，ISC 许可）。
 pub fn find_vgmstream() -> Option<PathBuf> {
     let exe = if cfg!(windows) {

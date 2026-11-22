@@ -53,6 +53,7 @@
   3. **纯容器直通**（AC-4、IEC 61937 只能复制，源不对会明确报错）
 - **主机芯片音乐当输入**：NSF / SPC / GBS / VGM / PSF 等经随包 ffmpeg 的 libgme 渲染成 PCM
 - **vgmstream 输入**：PSF / PS2 ADS / BRSTM / BCSTM / BFSTM / HCA 先解成 WAV 再走正常流程
+- **模块音乐输入**：MOD / XM / IT / S3M 经 openmpt123 渲染成 WAV
   （默认 180 秒），再走正常转换流程
 - 视频容器：保留**第一条画面 + 全部音轨**，画面可复制或转 H.264/H.265/VP9/AV1/MPEG-2/MPEG-4/Theora/WMV2/DV，音轨逐条决定复制还是重编
 - 响度归一化（LUFS）、采样率/声道/位深转换、元数据与歌词 sidecar
@@ -137,6 +138,7 @@ APE、TAK、OptimFROG 旧条目、Shorten、WMA Lossless/Pro/Voice、DSD（DSF/D
 | wavpack.exe | ✅ 主包 | BSD-3-Clause | WavPack **有损**（hybrid）输出 |
 | psxavenc | 📦 extras 包 | Zlib | PS1 XA / PS2 VAG 输出 |
 | vgmstream | 📦 extras 包 | ISC | PSF / ADS / BRSTM / BCSTM / HCA 等输入 |
+| openmpt123 | 📦 extras 包 | BSD-3-Clause | MOD / XM / IT / S3M 等输入 |
 | VGAudioCli | 📦 extras 包 | MIT | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出 |
 | qoaconv | 📦 extras 包 | MIT | QOA 输出 |
 | atracdenc | 📦 extras 包 | LGPL-2.1 | ATRAC1/3/3+ 输出 |

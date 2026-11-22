@@ -854,6 +854,17 @@ impl App {
                         Err(e) => eprintln!("vgmstream 解码失败：{e:#}"),
                     }
                 }
+            } else if fc_core::is_module_ext(&p) {
+                if let Some(exe) = fc_core::find_openmpt123() {
+                    let tmp = vgm_temp_path();
+                    match fc_core::openmpt_decode(&exe, &p, &tmp) {
+                        Ok(()) => {
+                            probe_path = tmp.clone();
+                            media = Some(tmp);
+                        }
+                        Err(e) => eprintln!("openmpt123 渲染失败：{e:#}"),
+                    }
+                }
             }
             let (info, error) = match fc_core::probe(&tools, &probe_path) {
                 Ok(i) => (Some(i), None),
@@ -1538,7 +1549,8 @@ impl App {
         let Some(info) = it.info.clone() else {
             return;
         };
-        let path = it.path.clone();
+        let media = it.media_path().to_path_buf();
+        let key = it.path.clone();
         it.analysis = Analysis::Running;
 
         let tx = self.analysis_tx.clone();
@@ -1546,16 +1558,16 @@ impl App {
         let ffmpeg = self.tools.as_ref().map(|t| t.ffmpeg.clone());
         let tools = self.tools.clone();
         std::thread::spawn(move || {
-            let res = fc_analyze::analyze(&path, &info).map_err(|e| format!("{e:#}"));
+            let res = fc_analyze::analyze(&media, &info).map_err(|e| format!("{e:#}"));
             // 响度要解整轨，跟着这次分析一起做，别让用户再等一次
             let loud = ffmpeg
                 .as_ref()
-                .and_then(|f| fc_analyze::loudness(f, &path).ok());
+                .and_then(|f| fc_analyze::loudness(f, &media).ok());
             // 内容体检：静音/削波/噪声/测试信号，一次整轨解码搞定
             let health = tools
                 .as_ref()
-                .and_then(|t| fc_analyze::health::analyze(t, &path).ok());
-            let _ = tx.send((path.clone(), res, loud, health));
+                .and_then(|t| fc_analyze::health::analyze(t, &media).ok());
+            let _ = tx.send((key, res, loud, health));
             ctx.request_repaint();
         });
     }
@@ -1567,6 +1579,13 @@ impl App {
         {
             return;
         }
+        // 波形键仍用原文件路径（界面按队列项匹配），解码用 media（vgmstream 临时 WAV）
+        let media = self
+            .items
+            .iter()
+            .find(|i| i.path == path)
+            .map(|i| i.media_path().to_path_buf())
+            .unwrap_or_else(|| path.to_path_buf());
         let Some(tools) = self.tools.clone() else { return };
         let p = path.to_path_buf();
         let tx = self.wave_tx.clone();
@@ -2020,15 +2039,16 @@ impl eframe::App for App {
                 self.play_track_seen = tn;
                 // cp 是解码用的路径（vgmstream 时是临时 WAV），映射回队列项
                 if let Some(item) = self.items.iter().find(|it| it.media_path() == cp) {
-                    self.player_for = Some(item.path.clone());
-                    if let Some(i) = self.items.iter().position(|it| it.path == item.path) {
+                    let original = item.path.clone();
+                    self.player_for = Some(original.clone());
+                    if let Some(i) = self.items.iter().position(|it| it.path == original) {
                         self.selected = i;
                     }
-                    if let Some(pi) = self.playlist.iter().position(|x| x == &item.path) {
+                    if let Some(pi) = self.playlist.iter().position(|x| x == &original) {
                         self.play_idx = pi;
                     }
+                    self.request_wave(&original, ctx);
                 }
-                self.request_wave(&cp, ctx);
                 self.arm_next();
             }
         }
@@ -2555,6 +2575,7 @@ fn main() -> eframe::Result<()> {
         show("vgaudio", fc_core::find_vgaudio());
         show("vadpcm", fc_core::find_vadpcm());
         show("vgmstream", fc_core::find_vgmstream());
+        show("openmpt123", fc_core::find_openmpt123());
         return Ok(());
     }
 
@@ -2570,22 +2591,46 @@ fn main() -> eframe::Result<()> {
         // vgmstream 能读、ffmpeg 读不了的游戏音频：先解成临时 WAV，再走正常流程
         let mut vgm_tmp: Option<PathBuf> = None;
         if let Some(p) = args.get(1) {
-            if fc_core::is_vgmstream_ext(Path::new(p)) {
-                if let Some(exe) = fc_core::find_vgmstream() {
-                    let tmp = std::env::temp_dir().join(format!(
-                        "tb_vgm_{}_{}.wav",
-                        std::process::id(),
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_millis())
-                            .unwrap_or(0)
-                    ));
-                    match fc_core::vgmstream_decode(&exe, Path::new(p), &tmp) {
+            let vgm = fc_core::is_vgmstream_ext(Path::new(p));
+            let module = fc_core::is_module_ext(Path::new(p));
+            if vgm || module {
+                let decoded = if vgm {
+                    fc_core::find_vgmstream().map(|exe| {
+                        let tmp = std::env::temp_dir().join(format!(
+                            "tb_vgm_{}_{}.wav",
+                            std::process::id(),
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0)
+                        ));
+                        (exe, tmp, true)
+                    })
+                } else {
+                    fc_core::find_openmpt123().map(|exe| {
+                        let tmp = std::env::temp_dir().join(format!(
+                            "tb_mod_{}_{}.wav",
+                            std::process::id(),
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0)
+                        ));
+                        (exe, tmp, false)
+                    })
+                };
+                if let Some((exe, tmp, is_vgm)) = decoded {
+                    let res = if is_vgm {
+                        fc_core::vgmstream_decode(&exe, Path::new(p), &tmp)
+                    } else {
+                        fc_core::openmpt_decode(&exe, Path::new(p), &tmp)
+                    };
+                    match res {
                         Ok(()) => {
                             args[1] = tmp.to_string_lossy().into_owned();
                             vgm_tmp = Some(tmp);
                         }
-                        Err(e) => eprintln!("vgmstream 解码失败，继续用 ffmpeg 试：{e:#}"),
+                        Err(e) => eprintln!("输入解码失败，继续用 ffmpeg 试：{e:#}"),
                     }
                 }
             }

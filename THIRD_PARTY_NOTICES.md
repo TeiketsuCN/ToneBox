@@ -122,6 +122,15 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 用途：`qoaconv.exe` 输出 `.qoa`（4-bit LMS 有损，约 3.5 bit/样本）
 - 来源：用 MSYS2 gcc 从官方 `qoa.h` + `qoaconv.c` 编译（源码在 `vendor/qoa/`）
 - 许可证全文：`vendor/qoa/LICENSE-qoa.txt`
+## openmpt123 / libopenmpt（模块音乐输入，可选，在 extras 包）
+
+- 项目：OpenMPT / libopenmpt
+- 主页：<https://lib.openmpt.org/>
+- 许可：BSD-3-Clause
+- 用途：`openmpt123.exe` 把 MOD / XM / IT / S3M 等模块音乐渲染成 WAV，再交给 ffmpeg 转码
+- 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-libopenmpt` 0.8.10-1（含 openmpt123.exe 与依赖 DLL）
+- 许可证全文：`vendor/openmpt123/LICENSE-libopenmpt.txt`
+
 ## vgmstream（游戏音频输入，可选，在 extras 包）
 
 - 项目：vgmstream

@@ -38,7 +38,7 @@ impl App {
             self.spec_open = true;
             return;
         };
-        let path = item.path.clone();
+        let path = item.media_path().to_path_buf();
         let sr = item
             .info
             .as_ref()
