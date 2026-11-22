@@ -3201,3 +3201,29 @@ pub fn encoder_for(id: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+#[cfg(test)]
+mod count_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn counts_by_group() {
+        let mut m: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+        let all: Vec<_> = all().collect();
+        for f in all.iter().filter(|f| f.can_encode) {
+            m.entry(match f.group {
+                Group::Lossless => "lossless",
+                Group::Lossy => "lossy",
+                Group::Speech => "speech",
+                Group::Spatial => "spatial",
+                Group::Container => "container",
+                Group::Video => "video",
+                Group::Device => "device",
+            })
+            .or_default().push(f.id.to_string());
+        }
+        let total: usize = m.values().map(|v| v.len()).sum();
+        println!("COUNTS {m:?} total={total} refs={}", all.len());
+        assert_eq!(total, 112);
+    }
+}
