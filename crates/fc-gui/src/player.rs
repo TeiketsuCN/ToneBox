@@ -79,6 +79,12 @@ impl App {
         let cover = display.and_then(|i| self.items[i].cover.clone());
         let has_cover = cover.is_some();
         let frac = ((pos / dur) as f32).clamp(0.0, 1.0);
+        // 细条也画波形：不用悬停展开就能看到，避免“只有一条线”
+        let wave = self.wave.as_ref().and_then(|(p, w)| {
+            display
+                .filter(|i| self.items[*i].path == *p)
+                .map(|_| w.clone())
+        });
 
         // 四个控件整体往下挪一点，别贴着栏顶
         ui.add_space(3.0);
@@ -141,11 +147,42 @@ impl App {
                 let p = ui.painter();
                 let track =
                     egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
-                p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 22));
-                if frac > 0.0 {
-                    let mut f = track;
-                    f.set_width(track.width() * frac);
-                    p.rect_filled(f, Rounding::same(2.0), accent());
+                if let Some(chans) = &wave {
+                    let cutoff = rect.left() + rect.width() * frac;
+                    if let Some(col) = chans.first() {
+                        let n = col.len().max(1);
+                        for (i, (lo, hi)) in col.iter().enumerate() {
+                            let x = rect.left() + rect.width() * (i as f32 / n as f32);
+                            let amp = hi.abs().max(lo.abs()).clamp(0.02, 1.0);
+                            let hh = amp * rect.height() * 0.45;
+                            let c = if x <= cutoff {
+                                accent()
+                            } else {
+                                tint(Color32::WHITE, 70)
+                            };
+                            p.line_segment(
+                                [
+                                    egui::pos2(x, rect.center().y - hh),
+                                    egui::pos2(x, rect.center().y + hh),
+                                ],
+                                egui::Stroke::new(1.0, c),
+                            );
+                        }
+                    }
+                    p.line_segment(
+                        [
+                            egui::pos2(cutoff, rect.top()),
+                            egui::pos2(cutoff, rect.bottom()),
+                        ],
+                        egui::Stroke::new(1.5, TEXT),
+                    );
+                } else {
+                    p.rect_filled(track, Rounding::same(2.0), tint(Color32::WHITE, 22));
+                    if frac > 0.0 {
+                        let mut f = track;
+                        f.set_width(track.width() * frac);
+                        p.rect_filled(f, Rounding::same(2.0), accent());
+                    }
                 }
                 let knob = if resp.hovered() || resp.dragged() { 5.5 } else { 4.0 };
                 p.circle_filled(

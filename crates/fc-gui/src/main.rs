@@ -1607,13 +1607,13 @@ impl App {
             .map(|i| i.media_path().to_path_buf())
             .unwrap_or_else(|| path.to_path_buf());
         let Some(tools) = self.tools.clone() else { return };
-        let p = path.to_path_buf();
+        let key = path.to_path_buf();
         let tx = self.wave_tx.clone();
-        self.wave_pending = Some(p.clone());
+        self.wave_pending = Some(key.clone());
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            if let Ok(w) = fc_analyze::waveform(&tools.ffmpeg, &p, 480) {
-                let _ = tx.send((p, w));
+            if let Ok(w) = fc_analyze::waveform(&tools.ffmpeg, &media, 480) {
+                let _ = tx.send((key, w));
                 ctx.request_repaint();
             }
         });
@@ -2040,6 +2040,13 @@ impl eframe::App for App {
             }
         }
         self.poll_media(ctx);
+        // 自动播放/首次进界面时 selected 没变化，不会触发“选中项变更”的波形请求；
+        // 这里补一次，别让播放条一直空着
+        if self.wave.is_none() && !self.items.is_empty() {
+            if let Some(p) = self.items.get(self.selected).map(|i| i.path.clone()) {
+                self.request_wave(&p, ctx);
+            }
+        }
         self.poll_big_cover(ctx);
         self.poll_library();
         self.poll_lib_covers(ctx);
@@ -3068,6 +3075,43 @@ fn main() -> eframe::Result<()> {
     }
 
     // 命令行：内容体检（测试用，也方便脚本批跑）
+    if args.first().map(|s| s.as_str()) == Some("--wave") {
+        let Some(input) = args.get(1) else {
+            eprintln!("用法: format-converter.exe --wave <文件>");
+            std::process::exit(2);
+        };
+        let Some(tools) = fc_core::locate() else {
+            eprintln!("找不到 ffmpeg");
+            std::process::exit(1);
+        };
+        match fc_analyze::waveform(&tools.ffmpeg, Path::new(input), 480) {
+            Ok(w) => {
+                let max = w
+                    .iter()
+                    .flatten()
+                    .map(|(a, b)| a.abs().max(b.abs()))
+                    .fold(0.0f32, f32::max);
+                let peak_cols = w
+                    .iter()
+                    .filter(|col| col.iter().any(|(a, b)| a.abs().max(b.abs()) > 0.02))
+                    .count();
+                println!(
+                    "cols={} channels={} max={max:.4} cols_over_0.02={peak_cols}",
+                    w.len(),
+                    w.first().map(|c| c.len()).unwrap_or(0)
+                );
+                for (i, col) in w.iter().take(3).enumerate() {
+                    let (lo, hi) = col.first().copied().unwrap_or((0.0, 0.0));
+                    println!("  {i}: first={lo:.3}/{hi:.3}");
+                }
+            }
+            Err(e) => {
+                eprintln!("波形失败: {e:#}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
     if args.first().map(|s| s.as_str()) == Some("--health") {
         let Some(input) = args.get(1) else {
             eprintln!("用法: format-converter --health <文件>");
