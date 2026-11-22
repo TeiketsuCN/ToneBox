@@ -43,37 +43,82 @@ pub(crate) fn hint_below(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     });
 }
 
+#[derive(Clone, Copy)]
+struct Plan {
+    name: &'static str,
+    fmt: &'static str,
+    tag: &'static str,
+    zh: &'static str,
+    en: &'static str,
+}
+
+static PLANS_ARCHIVE: &[Plan] = &[
+    Plan { name: "FLAC", fmt: "flac", tag: "flac8", zh: "无损归档首选，约为 WAV 的 60%，逐比特还原", en: "Lossless default, about 60% of WAV, bit-perfect" },
+    Plan { name: "WAV", fmt: "wav", tag: "plain", zh: "最大兼容、体积最大；适合再编辑/老设备", en: "Maximum compatibility and size; good for editing or old gear" },
+];
+
+static PLANS_PHONE: &[Plan] = &[
+    Plan { name: "Opus 128k", fmt: "opus", tag: "opus128", zh: "体积小、同码率音质最好；需设备支持 Opus", en: "Smallest and best quality at this bitrate; needs Opus support" },
+    Plan { name: "MP3 192k", fmt: "mp3", tag: "mp3_192", zh: "几乎什么都能放，体积比 Opus 大", en: "Plays almost anywhere, larger than Opus" },
+];
+
+static PLANS_CAR: &[Plan] = &[
+    Plan { name: "MP3 320k", fmt: "mp3", tag: "mp3_320", zh: "车机 USB 最稳的高码率选择", en: "The safest high-bitrate choice for car USB" },
+    Plan { name: "MP3 192k", fmt: "mp3", tag: "mp3_192", zh: "老车机更稳，体积更小", en: "Safer on older head units, smaller files" },
+];
+
+static PLANS_VOICE: &[Plan] = &[
+    Plan { name: "Opus 32k", fmt: "opus", tag: "opus32", zh: "语音清晰、体积极小", en: "Clear speech, very small" },
+    Plan { name: "Opus 24k", fmt: "opus", tag: "opus24", zh: "最小体积，复杂语音会有瑕疵", en: "Smallest files, more artifacts on busy speech" },
+];
+
+fn scenario_plans(id: &str) -> &'static [Plan] {
+    match id {
+        "archive" => PLANS_ARCHIVE,
+        "phone" => PLANS_PHONE,
+        "car" => PLANS_CAR,
+        "voice" => PLANS_VOICE,
+        _ => &[],
+    }
+}
+
 impl App {
 
     /// 最右一列：输出设置。不属于某个文件，是全局的。
-    /// 场景推荐：归档 / 手机 / 车载 / 语音。
+    /// 场景推荐：归档 / 手机 / 车载 / 语音（默认套用主方案）。
     fn apply_scenario(&mut self, id: &str) {
-        let fmt = match id {
-            "archive" => "flac",
-            "phone" => "opus",
-            "car" => "mp3",
-            "voice" => "opus",
-            _ => return,
-        };
+        if let Some(p) = scenario_plans(id).first().copied() {
+            self.apply_plan(p.fmt, p.tag);
+        }
+    }
+
+    fn apply_plan(&mut self, fmt: &str, tag: &str) {
         if let Some(spec) = fc_core::by_id(fmt) {
             self.target = spec;
             self.ext_sel = spec.ext;
         }
-        match id {
-            "archive" => {
+        match tag {
+            "flac8" => {
                 self.cfg.opts.bit_depth = fc_core::BitDepth::Auto;
                 self.cfg.opts.flac_level = 8;
             }
-            "phone" => {
+            "opus128" => {
                 self.cfg.opts.opus_bitrate = 128;
                 self.cfg.opts.channels = fc_core::ChannelMode::Stereo;
             }
-            "car" => {
+            "opus32" => {
+                self.cfg.opts.opus_bitrate = 32;
+            }
+            "opus24" => {
+                self.cfg.opts.opus_bitrate = 24;
+            }
+            "mp3_320" => {
                 self.cfg.opts.mp3_bitrate = 320;
                 self.cfg.opts.channels = fc_core::ChannelMode::Stereo;
             }
-            "voice" => {
-                self.cfg.opts.opus_bitrate = 32;
+            "mp3_192" => {
+                self.cfg.opts.mp3_bitrate = 192;
+                self.cfg.opts.channels = fc_core::ChannelMode::Stereo;
             }
             _ => {}
         }
@@ -175,6 +220,7 @@ impl App {
                 ("voice", crate::tr2!("语音", "Voice")),
             ] {
                 if seg_button(ui, label, false) {
+                    self.scenario = Some(id);
                     self.apply_scenario(id);
                     changed = true;
                 }
@@ -188,6 +234,43 @@ impl App {
             ),
             DIM,
         );
+
+        // 场景建议卡：主方案已套用，下面给备选和代价
+        if let Some(id) = self.scenario {
+            ui.add_space(6.0);
+            egui::Frame::none()
+                .fill(tint(Color32::WHITE, 6))
+                .stroke(line(Color32::WHITE, 16))
+                .rounding(Rounding::same(8.0))
+                .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                .show(ui, |ui| {
+                    for p in scenario_plans(id) {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(p.name)
+                                    .size(9.5)
+                                    .color(if self.target.id == p.fmt { accent() } else { MUTED }),
+                            );
+                            ui.add_space(4.0);
+                            ui.label(
+                                RichText::new(if crate::i18n::is_en() { p.en } else { p.zh }).size(8.5).color(DIM),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let b = egui::Button::new(
+                                    RichText::new(crate::tr2!("用这个", "Use")).size(8.5).color(MUTED),
+                                )
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(line(Color32::WHITE, 18))
+                                .rounding(Rounding::same(6.0));
+                                if ui.add(b).clicked() {
+                                    self.apply_plan(p.fmt, p.tag);
+                                    changed = true;
+                                }
+                            });
+                        });
+                    }
+                });
+        }
         ui.add_space(10.0);
 
         // 预设
@@ -1454,4 +1537,21 @@ fn vorbis_q_hint(q: u8) -> String {
         _ => crate::tr!("最高档，文件最大，和 8~9 档差别很小"),
     };
     crate::fmt2!("当前 {q}：{what}", "Current {q}: {what}")
+}
+#[cfg(test)]
+mod scenario_tests {
+    use super::scenario_plans;
+
+    #[test]
+    fn every_scenario_has_a_primary_and_an_alternative() {
+        for id in ["archive", "phone", "car", "voice"] {
+            let plans = scenario_plans(id);
+            assert!(plans.len() >= 2, "{id} needs alternatives");
+            assert!(!plans[0].fmt.is_empty());
+        }
+        assert_eq!(scenario_plans("archive")[0].fmt, "flac");
+        assert_eq!(scenario_plans("phone")[0].fmt, "opus");
+        assert_eq!(scenario_plans("car")[0].fmt, "mp3");
+        assert!(scenario_plans("nope").is_empty());
+    }
 }

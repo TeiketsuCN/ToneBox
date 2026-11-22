@@ -375,6 +375,8 @@ pub(crate) struct App {
     /// 输出后缀。和目标格式一起切换，默认是 `target.ext`；
     /// AAC 这种能出 .m4a / .aac 两种容器的，可以在输出栏里改。
     ext_sel: &'static str,
+    /// 当前打开的场景建议（只影响输出栏的推荐卡片，不进配置）
+    scenario: Option<&'static str>,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -693,6 +695,7 @@ impl App {
             selected: 0,
             target,
             ext_sel: target.ext,
+            scenario: None,
             expanded: Some(target.id),
             rx: None,
             running: false,
