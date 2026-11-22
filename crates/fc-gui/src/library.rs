@@ -284,7 +284,8 @@ impl App {
                                     accent(),
                                 );
                             }
-                            let row = row.context_menu(|ui| {
+                            let row_clicked = row.clicked();
+                            let _ = row.context_menu(|ui| {
                                 if ui.button(crate::tr2!("跳转到编解码", "Open in encoding")).clicked() {
                                     self.add_files(vec![path.clone()]);
                                     self.page = crate::Page::Convert;
@@ -312,7 +313,6 @@ impl App {
                                     ui.close_menu();
                                 }
                             });
-                            let row_clicked = row.map(|r| r.response.clicked()).unwrap_or(false);
                             if row_clicked {
                                 clicked = Some(i);
                             }
@@ -451,7 +451,8 @@ impl App {
                                     accent(),
                                 );
                             }
-                            let row = row.context_menu(|ui| {
+                            let row_clicked = row.clicked();
+                            let _ = row.context_menu(|ui| {
                                 if ui.button(crate::tr2!("跳转到编解码", "Open in encoding")).clicked() {
                                     self.add_files(vec![path.clone()]);
                                     self.page = crate::Page::Convert;
@@ -479,7 +480,6 @@ impl App {
                                     ui.close_menu();
                                 }
                             });
-                            let row_clicked = row.map(|r| r.response.clicked()).unwrap_or(false);
                             if row_clicked {
                                 clicked = Some(i);
                             }

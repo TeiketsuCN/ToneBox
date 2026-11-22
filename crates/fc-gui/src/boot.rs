@@ -80,7 +80,7 @@ pub(crate) struct Boot {
 }
 
 /// 「正在加载项目」停留时长。达芬奇也在这句上停一会儿，切过去太突兀。
-const PROJECT_HOLD: Duration = Duration::from_millis(2000);
+const PROJECT_HOLD: Duration = Duration::from_millis(0);
 /// 兜底：检查卡死（ffmpeg 挂起之类）也别把窗口钉在过场。
 const TIMEOUT: Duration = Duration::from_secs(8);
 

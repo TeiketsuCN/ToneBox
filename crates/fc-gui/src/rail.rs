@@ -81,6 +81,13 @@ impl App {
                 }
             }
         }
+        // 第四个大项：歌词管理
+        if rail_big(ui, crate::i18n::tr("歌词管理"), self.page == Page::Lyrics) {
+            if self.page != Page::Lyrics {
+                self.page_t = 0.0;
+            }
+            self.page = Page::Lyrics;
+        }
         ui.add_space(10.0);
 
         // 百科固定在最下面（用户要求从「输出格式」标题右边挪下来）：
@@ -109,7 +116,7 @@ impl App {
             Page::Convert => animating |= self.format_list(ui),
             Page::Library => self.library_nav(ui),
             // 空页面：列表区什么都不画，等设计
-            Page::Engine => {}
+            Page::Engine | Page::Lyrics => {}
         }
         animating
     }

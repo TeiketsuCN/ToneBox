@@ -23,6 +23,7 @@ mod spectrum;
 mod detail;
 mod output;
 mod library;
+mod lyrics;
 mod overlays;
 mod tasks;
 mod codec;
@@ -71,6 +72,8 @@ pub(crate) enum Page {
     Library,
     /// 「引擎和设备」：音频设备、播放输出选择、引擎信息
     Engine,
+    /// 歌词管理：内置 .lrc 编辑器
+    Lyrics,
 }
 
 /// 音乐库里的分类
@@ -393,6 +396,11 @@ pub(crate) struct App {
     pub(crate) notices_pinned: bool,
     pub(crate) console_rect: egui::Rect,
     pub(crate) log_path: PathBuf,
+    pub(crate) lyr_search: String,
+    pub(crate) lyr_sel: Option<PathBuf>,
+    pub(crate) lyr_text: String,
+    pub(crate) lyr_dirty: bool,
+    pub(crate) lyr_msg: String,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -722,6 +730,11 @@ impl App {
             console_input: String::new(),
             notices_pinned: false,
             console_rect: egui::Rect::NOTHING,
+            lyr_search: String::new(),
+            lyr_sel: None,
+            lyr_text: String::new(),
+            lyr_dirty: false,
+            lyr_msg: String::new(),
             log_path: { 
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
                 let p = std::env::var_os("APPDATA")
@@ -891,7 +904,7 @@ impl App {
         0.0
     }
 
-    fn add_files(&mut self, paths: Vec<PathBuf>) {
+    pub(crate) fn add_files(&mut self, paths: Vec<PathBuf>) {
         let Some(tools) = self.tools.clone() else { return };
         for p in paths {
             if self.items.iter().any(|i| i.path == p) {
@@ -1685,7 +1698,7 @@ impl App {
         });
     }
 
-    fn start_play(&mut self, idx: usize) {
+    pub(crate) fn start_play(&mut self, idx: usize) {
         // 连续播放列表：当前队列里所有能播的音频（视频取第一条音轨）
         let list: Vec<PathBuf> = self
             .items
@@ -2328,6 +2341,7 @@ impl eframe::App for App {
                         Page::Convert => animating |= self.queue(ui, ctx),
                         Page::Library => animating |= self.library_view(ui, ctx),
                         Page::Engine => self.codec_view(ui),
+                    Page::Lyrics => animating |= self.lyrics_page(ui, ctx),
                     }
                 });
 

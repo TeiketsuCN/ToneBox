@@ -37,6 +37,7 @@ pub(crate) enum SettingsTab {
     Display,
     Behavior,
     Tools,
+    Storage,
     About,
 }
 
@@ -46,6 +47,7 @@ impl SettingsTab {
             SettingsTab::Display => crate::tr!("显示"),
             SettingsTab::Behavior => crate::tr!("行为"),
             SettingsTab::Tools => crate::tr!("依赖 / 工具"),
+            SettingsTab::Storage => crate::tr!("产出与存储"),
             SettingsTab::About => crate::tr!("关于"),
         }
     }
@@ -339,6 +341,7 @@ impl App {
                                 SettingsTab::Display,
                                 SettingsTab::Behavior,
                                 SettingsTab::Tools,
+                                SettingsTab::Storage,
                                 SettingsTab::About,
                             ] {
                                 let on = self.settings_tab == tab;
@@ -1610,5 +1613,109 @@ impl App {
             }
             other => self.log(format!("unknown command: {other}")),
         }
+    }
+}
+impl App {
+    /// 设置页「产出与存储」：默认导出位置、控制台日志、缓存清理。
+    fn storage_tab(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new(crate::tr!("产出与存储")).size(13.0).color(TEXT).strong());
+        ui.add_space(10.0);
+
+        ui.label(RichText::new(crate::tr!("默认导出位置")).size(10.5).color(MUTED).strong());
+        ui.add_space(4.0);
+        if crate::radio_dot(ui, crate::tr!("和源文件同目录"), self.cfg.output_mode == settings::OutputMode::Source) {
+            self.cfg.output_mode = settings::OutputMode::Source;
+        }
+        if crate::radio_dot(ui, crate::tr!("指定目录"), self.cfg.output_mode == settings::OutputMode::Custom) {
+            self.cfg.output_mode = settings::OutputMode::Custom;
+        }
+        ui.horizontal(|ui| {
+            let mut dir = self.cfg.output_dir.clone();
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut dir)
+                    .hint_text(crate::tr!("选一个目录"))
+                    .desired_width((ui.available_width() - 80.0).max(120.0)),
+            );
+            if r.changed() {
+                self.cfg.output_dir = dir;
+            }
+            if ui.button(crate::tr!("浏览")).clicked() {
+                if let Some(p) = rfd::FileDialog::new().pick_folder() {
+                    self.cfg.output_dir = p.to_string_lossy().to_string();
+                }
+            }
+        });
+        ui.add_space(14.0);
+
+        ui.label(RichText::new(crate::tr!("控制台日志")).size(10.5).color(MUTED).strong());
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(self.log_path.display().to_string())
+                .size(8.5)
+                .color(DIM),
+        );
+        ui.horizontal(|ui| {
+            if ui.button(crate::tr!("打开日志目录")).clicked() {
+                if let Some(dir) = self.log_path.parent() {
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("explorer.exe").arg(dir).spawn();
+                    }
+                }
+            }
+            if ui.button(crate::tr!("清空本次会话日志")).clicked() {
+                self.console.clear();
+            }
+        });
+        ui.add_space(14.0);
+
+        ui.label(RichText::new(crate::tr!("缓存")).size(10.5).color(MUTED).strong());
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(crate::fmt2!(
+                "音乐库缓存 {} 首，封面缓存 {} 张",
+                "Library cache: {} tracks, {} covers",
+                self.cfg.library_cache.len(),
+                self.lib_covers.len()
+            ))
+            .size(9.0)
+            .color(DIM),
+        );
+        ui.horizontal(|ui| {
+            if ui.button(crate::tr!("清空音乐库缓存")).clicked() {
+                self.cfg.library_cache.clear();
+                self.lib_entries.clear();
+                self.lib_selected = None;
+                self.cfg.save();
+                self.lib_status = crate::tr!("音乐库缓存已清空").to_string();
+            }
+            if ui.button(crate::tr!("清空封面缓存")).clicked() {
+                self.lib_covers.clear();
+                self.lib_cover_pending.clear();
+                self.lib_status = crate::tr!("封面缓存已清空").to_string();
+            }
+            if ui.button(crate::tr!("清理临时文件")).clicked() {
+                let dir = std::env::temp_dir().join("ToneLore");
+                let mut n = 0;
+                if let Ok(rd) = std::fs::read_dir(&dir) {
+                    for e in rd.flatten() {
+                        if std::fs::remove_file(e.path()).is_ok() {
+                            n += 1;
+                        }
+                    }
+                }
+                self.lib_status = crate::fmt2!(
+                    "已清理 {} 个临时文件",
+                    "Removed {} temp file(s)",
+                    n
+                );
+            }
+        });
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(crate::tr!("配置目录：%APPDATA%\\ToneLore；临时文件：%TEMP%\\ToneLore"))
+                .size(8.5)
+                .color(DIM),
+        );
     }
 }
