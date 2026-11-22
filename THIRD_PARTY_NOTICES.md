@@ -74,6 +74,14 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-wavpack` 5.9.0-1
 - 许可证全文：`vendor/wavpack/LICENSE-wavpack.txt`
 
+## Musepack（mpcenc / libmpcdec-6.dll）
+
+- 项目：Musepack（MPC）
+- 主页：<https://www.musepack.net/>
+- 许可：LGPL-2.1-or-later
+- 用途：`vendor/musepack/mpcenc.exe` 输出 `.mpc`（ffmpeg 只有解码器）
+- 二进制来源：MSYS2 `mingw-w64-ucrt-x86_64-libmpcdec` 1~0.1+r475-2
+- 许可证全文：`vendor/musepack/LICENSE-musepack.txt`
 ## OptimFROG（ofr.exe，可选，不随包）
 
 - 项目：OptimFROG / Lossless Audio

@@ -75,6 +75,12 @@ if (Test-Path $wavpack) {
     Copy-Item $wavpack (Join-Path $stage 'wavpack') -Recurse -Force
 }
 
+# 随包 Musepack 编码器（LGPL-2.1；mpcenc + libmpcdec DLL + LICENSE）
+$musepack = Join-Path $src 'vendor\musepack'
+if (Test-Path $musepack) {
+    Copy-Item $musepack (Join-Path $stage 'musepack') -Recurse -Force
+}
+
 Write-Host "== 3/4 write readme ==" -ForegroundColor Cyan
 $disp = $ver -replace '^beta', ''
 $readme = @"
@@ -89,6 +95,7 @@ First start uses the Aurora gradient and the Large window size.
 ffmpeg is bundled in .\ffmpeg and found automatically. Do not move it.
 Speex encoding uses the bundled .\speex\speexenc (BSD, see THIRD_PARTY_NOTICES.md).
 WavPack lossy (hybrid) uses the bundled .\wavpack\wavpack.exe (BSD).
+Musepack encoding uses the bundled .\musepack\mpcenc.exe (LGPL).
 ATRAC encoding needs atracdenc (included only if atracdenc\ exists).
 OptimFROG needs your own ofr.exe (not included: official license restricts redistribution).
 
