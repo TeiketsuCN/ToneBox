@@ -753,6 +753,11 @@ D.update({
     "老网页容器：只有 H.264 + AAC/MP3，别指望新设备认。": "Legacy web container: H.264 + AAC/MP3 only; don't expect new devices to accept it.",
 })
 
+D.update({
+    "目标已存在": "If output exists",
+    "输出已存在（设置为跳过）": "Output exists (set to skip)",
+})
+
 def rust_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 

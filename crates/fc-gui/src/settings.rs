@@ -123,6 +123,18 @@ pub enum OutputMode {
     Custom,
 }
 
+/// 目标文件已存在时怎么办
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+pub enum ExistingPolicy {
+    /// 自动加 (1)(2)（默认，不覆盖）
+    #[default]
+    Rename,
+    /// 直接覆盖
+    Overwrite,
+    /// 跳过这条任务
+    Skip,
+}
+
 /// 用户自设的预设：一套格式 + 参数，可以改名。跟着「配置 1/2/3」走。
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct UserPreset {
@@ -269,6 +281,9 @@ pub struct Settings {
     /// 输出位置模式
     #[serde(default)]
     pub output_mode: OutputMode,
+    /// 目标已存在：改名 / 覆盖 / 跳过
+    #[serde(default)]
+    pub existing: ExistingPolicy,
     /// 指定目录（output_mode = Custom 时用）
     #[serde(default)]
     pub output_dir: String,
@@ -335,6 +350,7 @@ impl Default for Settings {
             auto_analyze: true,
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,
+            existing: ExistingPolicy::Rename,
             output_dir: String::new(),
             meta_artist: String::new(),
             meta_album: String::new(),

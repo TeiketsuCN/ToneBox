@@ -326,6 +326,7 @@ impl App {
 
         if let Some(i) = remove {
             let removed = self.items.remove(i);
+            removed.forget_media();
             // 删掉的正好是正在放/显示的那首：停止播放，别让播放栏指着不存在的歌
             if self.player_for.as_ref() == Some(&removed.path) {
                 self.player = None;

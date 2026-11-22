@@ -36,7 +36,7 @@ pub fn tr(key: &'static str) -> &'static str {
     }
     match key {
         "声箱ToneBox" => "ToneBox",
-        "版本 1.6.1 · 建议先备份你的文件" => "v1.6.1 · back up your files first",
+        "版本 1.7.1 · 建议先备份你的文件" => "v1.7.1 · back up your files first",
         "建议所有操作备份 · 慎防设备损坏 请自己负责" => "Back up everything; device damage is your own risk",
         "音乐库" => "Library",
         "编解码" => "Encoding",
@@ -1139,6 +1139,8 @@ Read-only reference; not an output.",
         "电视/蓝光容器：H.264/H.265 + AAC/AC-3，没索引、拖进度条不灵。" => "TV/Blu-ray container: H.264/H.265 + AAC/AC-3; no index, seeking is poor.",
         "老播放器通常只认 128~192k，调高不一定放得动。" => "Old players usually only handle 128–192k; higher may not play.",
         "老网页容器：只有 H.264 + AAC/MP3，别指望新设备认。" => "Legacy web container: H.264 + AAC/MP3 only; don't expect new devices to accept it.",
+        "目标已存在" => "If output exists",
+        "输出已存在（设置为跳过）" => "Output exists (set to skip)",
         _ => key,
     }
 }

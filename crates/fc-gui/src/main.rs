@@ -238,6 +238,14 @@ impl Item {
     fn media_path(&self) -> &Path {
         self.media.as_deref().unwrap_or(&self.path)
     }
+    /// 删掉为这个文件生成的临时 WAV（只删 %TEMP%\ToneBox 下的，绝不碰源文件）
+    pub(crate) fn forget_media(&self) {
+        let Some(m) = &self.media else { return };
+        let root = std::env::temp_dir().join("ToneBox");
+        if m.starts_with(&root) {
+            let _ = std::fs::remove_file(m);
+        }
+    }
 }
 
 /// 后台读完标签/封面后回传
@@ -640,6 +648,7 @@ impl App {
         let (ltx, lrx) = channel();
         let (cvt, cvr) = channel();
         let (spt, spr) = channel();
+        clean_stale_temp();
         let boot = boot::Boot::start();
         let cfg = settings::Settings::load();
         if std::env::var_os("TONEBOX_LANG").is_none() {
@@ -972,7 +981,10 @@ impl App {
             // 同一个文件加了两条不同格式的任务时，输出名要错开
             // 后缀听用户在输出栏里的选择（多后缀格式才有得选）
             let ext = self.out_ext(spec);
-            let mut out = unique_output_in(&self.tasks[i].path, ext, &self.cfg);
+            let Some(mut out) = output_path(&self.tasks[i].path, ext, &self.cfg) else {
+                self.tasks[i].state = State::Failed(crate::tr2!("输出已存在（设置为跳过）", "Output exists (set to skip)").to_string());
+                continue;
+            };
             let mut n = 1;
             while used_out.contains(&out) {
                 n += 1;
@@ -2411,7 +2423,7 @@ pub(crate) fn output_dir_for(input: &Path, cfg: &settings::Settings) -> PathBuf 
     }
 }
 
-pub(crate) fn unique_output_in(input: &Path, ext: &str, cfg: &settings::Settings) -> PathBuf {
+pub(crate) fn output_path(input: &Path, ext: &str, cfg: &settings::Settings) -> Option<PathBuf> {
     let stem = input
         .file_stem()
         .unwrap_or_default()
@@ -2423,13 +2435,20 @@ pub(crate) fn unique_output_in(input: &Path, ext: &str, cfg: &settings::Settings
     } else {
         dir_buf.as_path()
     };
-    let mut cand = dir.join(format!("{stem}.{ext}"));
-    let mut n = 1;
-    while cand.exists() {
-        cand = dir.join(format!("{stem} ({n}).{ext}"));
-        n += 1;
+    let base = dir.join(format!("{stem}.{ext}"));
+    match cfg.existing {
+        settings::ExistingPolicy::Overwrite => Some(base),
+        settings::ExistingPolicy::Skip => (!base.exists()).then_some(base),
+        settings::ExistingPolicy::Rename => {
+            let mut cand = base;
+            let mut n = 1;
+            while cand.exists() {
+                cand = dir.join(format!("{stem} ({n}).{ext}"));
+                n += 1;
+            }
+            Some(cand)
+        }
     }
-    cand
 }
 
 
@@ -3434,4 +3453,61 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(app))
         }),
     )
+}
+/// 启动时清掉 %TEMP%\ToneBox 里超过 24 小时的文件（上次异常退出留下的）。
+fn clean_stale_temp() {
+    let dir = std::env::temp_dir().join("ToneBox");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let now = std::time::SystemTime::now();
+    for e in rd.flatten() {
+        let Ok(meta) = e.metadata() else { continue };
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .map(|d| d.as_secs() > 24 * 3600)
+            .unwrap_or(false);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        for it in &self.items {
+            it.forget_media();
+        }
+    }
+}
+#[cfg(test)]
+mod output_policy_tests {
+    use super::*;
+
+    #[test]
+    fn existing_policy_controls_output_name() {
+        let dir = std::env::temp_dir().join(format!("tb_policy_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("song.wav");
+        std::fs::write(&input, b"x").unwrap();
+        std::fs::write(dir.join("song.flac"), b"x").unwrap();
+
+        let mut cfg = settings::Settings::default();
+        cfg.output_mode = settings::OutputMode::Custom;
+        cfg.output_dir = dir.display().to_string();
+
+        cfg.existing = settings::ExistingPolicy::Rename;
+        let p = output_path(&input, "flac", &cfg).unwrap();
+        assert_eq!(p.file_name().unwrap(), "song (1).flac");
+
+        cfg.existing = settings::ExistingPolicy::Skip;
+        assert!(output_path(&input, "flac", &cfg).is_none());
+
+        cfg.existing = settings::ExistingPolicy::Overwrite;
+        let p = output_path(&input, "flac", &cfg).unwrap();
+        assert_eq!(p.file_name().unwrap(), "song.flac");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

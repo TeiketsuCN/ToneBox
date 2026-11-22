@@ -492,6 +492,31 @@ impl App {
             });
         }
 
+        ui.add_space(10.0);
+        ui.label(RichText::new(crate::tr!("目标已存在")).size(9.0).color(DIM));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            for (mode, label) in [
+                (settings::ExistingPolicy::Rename, crate::tr2!("自动改名", "Auto rename")),
+                (settings::ExistingPolicy::Overwrite, crate::tr2!("覆盖", "Overwrite")),
+                (settings::ExistingPolicy::Skip, crate::tr2!("跳过", "Skip")),
+            ] {
+                if seg_button(ui, label, self.cfg.existing == mode) {
+                    self.cfg.existing = mode;
+                    changed = true;
+                }
+                ui.add_space(4.0);
+            }
+        });
+        hint_below(
+            ui,
+            crate::tr2!(
+                "自动改名不会覆盖已有文件；选「覆盖」会直接替换。",
+                "Auto rename never overwrites; Overwrite replaces the existing file."
+            ),
+            DIM,
+        );
+
         ui.add_space(12.0);
         ui.label(RichText::new(crate::tr!("转换后")).size(9.0).color(DIM));
         ui.add_space(4.0);
