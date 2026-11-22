@@ -3,7 +3,7 @@
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.4.0**（VOC / AAC-LATM / MXF / Musepack 已随 1.4 发布）
+- 文档版本：对应应用 **1.4.0**（1.5 开发中：可输出已到 79，新增老游戏语音与 SoX/IRCAM）
 - 整理时间：2026-11
 - 仓库：<https://github.com/TeiketsuCN/ToneBox>
 
@@ -18,7 +18,7 @@
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
 | 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
-| 当前能力 | **73 个可输出格式**、47 个只读参考格式（合计 120 条）、14 个视频容器 |
+| 当前能力 | **79 个可输出格式**、47 个只读参考格式（合计 126 条）、14 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
 
@@ -57,7 +57,7 @@
 
 ### 3.2 格式百科
 
-点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 120 个条目（73 可输出 + 47 只读）。
+点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 126 个条目（79 可输出 + 47 只读）。
 
 ### 3.3 音乐库
 
@@ -98,18 +98,18 @@ format-converter.exe --health <file>            内容体检
 
 ## 4. 格式能力
 
-### 4.1 可输出（73 个，按组）
+### 4.1 可输出（79 个，按组）
 
 | 组 | 数量 | 格式 |
 |---|---|---|
 | **无损** | 13 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、OptimFROG* |
-| **有损** | 13 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM |
-| **语音/电话** | 19 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0 |
+| **有损** | 15 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM、**Westwood AUD**、**APM** |
+| **语音/电话** | 20 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0、**ALP ADPCM** |
 | **空间音频** | 5 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
-| **音频容器** | 6 | WAV/AU/SND、RF64、BWF、IEC 61937、**VOC**、**AAC-LATM** |
-| **视频容器** | 14 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、**MXF** |
+| **音频容器** | 9 | WAV/AU/SND、RF64、BWF、IEC 61937、VOC、AAC-LATM、**SMAF（MMF）**、**SoX**、**IRCAM** |
+| **视频容器** | 14 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF |
 | **设备专用** | 3 | ATRAC1、ATRAC3、ATRAC3+* |
-| **合计** | **73** | |
+| **合计** | **79** | |
 
 `*` = 需要外部工具（见第 5 节）；`†` = 需要 ffmpeg 构建里带对应库（随包 LGPL 构建不包含，完整构建如 gyan 有）
 
@@ -118,6 +118,9 @@ format-converter.exe --health <file>            内容体检
 APE、TAK、OptimFROG 旧条目、Shorten、WMA Lossless/Pro/Voice、DSD（DSF/DFF/DST）、DTS-HD/HR/X、MPEG-H 3D、MPEG Surround、USAC/xHE-AAC、LC3plus、EVS、TwinVQ、MPEG-4 HILN/SSC、RealAudio 2.0/Cook、QCP、G.729、Siren 7/14、G.719、DSDIFF、MXF 旧条目等。
 
 原因分三类：**没有开源编码器**（专利/闭源）、**ffmpeg 只做解码**、**容器/规范写不出来**（如 AIFC、BW64）。
+
+主机芯片音乐（NSF / SPC / GBS / VGM / PSF 等）是第四类：它们不是波形音频，而是「芯片程序 + 采样」，
+播放时才产生声音，无法从 WAV 转出来，详见 `docs/主机音频格式.md`。
 
 ---
 
@@ -217,7 +220,7 @@ powershell -File tools\fetch-optimfrog.ps1     # 可选
 
 # 编译与测试
 cargo build --release -p fc-gui
-cargo test -p fc-core --lib                    # 71 项
+cargo test -p fc-core --lib                    # 72 项
 
 # 打包
 powershell -File tools\package-release.ps1     # 主包
@@ -241,7 +244,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ## 9. 质量保证
 
-- **71 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
+- **72 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
 - **真实编码验证**：每加一个格式都用随包 ffmpeg/外部工具实际压一段音频，比对
   `ffprobe` 输出的编码、采样率、声道；视频容器还会验证画面/音轨编码
 - **发布会验三次哈希**：本地文件、GitHub 返回的 digest、重新下载后的文件
@@ -249,7 +252,9 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ---
 
-## 10. 1.4 新增内容（已发布）
+## 10. 新增内容（1.4 已发布 / 1.5 开发中）
+
+### 10.1 1.4.0（已发布）
 
 1.4.0 新增并实测、随包发布的部分：
 
@@ -262,6 +267,19 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 加上这四个，可输出格式从 **69 → 73**。
 
+### 10.2 1.5（开发中，未发布）
+
+| 新增 | 类型 | 实测结果 |
+|---|---|---|
+| **Westwood AUD** | 老游戏语音（ADPCM） | 133 KB（44.1k 立体声） |
+| **APM**（Ubisoft） | 老游戏语音（ADPCM） | 132 KB |
+| **ALP ADPCM** | 老游戏语音（ADPCM，22.05k 单声道） | 33 KB |
+| **SMAF（MMF）** | 铃声容器（Yamaha ADPCM，8k 单声道） | 12 KB |
+| **SoX** | 音频容器（PCM 32-bit） | 1.06 MB |
+| **IRCAM** | 音频容器（PCM 16-bit） | 530 KB |
+
+可输出格式 **73 → 79**。主机芯片音乐仍然不做，原因见 `docs/主机音频格式.md`。
+
 ---
 
 ## 11. 文件索引
@@ -272,6 +290,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | `THIRD_PARTY_NOTICES.md` | 第三方组件许可与来源 |
 | `docs/screenshot.jpg` | 界面截图 |
 | `docs/音频格式总览.md` | 格式知识库（长文） |
+| `docs/主机音频格式.md` | NSF/SPC/PSF/VGM 为什么不能转，以及替代方案 |
 | `docs/法律边界-重新评估.md` | 版权/DRM 边界的判断依据 |
 | `docs/契约.md` | 模块间接口约定 |
 | `docs/FFmpeg-LGPL.md` | 随包 ffmpeg 的合规说明 |

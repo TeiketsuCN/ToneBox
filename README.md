@@ -52,21 +52,24 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校�
 
 ## 支持的格式
 
-当前**可输出格式 73 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 79 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
 | 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF、**OptimFROG**（需自装 ofr.exe） |
-| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损 |
+| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、**ALP、APM、Westwood AUD**（老游戏语音） |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
-| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF、**VOC**、**AAC-LATM**（LOAS） |
+| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF、VOC、AAC-LATM（LOAS）、**SMAF（MMF）、SoX、IRCAM** |
 | 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、**MXF** |
 | 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需自行安装 atracdenc） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
 
 **只读格式**（能解析、能解释为什么不能输出）：APE、TAK、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
+
+> 主机芯片音乐（NSF / SPC / GBS / VGM / PSF 等）是「芯片指令 + 采样」，不是波形音频，
+> 没法从 WAV 转出来，本程序也不假装能做。原因和替代方案见 [docs/主机音频格式.md](docs/主机音频格式.md)。
 
 ---
 
@@ -160,6 +163,11 @@ docs/           设计笔记、格式总览、法律边界等
 ---
 
 ## 更新日志
+
+### 1.5（开发中）
+- 可输出格式 **73 → 79**：新增 **Westwood AUD**、**APM**（Ubisoft Rayman 2）、**ALP ADPCM** 三种老游戏语音，以及 **SMAF（MMF）**、**SoX**、**IRCAM** 三种容器
+- 全部用随包 ffmpeg 实测：ALP 强制 22.05kHz 单声道、SMAF 固定 8kHz 单声道
+- 主机芯片音乐（NSF/SPC/PSF/VGM）不在此列：它们不是波形音频，见 `docs/主机音频格式.md`
 
 ### 1.4.0（2026-11）
 - 可输出格式 **69 → 73**：新增 **VOC**（Creative Voice 音频容器）、**AAC-LATM / LOAS**（广播封装）、**MXF**（视频容器，MPEG-2 + PCM 48kHz）、**Musepack**（mpcenc，5 档质量）

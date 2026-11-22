@@ -422,6 +422,85 @@ pub static FEASIBLE: &[FormatSpec] = &[
         args: &["-c:a", "dfpwm"],
         size_ratio: 0.02,
     },
+    // ── 老游戏 / 复古音频：都在随包 ffmpeg 上实测过（2026-11，1.5 开发中） ──
+    FormatSpec {
+        id: "wsaud",
+        name: "Westwood AUD",
+        ext: "aud",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "Westwood Studios 游戏（命令与征服、红警）的 ADPCM 音频。\n老游戏语音/音效常用 .aud，4-bit 差分、单声道居多。\n无损源转过去会掉细节，只适合替换/还原老游戏资源。",
+        args: &["-c:a", "adpcm_ima_ws", "-f", "wsaud"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "apm",
+        name: "APM（Ubisoft）",
+        ext: "apm",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "Ubisoft Rayman 2 的音频容器，装的是 IMA ADPCM。\n当年为省空间做的 4-bit 差分，音质一般。\n只对老游戏解包/替换音频有用，日常听歌别选它。",
+        args: &["-c:a", "adpcm_ima_apm", "-f", "apm"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "alp",
+        name: "ALP ADPCM",
+        ext: "alp",
+        kind: Kind::Lossy,
+        group: Group::Speech,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "High Voltage Software 的 ALP ADPCM，Wii/PS2 时代几款游戏用过。\n**只支持 22.05kHz 单声道**，程序会强制重采样。\n适合还原老游戏语音，不适合音乐。",
+        args: &["-c:a", "adpcm_ima_alp", "-ar", "22050", "-ac", "1", "-f", "alp"],
+        size_ratio: 0.25,
+    },
+    FormatSpec {
+        id: "smaf",
+        name: "SMAF (MMF)",
+        ext: "mmf",
+        kind: Kind::Lossy,
+        group: Group::Container,
+        patent: Patent::Expiring,
+        can_encode: true,
+        primary: false,
+        blurb: "Yamaha SMAF 手机铃声/游戏配乐（.mmf），2000 年代功能机的标准。\n里面是 4-bit Yamaha ADPCM，这里固定 8kHz 单声道。\n现在的手机都不认，只适合老机器和收藏。",
+        args: &["-c:a", "adpcm_yamaha", "-ar", "8000", "-ac", "1", "-f", "mmf"],
+        size_ratio: 0.06,
+    },
+    FormatSpec {
+        id: "sox",
+        name: "SoX",
+        ext: "sox",
+        kind: Kind::Uncompressed,
+        group: Group::Container,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "SoX 自己的原生格式（.sox）：文件头 + 32-bit PCM。\n只在 SoX 工具链里流通，普通播放器基本不认。\n要跟 SoX 脚本/效果链换数据时用它，归档还是 FLAC。",
+        args: &["-c:a", "pcm_s32le", "-f", "sox"],
+        size_ratio: 1.0,
+    },
+    FormatSpec {
+        id: "ircam",
+        name: "IRCAM",
+        ext: "sf",
+        kind: Kind::Uncompressed,
+        group: Group::Container,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "IRCAM（巴黎声学/音乐研究所）音频工作站格式，16-bit PCM。\n老音频研究/合成软件里能见到，体积和 WAV 一样大。\n除非对方指定 .sf/.ircam，否则用 WAV 更省事。",
+        args: &["-c:a", "pcm_s16le", "-f", "ircam"],
+        size_ratio: 1.0,
+    },
 ];
 
 #[cfg(test)]
@@ -446,6 +525,16 @@ mod tests {
             "mlp",
             "wma_v1",
         ] {
+            let f = crate::format::by_id(id).unwrap_or_else(|| panic!("表里没有 {id}"));
+            assert!(f.can_encode, "{id} 应该是可编码的");
+            assert!(!f.args.is_empty(), "{id} 没有编码参数");
+        }
+    }
+
+    /// 1.5 新增的老游戏 / 小众容器：都是随包 ffmpeg 实测能出的，别在重构时弄丢。
+    #[test]
+    fn retro_formats_stay_listed() {
+        for id in ["wsaud", "apm", "alp", "smaf", "sox", "ircam"] {
             let f = crate::format::by_id(id).unwrap_or_else(|| panic!("表里没有 {id}"));
             assert!(f.can_encode, "{id} 应该是可编码的");
             assert!(!f.args.is_empty(), "{id} 没有编码参数");
