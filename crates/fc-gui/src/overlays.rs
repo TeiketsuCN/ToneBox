@@ -281,17 +281,15 @@ impl App {
     }
 
     /// 设置页：从下往上滑入的覆盖层，不弹新窗口
+    /// 设置页：从下往上滑入的覆盖层，不弹新窗口。
+    ///
+    /// 结构：顶栏 + 标签栏 + 单列页面。每个标签调用自己的渲染函数，
+    /// 不再像以前那样把「外观 / 行为 / 工具」都塞进同一页的两列里。
     pub(crate) fn settings_panel(&mut self, ctx: &egui::Context) {
         let t = self.settings_t;
         let screen = ctx.screen_rect();
         let top = screen.top() + TITLEBAR_H;
-        let area = egui::Rect::from_min_max(
-            egui::pos2(screen.left(), top),
-            screen.max,
-        );
-        // 整页做"从下往上滑入 / 往下滑出"：滑出时主界面从上面露出来，
-        // 不会像以前那样滑 22px 就突然消失
-        let offset = 0.0;
+        let area = egui::Rect::from_min_max(egui::pos2(screen.left(), top), screen.max);
 
         let mut changed = false;
 
@@ -301,19 +299,17 @@ impl App {
 
         egui::Area::new(egui::Id::new("settings_overlay"))
             .order(egui::Order::Foreground)
-            .fixed_pos(area.min + egui::vec2(0.0, offset))
+            .fixed_pos(area.min)
             // 不让 egui 自动把 Area 挪进屏幕：窗口矮的时候内容比屏幕高，
-            // 默认的 constrain 会把整个 Area **往上顶到 y=0**，盖住标题栏
+            // 默认的 constrain 会把整个 Area 往上顶到 y=0，盖住标题栏
             // （表现就是标题栏按钮点不到、但窗口还能拖；按 Esc 关掉设置就好）。
             // 内容溢出交给内部的 ScrollArea，位置永远钉在标题栏下面。
             .constrain(false)
             .show(ctx, |ui| {
                 egui::Frame::none()
                     // 和主界面同一套"玻璃"：半透明底 + 壁纸透过来。
-                    // 之前是 tint(BG, 255) 的纯黑，用户明确说不要。
                     // 滑动过程中偏实（避免主界面从底下透上来发脏），停稳后回到玻璃感
                     .fill({
-                        // 滑动过程中几乎不透明（主界面不能从底下透上来），停稳后再回到玻璃感
                         let k = ((t - 0.9) / 0.1).clamp(0.0, 1.0);
                         let s = k * k * (3.0 - 2.0 * k);
                         tint(BG, (255.0 - 107.0 * s) as u8)
@@ -321,9 +317,8 @@ impl App {
                     .inner_margin(egui::Margin::symmetric(28.0, 18.0))
                     .show(ui, |ui| {
                         // 内容尺寸要扣掉 Frame 的边距（28*2 / 18*2）。
-                        // min 和 max **都要卡**：只给 min 的话，窗口缩到小/中/大时
-                        // 设置内容比窗口高，Area 会被撑大并往上顶、盖住标题栏
-                        // ——标题栏是原生命中区，盖住后按钮点不到，但拖窗口还正常。
+                        // min 和 max 都要卡：只给 min 的话，设置内容比窗口高时
+                        // Area 会被撑大并往上顶、盖住标题栏。
                         let content_w = (area.width() - 56.0).max(240.0);
                         let content_h = (area.height() - 36.0).max(220.0);
                         ui.set_min_size(egui::vec2(content_w, content_h));
@@ -331,7 +326,7 @@ impl App {
                         ui.set_max_height(content_h);
                         // 顶部 44px 是原生标题栏命中区（HTCAPTION），
                         // 放在那里的按钮点不到，所以内容整体下移避开。
-                                        ui.add_space(TITLEBAR_H);
+                        ui.add_space(TITLEBAR_H);
 
                         // 顶栏：不要返回键了，点齿轮或 Esc 退出
                         ui.label(RichText::new(crate::tr!("设置")).size(15.0).color(TEXT).strong());
@@ -360,693 +355,32 @@ impl App {
                         });
                         ui.add_space(14.0);
 
-                        if self.settings_tab == SettingsTab::About {
-                            self.about_tab(ui);
-                            return;
+                        // 关于 / 存储是独立整页，不参与滚动布局。
+                        match self.settings_tab {
+                            SettingsTab::About => {
+                                self.about_tab(ui);
+                                return;
+                            }
+                            SettingsTab::Storage => {
+                                self.storage_tab(ui);
+                                return;
+                            }
+                            _ => {}
                         }
 
                         egui::ScrollArea::vertical()
                             .id_salt("settings_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                let col_w = ((ui.available_width() - 28.0) / 2.0).max(240.0);
-                                // 不再强制 620 高：窗口矮的时候那会把内容顶出可视区，
-                                // 也会让 Area 比窗口还高。给可用高度，超出由 ScrollArea 滚。
-                                let col_h = ui.available_height().max(220.0);
-                                ui.horizontal_top(|ui| {
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(col_w, col_h),
-                                        Layout::top_down(Align::LEFT),
-                                        |ui| {
-                                            ui.set_max_width(col_w);
-                                // ── 外观 ──
-                                section(ui, crate::tr!("外观"));
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(crate::tr!("背景")).size(10.5).color(MUTED));
-                                    ui.add_space(12.0);
-                                    for m in settings::BgMode::all() {
-                                        let on = self.cfg.bg_mode == m;
-                                        if ui
-                                            .add(
-                                                egui::Button::new(
-                                                    RichText::new(m.label()).size(10.5).color(if on {
-                                                        on_accent()
-                                                    } else {
-                                                        MUTED
-                                                    }),
-                                                )
-                                                .fill(if on { accent() } else { tint(Color32::WHITE, 10) })
-                                                .stroke(if on {
-                                                    Stroke::NONE
-                                                } else {
-                                                    line(Color32::WHITE, 20)
-                                                })
-                                                .rounding(Rounding::same(8.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            self.cfg.bg_mode = m;
-                                            changed = true;
-                                        }
-                                    }
-                                });
-
-                                if self.cfg.bg_mode == settings::BgMode::Solid {
-                                    ui.add_space(8.0);
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.add_space(64.0);
-                                        for c in SOLIDS {
-                                            let on = self.cfg.bg_color == c;
-                                            let col = Color32::from_rgb(c[0], c[1], c[2]);
-                                            let (rect, resp) = ui.allocate_exact_size(
-                                                egui::vec2(20.0, 20.0),
-                                                egui::Sense::click(),
-                                            );
-                                            let p = ui.painter();
-                                            p.rect_filled(rect, Rounding::same(6.0), col);
-                                            if on {
-                                                p.rect_stroke(
-                                                    rect.expand(2.0),
-                                                    Rounding::same(7.0),
-                                                    Stroke::new(1.5, accent()),
-                                                );
-                                            }
-                                            if resp.hovered() {
-                                                ui.ctx().set_cursor_icon(
-                                                    egui::CursorIcon::PointingHand,
-                                                );
-                                            }
-                                            if resp.clicked() {
-                                                self.cfg.bg_color = c;
-                                                changed = true;
-                                            }
-                                        }
-                                    });
+                                // 单列：宽屏上别把一行拉得太长，读起来累
+                                let w = ui.available_width().min(760.0);
+                                ui.set_max_width(w);
+                                match self.settings_tab {
+                                    SettingsTab::Display => self.display_tab(ui, &mut changed),
+                                    SettingsTab::Behavior => self.behavior_tab(ui, &mut changed),
+                                    SettingsTab::Tools => self.tools_tab(ui, &mut changed),
+                                    _ => {}
                                 }
-                                if self.cfg.bg_mode == settings::BgMode::Gradient {
-                                    ui.add_space(8.0);
-                                    ui.horizontal_wrapped(|ui| {
-                                        ui.add_space(64.0);
-                                        for (i, (name, _, _, _)) in
-                                            crate::bg::GRADIENTS.iter().enumerate()
-                                        {
-                                            let on = self.cfg.bg_gradient as usize == i;
-                                            // 左边给个 12×12 的渐变小样，不然只有名字看不出颜色
-                                            let (pre, _) = ui.allocate_exact_size(
-                                                egui::vec2(12.0, 12.0),
-                                                egui::Sense::hover(),
-                                            );
-                                            crate::bg::paint_gradient_preview(
-                                                ui.painter(),
-                                                pre,
-                                                crate::bg::gradient_colors(i as u8),
-                                            );
-                                            if ui
-                                                .add(
-                                                    egui::Button::new(RichText::new(crate::i18n::tr(*name)).size(
-                                                        10.5,
-                                                    ).color(if on {
-                                                        on_accent()
-                                                    } else {
-                                                        MUTED
-                                                    }))
-                                                    .fill(if on {
-                                                        accent()
-                                                    } else {
-                                                        tint(Color32::WHITE, 10)
-                                                    })
-                                                    .stroke(if on {
-                                                        Stroke::NONE
-                                                    } else {
-                                                        line(Color32::WHITE, 20)
-                                                    })
-                                                    .rounding(Rounding::same(8.0)),
-                                                )
-                                                .clicked()
-                                            {
-                                                self.cfg.bg_gradient = i as u8;
-                                                changed = true;
-                                            }
-                                        }
-                                    });
-                                }
-
-                                ui.add_space(10.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(crate::tr!("暗化")).size(10.5).color(MUTED));
-                                    ui.add_space(12.0);
-                                    let mut dim = self.cfg.dim as i32;
-                                    if bar_slider(ui, &mut dim, 0, 210, false) {
-                                        self.cfg.dim = dim as u8;
-                                        changed = true;
-                                    }
-                                });
-
-                                // 窗口大小：固定尺寸，切档位直接改窗口，不做界面缩放。
-                                // 缩放会让内容比窗口先变大，五列必然挤坏。
-                                ui.add_space(10.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(crate::tr!("窗口大小")).size(10.5).color(MUTED));
-                                    ui.add_space(12.0);
-                                    for m in settings::WindowSize::all() {
-                                        let on = self.cfg.window == m;
-                                        if seg_button(ui, m.label(), on) {
-                                            self.cfg.window = m;
-                                            let (w, h) = m.size_px();
-                                            // InnerSize 会再乘一次全局 zoom，先除掉
-                                            ui.ctx().send_viewport_cmd(
-                                                egui::ViewportCommand::InnerSize(
-                                                    egui::vec2(w / BASE_ZOOM, h / BASE_ZOOM),
-                                                ),
-                                            );
-                                            changed = true;
-                                        }
-                                    }
-                                });
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    if seg_button(ui, crate::tr!("全屏"), self.fullscreen) {
-                                        crate::set_fullscreen(
-                                            &mut self.fullscreen,
-                                            ui.ctx(),
-                                            self.cfg.window.size_px(),
-                                        );
-                                    }
-                                    ui.label(
-                                        RichText::new(crate::tr!("F11 切换；Esc 退出全屏"))
-                                            .size(9.0)
-                                            .color(DIM),
-                                    );
-                                });
-                                ui.add_space(4.0);
-                                ui.label(
-                                    RichText::new(crate::tr!("窗口固定尺寸：小 1160×660，中 1260×700，大 1380×760，超大 1580×880（随屏幕自动缩放）"))
-                                        .size(9.0)
-                                        .color(DIM),
-                                );
-
-                                ui.add_space(18.0);
-
-                                // ── 行为 ──
-                                section(ui, crate::tr!("行为"));
-                                let mut auto = self.cfg.auto_analyze;
-                                // 复选框底色透明：只留勾和文字，别在深色面板上再压一块方块
-                                let r = ui
-                                    .scope(|ui| {
-                                        let v = &mut ui.style_mut().visuals.widgets;
-                                        v.inactive.bg_fill = Color32::TRANSPARENT;
-                                        v.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                                        v.inactive.bg_stroke = Stroke::NONE;
-                                        v.hovered.bg_fill = tint(Color32::WHITE, 8);
-                                        v.hovered.weak_bg_fill = tint(Color32::WHITE, 8);
-                                        v.hovered.bg_stroke = Stroke::NONE;
-                                        v.active.bg_fill = tint(Color32::WHITE, 12);
-                                        v.active.weak_bg_fill = tint(Color32::WHITE, 12);
-                                        v.active.bg_stroke = Stroke::NONE;
-                                        ui.checkbox(
-                                            &mut auto,
-                                            RichText::new(crate::tr!("选中文件时自动分析频谱"))
-                                                .size(10.5)
-                                                .color(MUTED),
-                                        )
-                                    })
-                                    .inner;
-                                if r.changed() {
-                                    self.cfg.auto_analyze = auto;
-                                    changed = true;
-                                }
-                                ui.add_space(4.0);
-                                ui.label(
-                                    RichText::new(crate::tr!("关掉后不自动分析，省 CPU；每个文件约 1 秒"))
-                                        .size(9.0)
-                                        .color(DIM),
-                                );
-
-                                ui.add_space(18.0);
-                                section(ui, crate::tr!("配置"));
-                                self.profile_panel(ui);
-
-                                ui.add_space(18.0);
-
-                                        },
-                                    );
-                                    ui.add_space(28.0);
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(col_w, col_h),
-                                        Layout::top_down(Align::LEFT),
-                                        |ui| {
-                                            ui.set_max_width(col_w);
-                                // ── 关于 ──
-                                section(ui, crate::tr!("关于"));
-                                egui::Grid::new("about")
-                                    .num_columns(2)
-                                    .spacing([16.0, 6.0])
-                                    .show(ui, |ui| {
-                                        row(ui, crate::tr!("程序"), APP_NAME);
-                                        row(ui, crate::tr!("版本"), crate::VERSION);
-                                        // 署名用昵称，不写真名：隐私和以后转手都方便
-                                        row(ui, crate::tr!("开发"), crate::tr!("克洛伊Chloe"));
-                                        // 不写真名：昵称和收款码上的署名一致，隐私和转手都方便
-                                        row(ui, crate::tr!("字体"), "Noto Sans SC（SIL OFL 1.1）");
-                                        row(ui, crate::tr!("音频解码"), crate::tr!("ffmpeg 子进程"));
-                                        row(ui, crate::tr!("ATRAC 编码"), crate::tr!("atracdenc（LGPL-2.1+，需自行安装）"));
-                                        row(ui, crate::tr!("频谱分析"), crate::tr!("fc-analyze（自研）"));
-                                        row(ui, crate::tr!("许可"), crate::tr!("开源，详见仓库"));
-                                    });
-
-                                // GitHub：图标 + 仓库链接，点哪个都打开仓库
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    if let Some(icon) = &self.github_icon {
-                                        let r = ui.add(
-                                            egui::ImageButton::new(
-                                                egui::Image::new(icon)
-                                                    .fit_to_exact_size(egui::vec2(22.0, 22.0)),
-                                            )
-                                            .frame(false),
-                                        );
-                                        if r.on_hover_text(GITHUB_URL).clicked() {
-                                            ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
-                                        }
-                                    }
-                                    let link = ui.add(
-                                        egui::Label::new(
-                                            RichText::new("TeiketsuCN / ToneLore")
-                                                .size(9.5)
-                                                .color(accent()),
-                                        )
-                                        .sense(egui::Sense::click()),
-                                    );
-                                    if link.clicked() {
-                                        ui.ctx().open_url(egui::OpenUrl::new_tab(GITHUB_URL));
-                                    }
-                                });
-
-                                ui.add_space(10.0);
-                                section(ui, crate::tr!("依赖 / 外部工具"));
-
-                                // 一行：圆点 + 名字 + 状态；下面缩进一行路径
-                                let dep = |ui: &mut egui::Ui,
-                                               name: &str,
-                                               ok: bool,
-                                               status: &str,
-                                               detail: &str| {
-                                    ui.horizontal(|ui| {
-                                        let (r, _) = ui.allocate_exact_size(
-                                            egui::vec2(10.0, 10.0),
-                                            egui::Sense::hover(),
-                                        );
-                                        ui.painter().circle_filled(
-                                            r.center(),
-                                            3.0,
-                                            if ok { accent() } else { WARN },
-                                        );
-                                        ui.label(
-                                            RichText::new(name)
-                                                .size(9.5)
-                                                .color(if ok { TEXT } else { MUTED }),
-                                        );
-                                        ui.label(
-                                            RichText::new(status)
-                                                .size(8.8)
-                                                .color(if ok { accent() } else { WARN }),
-                                        );
-                                    });
-                                    if !detail.is_empty() {
-                                        ui.horizontal(|ui| {
-                                            ui.add_space(14.0);
-                                            ui.add(
-                                                egui::Label::new(
-                                                    RichText::new(detail).size(8.0).color(DIM),
-                                                )
-                                                .truncate(),
-                                            );
-                                        });
-                                    }
-                                };
-
-                                // ffmpeg：核心依赖
-                                {
-                                    let ok = self.tools.is_some();
-                                    let path = self
-                                        .tools
-                                        .as_ref()
-                                        .map(|t| t.ffmpeg.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("未找到 —— 所有转换都不可用").to_string());
-                                    let status = if ok {
-                                        format!(
-                                            "{} · {} 个编码器",
-                                            self.ffmpeg_ver.as_deref().unwrap_or(crate::tr!("版本未知")),
-                                            self.encoders.len()
-                                        )
-                                    } else {
-                                        crate::tr!("未找到").to_string()
-                                    };
-                                    dep(ui, "ffmpeg", ok, &status, &path);
-                                }
-                                // ffprobe：读文件真实参数
-                                {
-                                    let ok = self.tools.is_some();
-                                    let path = self
-                                        .tools
-                                        .as_ref()
-                                        .map(|t| t.ffprobe.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("未找到 —— 读不出采样率/位深").to_string());
-                                    let status = if ok { crate::tr!("已找到") } else { crate::tr!("未找到") };
-                                    dep(ui, "ffprobe", ok, status, &path);
-                                }
-                                // atracdenc：可选
-                                {
-                                    let ok = self.atracdenc.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已安装 · ATRAC1/3/3+ 可输出")
-                                    } else {
-                                        crate::tr!("未安装（可选）· ATRAC 只能解码")
-                                    };
-                                    let path = self
-                                        .atracdenc
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| {
-                                            crate::tr!("装好后放到程序目录或 PATH，再点下面的「重新检测」")
-                                                .to_string()
-                                        });
-                                    dep(ui, "atracdenc", ok, status, &path);
-                                }
-                                // speexenc：随包
-                                {
-                                    let ok = self.speexenc.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · Speex 可输出")
-                                    } else {
-                                        crate::tr!("未找到 · Speex 不可输出")
-                                    };
-                                    let path = self
-                                        .speexenc
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| {
-                                            crate::tr!("随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录")
-                                                .to_string()
-                                        });
-                                    dep(ui, "speexenc", ok, status, &path);
-                                }
-                                // wavpack：可选，有损 hybrid 模式要靠它
-                                {
-                                    let ok = self.wavpack.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · WavPack 有损可输出")
-                                    } else {
-                                        crate::tr!("未找到（可选）· 只有无损 WavPack")
-                                    };
-                                    let path = self
-                                        .wavpack
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| {
-                                            crate::tr!("ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损")
-                                                .to_string()
-                                        });
-                                    dep(ui, "wavpack", ok, status, &path);
-                                }
-                                // ofr：OptimFROG，官方不随包
-                                {
-                                    let ok = self.ofr.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · OptimFROG 可输出")
-                                    } else {
-                                        crate::tr!("未安装（可选）· 只能解码")
-                                    };
-                                    let path = self
-                                        .ofr
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| {
-                                            crate::tr!("官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录")
-                                                .to_string()
-                                        });
-                                    dep(ui, "ofr", ok, status, &path);
-                                }
-                                // mpcenc：随包，Musepack 用
-                                {
-                                    let ok = self.mpcenc.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · Musepack 可输出")
-                                    } else {
-                                        crate::tr!("未找到 · Musepack 不可输出")
-                                    };
-                                    let path = self
-                                        .mpcenc
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("随包提供，通常在 musepack 目录").to_string());
-                                    dep(ui, "mpcenc", ok, status, &path);
-                                }
-                                // psxavenc：可选，PS1 XA / PS2 VAG 用
-                                {
-                                    let ok = self.psxavenc.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · PS1 XA / PS2 VAG 可输出")
-                                    } else {
-                                        crate::tr!("未找到（可选）· PS1 XA / PS2 VAG 不可输出")
-                                    };
-                                    let path = self
-                                        .psxavenc
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 psxavenc 子目录").to_string());
-                                    dep(ui, "psxavenc", ok, status, &path);
-                                }
-                                // qoaconv：可选，QOA 用
-                                {
-                                    let ok = self.qoaconv.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · QOA 可输出")
-                                    } else {
-                                        crate::tr!("未找到（可选）· QOA 不可输出")
-                                    };
-                                    let path = self
-                                        .qoaconv
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 qoa 子目录").to_string());
-                                    dep(ui, "qoaconv", ok, status, &path);
-                                }
-                                // VGAudioCli：可选，任天堂系容器用
-                                {
-                                    let ok = self.vgaudio.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · BRSTM/BCSTM/BFSTM/DSP/IDSP 可输出")
-                                    } else {
-                                        crate::tr!("未找到（可选）· 任天堂容器不可输出")
-                                    };
-                                    let path = self
-                                        .vgaudio
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 vgaudio 子目录").to_string());
-                                    dep(ui, "vgaudio", ok, status, &path);
-                                }
-                                // vadpcm：可选，N64 VADPCM 用
-                                {
-                                    let ok = self.vadpcm.is_some();
-                                    let status = if ok {
-                                        crate::tr!("已找到 · N64 VADPCM 可输出")
-                                    } else {
-                                        crate::tr!("未找到（可选）· N64 VADPCM 不可输出")
-                                    };
-                                    let path = self
-                                        .vadpcm
-                                        .as_ref()
-                                        .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 vadpcm 子目录").to_string());
-                                    dep(ui, "vadpcm", ok, status, &path);
-                                }
-
-                                ui.add_space(8.0);
-                                ui.horizontal(|ui| {
-                                    let b = egui::Button::new(
-                                        RichText::new(crate::tr!("重新检测")).size(9.0).color(MUTED),
-                                    )
-                                    .fill(tint(Color32::WHITE, 10))
-                                    .stroke(line(Color32::WHITE, 18))
-                                    .rounding(Rounding::same(7.0));
-                                    if ui.add(b).clicked() {
-                                        self.tools = fc_core::locate();
-                                        if let Some(t) = &self.tools {
-                                            self.ffmpeg_ver = fc_core::ffmpeg_version(&t.ffmpeg);
-                                            self.encoders = fc_core::list_encoders(&t.ffmpeg);
-                                        }
-                                        self.atracdenc = fc_core::find_atracdenc();
-                                        self.speexenc = fc_core::find_speexenc();
-                                        self.wavpack = fc_core::find_wavpack();
-                                        self.ofr = fc_core::find_ofr();
-                                        self.mpcenc = fc_core::find_mpcenc();
-                                        self.psxavenc = fc_core::find_psxavenc();
-                                        self.qoaconv = fc_core::find_qoaconv();
-                                        self.vgaudio = fc_core::find_vgaudio();
-                                        self.vadpcm = fc_core::find_vadpcm();
-                                        changed = true;
-                                    }
-                                    ui.label(
-                                        RichText::new(crate::tr!("换过工具目录或版本后点一下"))
-                                            .size(8.5)
-                                            .color(DIM),
-                                    );
-                                });
-                                para(
-                                    ui,
-                                    crate::tr!("atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。"),
-                                    8.5,
-                                    DIM,
-                                );
-
-                                ui.add_space(16.0);
-                                section(ui, crate::tr!("文件关联"));
-                                para(
-                                    ui,
-                                    crate::tr!("注册后 ToneLore 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。"),
-                                    8.5,
-                                    DIM,
-                                );
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    let mk = |label: &str| {
-                                        egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
-                                            .fill(tint(Color32::WHITE, 10))
-                                            .stroke(line(Color32::WHITE, 18))
-                                            .rounding(Rounding::same(7.0))
-                                    };
-                                    if ui.add(mk(crate::tr!("注册到打开方式"))).clicked() {
-                                        self.assoc_msg = Some(match crate::assoc::register() {
-                                            Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneLore。").to_string(),
-                                            Err(e) => crate::fmt2!("注册失败：{e}", "Registration failed: {e}"),
-                                        });
-                                    }
-                                    if ui.add(mk(crate::tr!("移除注册"))).clicked() {
-                                        self.assoc_msg = Some(match crate::assoc::unregister() {
-                                            Ok(()) => crate::tr!("已移除注册。").to_string(),
-                                            Err(e) => crate::fmt2!("移除失败：{e}", "Removal failed: {e}"),
-                                        });
-                                    }
-                                    if ui.add(mk(crate::tr!("打开默认应用设置"))).clicked() {
-                                        crate::assoc::open_default_apps();
-                                    }
-                                });
-                                if let Some(m) = &self.assoc_msg {
-                                    para(ui, m, 8.5, DIM);
-                                }
-
-                                ui.add_space(16.0);
-                                section(ui, crate::tr!("语言 / Language"));
-                                ui.horizontal(|ui| {
-                                    if ui
-                                        .selectable_label(self.cfg.lang == "zh", crate::tr!("中文"))
-                                        .clicked()
-                                    {
-                                        self.cfg.lang = "zh".to_string();
-                                        crate::i18n::set_lang("zh");
-                                        fc_analyze::set_en(false);
-                                        fc_core::format::set_en(false);
-                                        fc_core::wiki::set_en(false);
-                                        self.cfg.save();
-                                        ui.ctx().request_repaint();
-                                    }
-                                    if ui
-                                        .selectable_label(self.cfg.lang == "en", "English")
-                                        .clicked()
-                                    {
-                                        self.cfg.lang = "en".to_string();
-                                        crate::i18n::set_lang("en");
-                                        fc_analyze::set_en(true);
-                                        fc_core::format::set_en(true);
-                                        fc_core::wiki::set_en(true);
-                                        self.cfg.save();
-                                        ui.ctx().request_repaint();
-                                    }
-                                });
-                                para(
-                                    ui,
-                                    "Switch takes effect immediately. English translation is being filled in.",
-                                    8.5,
-                                    DIM,
-                                );
-
-                                ui.add_space(16.0);
-                                section(ui, crate::tr!("CUE 分轨"));
-                                para(
-                                    ui,
-                                    crate::tr!("选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。"),
-                                    8.5,
-                                    DIM,
-                                );
-                                ui.add_space(6.0);
-                                let cue_btn = egui::Button::new(
-                                    RichText::new(crate::tr!("选择 CUE 并分轨")).size(9.0).color(MUTED),
-                                )
-                                .fill(tint(Color32::WHITE, 10))
-                                .stroke(line(Color32::WHITE, 18))
-                                .rounding(Rounding::same(7.0));
-                                if ui.add(cue_btn).clicked() {
-                                    if let Some(cue) = rfd::FileDialog::new()
-                                        .add_filter("CUE", &["cue"])
-                                        .pick_file()
-                                    {
-                                        let tools = self.tools.clone();
-                                        let target = self.target.id;
-                                        let out = cue
-                                            .parent()
-                                            .unwrap_or_else(|| std::path::Path::new("."))
-                                            .to_path_buf();
-                                        self.cue_msg = Some(crate::tr!("正在分轨…").to_string());
-                                        let (tx, rx) = std::sync::mpsc::channel();
-                                        self.cue_rx = Some(rx);
-                                        std::thread::spawn(move || {
-                                            let res = match tools {
-                                                Some(t) => fc_core::cue::split(
-                                                    &t, &cue, &out, target, |_, _| {},
-                                                )
-                                                .map_err(|e| format!("{e:#}")),
-                                                None => Err(crate::tr!("找不到 ffmpeg").to_string()),
-                                            };
-                                            let _ = tx.send(res);
-                                        });
-                                    }
-                                }
-                                if let Some(m) = &self.cue_msg {
-                                    para(ui, m, 8.5, DIM);
-                                }
-
-                                ui.add_space(18.0);
-                                section(ui, crate::tr!("支持开发"));
-                                para(
-                                    ui,
-                                    crate::tr!("免费、开源、不卖授权。觉得有用就扫下面任意一个。"),
-                                    9.5,
-                                    MUTED,
-                                );
-                                ui.add_space(10.0);
-                                ui.horizontal(|ui| {
-                                    for (tex, label) in [
-                                        (&self.donate_wechat, crate::tr!("微信")),
-                                        (&self.donate_alipay, crate::tr!("支付宝")),
-                                    ] {
-                                        ui.vertical(|ui| {
-                                            if let Some(t) = tex {
-                                                ui.add(
-                                                    egui::Image::new(t)
-                                                        .fit_to_exact_size(egui::vec2(96.0, 96.0)),
-                                                );
-                                            }
-                                            ui.add_space(3.0);
-                                            ui.label(RichText::new(label).size(9.0).color(DIM));
-                                        });
-                                        ui.add_space(14.0);
-                                    }
-                                });
-                                        },
-                                    );
-                                });
                             });
                     });
             });
@@ -1056,6 +390,591 @@ impl App {
         }
     }
 
+    /// 设置「显示」：外观（背景 / 暗化 / 窗口大小）+ 语言。
+    fn display_tab(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
+        // ── 外观 ──
+        section(ui, crate::tr!("外观"));
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(crate::tr!("背景")).size(10.5).color(MUTED));
+            ui.add_space(12.0);
+            for m in settings::BgMode::all() {
+                let on = self.cfg.bg_mode == m;
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(m.label()).size(10.5).color(if on {
+                                on_accent()
+                            } else {
+                                MUTED
+                            }),
+                        )
+                        .fill(if on { accent() } else { tint(Color32::WHITE, 10) })
+                        .stroke(if on {
+                            Stroke::NONE
+                        } else {
+                            line(Color32::WHITE, 20)
+                        })
+                        .rounding(Rounding::same(8.0)),
+                    )
+                    .clicked()
+                {
+                    self.cfg.bg_mode = m;
+                    *changed = true;
+                }
+            }
+        });
+
+        if self.cfg.bg_mode == settings::BgMode::Solid {
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(64.0);
+                for c in SOLIDS {
+                    let on = self.cfg.bg_color == c;
+                    let col = Color32::from_rgb(c[0], c[1], c[2]);
+                    let (rect, resp) = ui.allocate_exact_size(
+                        egui::vec2(20.0, 20.0),
+                        egui::Sense::click(),
+                    );
+                    let p = ui.painter();
+                    p.rect_filled(rect, Rounding::same(6.0), col);
+                    if on {
+                        p.rect_stroke(
+                            rect.expand(2.0),
+                            Rounding::same(7.0),
+                            Stroke::new(1.5, accent()),
+                        );
+                    }
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(
+                            egui::CursorIcon::PointingHand,
+                        );
+                    }
+                    if resp.clicked() {
+                        self.cfg.bg_color = c;
+                        *changed = true;
+                    }
+                }
+            });
+        }
+        if self.cfg.bg_mode == settings::BgMode::Gradient {
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(64.0);
+                for (i, (name, _, _, _)) in
+                    crate::bg::GRADIENTS.iter().enumerate()
+                {
+                    let on = self.cfg.bg_gradient as usize == i;
+                    // 左边给个 12×12 的渐变小样，不然只有名字看不出颜色
+                    let (pre, _) = ui.allocate_exact_size(
+                        egui::vec2(12.0, 12.0),
+                        egui::Sense::hover(),
+                    );
+                    crate::bg::paint_gradient_preview(
+                        ui.painter(),
+                        pre,
+                        crate::bg::gradient_colors(i as u8),
+                    );
+                    if ui
+                        .add(
+                            egui::Button::new(RichText::new(crate::i18n::tr(*name)).size(
+                                10.5,
+                            ).color(if on {
+                                on_accent()
+                            } else {
+                                MUTED
+                            }))
+                            .fill(if on {
+                                accent()
+                            } else {
+                                tint(Color32::WHITE, 10)
+                            })
+                            .stroke(if on {
+                                Stroke::NONE
+                            } else {
+                                line(Color32::WHITE, 20)
+                            })
+                            .rounding(Rounding::same(8.0)),
+                        )
+                        .clicked()
+                    {
+                        self.cfg.bg_gradient = i as u8;
+                        *changed = true;
+                    }
+                }
+            });
+        }
+
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(crate::tr!("暗化")).size(10.5).color(MUTED));
+            ui.add_space(12.0);
+            let mut dim = self.cfg.dim as i32;
+            if bar_slider(ui, &mut dim, 0, 210, false) {
+                self.cfg.dim = dim as u8;
+                *changed = true;
+            }
+        });
+
+        // 窗口大小：固定尺寸，切档位直接改窗口，不做界面缩放。
+        // 缩放会让内容比窗口先变大，五列必然挤坏。
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(crate::tr!("窗口大小")).size(10.5).color(MUTED));
+            ui.add_space(12.0);
+            for m in settings::WindowSize::all() {
+                let on = self.cfg.window == m;
+                if seg_button(ui, m.label(), on) {
+                    self.cfg.window = m;
+                    let (w, h) = m.size_px();
+                    // InnerSize 会再乘一次全局 zoom，先除掉
+                    ui.ctx().send_viewport_cmd(
+                        egui::ViewportCommand::InnerSize(
+                            egui::vec2(w / BASE_ZOOM, h / BASE_ZOOM),
+                        ),
+                    );
+                    *changed = true;
+                }
+            }
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            if seg_button(ui, crate::tr!("全屏"), self.fullscreen) {
+                crate::set_fullscreen(
+                    &mut self.fullscreen,
+                    ui.ctx(),
+                    self.cfg.window.size_px(),
+                );
+            }
+            ui.label(
+                RichText::new(crate::tr!("F11 切换；Esc 退出全屏"))
+                    .size(9.0)
+                    .color(DIM),
+            );
+        });
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(crate::tr!("窗口固定尺寸：小 1160×660，中 1260×700，大 1380×760，超大 1580×880（随屏幕自动缩放）"))
+                .size(9.0)
+                .color(DIM),
+        );
+
+        section(ui, crate::tr!("语言 / Language"));
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.cfg.lang == "zh", crate::tr!("中文"))
+                .clicked()
+            {
+                self.cfg.lang = "zh".to_string();
+                crate::i18n::set_lang("zh");
+                fc_analyze::set_en(false);
+                fc_core::format::set_en(false);
+                fc_core::wiki::set_en(false);
+                self.cfg.save();
+                ui.ctx().request_repaint();
+            }
+            if ui
+                .selectable_label(self.cfg.lang == "en", "English")
+                .clicked()
+            {
+                self.cfg.lang = "en".to_string();
+                crate::i18n::set_lang("en");
+                fc_analyze::set_en(true);
+                fc_core::format::set_en(true);
+                fc_core::wiki::set_en(true);
+                self.cfg.save();
+                ui.ctx().request_repaint();
+            }
+        });
+        para(
+            ui,
+            "Switch takes effect immediately. English translation is being filled in.",
+            8.5,
+            DIM,
+        );
+    }
+
+    /// 设置「行为」：自动分析、配置方案、CUE 分轨。
+    fn behavior_tab(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
+        // ── 行为 ──
+        section(ui, crate::tr!("行为"));
+        let mut auto = self.cfg.auto_analyze;
+        // 复选框底色透明：只留勾和文字，别在深色面板上再压一块方块
+        let r = ui
+            .scope(|ui| {
+                let v = &mut ui.style_mut().visuals.widgets;
+                v.inactive.bg_fill = Color32::TRANSPARENT;
+                v.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                v.inactive.bg_stroke = Stroke::NONE;
+                v.hovered.bg_fill = tint(Color32::WHITE, 8);
+                v.hovered.weak_bg_fill = tint(Color32::WHITE, 8);
+                v.hovered.bg_stroke = Stroke::NONE;
+                v.active.bg_fill = tint(Color32::WHITE, 12);
+                v.active.weak_bg_fill = tint(Color32::WHITE, 12);
+                v.active.bg_stroke = Stroke::NONE;
+                ui.checkbox(
+                    &mut auto,
+                    RichText::new(crate::tr!("选中文件时自动分析频谱"))
+                        .size(10.5)
+                        .color(MUTED),
+                )
+            })
+            .inner;
+        if r.changed() {
+            self.cfg.auto_analyze = auto;
+            *changed = true;
+        }
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(crate::tr!("关掉后不自动分析，省 CPU；每个文件约 1 秒"))
+                .size(9.0)
+                .color(DIM),
+        );
+
+        ui.add_space(18.0);
+        section(ui, crate::tr!("配置"));
+        self.profile_panel(ui);
+
+ui.add_space(18.0);
+        section(ui, crate::tr!("CUE 分轨"));
+        para(
+            ui,
+            crate::tr!("选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。"),
+            8.5,
+            DIM,
+        );
+        ui.add_space(6.0);
+        let cue_btn = egui::Button::new(
+            RichText::new(crate::tr!("选择 CUE 并分轨")).size(9.0).color(MUTED),
+        )
+        .fill(tint(Color32::WHITE, 10))
+        .stroke(line(Color32::WHITE, 18))
+        .rounding(Rounding::same(7.0));
+        if ui.add(cue_btn).clicked() {
+            if let Some(cue) = rfd::FileDialog::new()
+                .add_filter("CUE", &["cue"])
+                .pick_file()
+            {
+                let tools = self.tools.clone();
+                let target = self.target.id;
+                let out = cue
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .to_path_buf();
+                self.cue_msg = Some(crate::tr!("正在分轨…").to_string());
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.cue_rx = Some(rx);
+                std::thread::spawn(move || {
+                    let res = match tools {
+                        Some(t) => fc_core::cue::split(
+                            &t, &cue, &out, target, |_, _| {},
+                        )
+                        .map_err(|e| format!("{e:#}")),
+                        None => Err(crate::tr!("找不到 ffmpeg").to_string()),
+                    };
+                    let _ = tx.send(res);
+                });
+            }
+        }
+        if let Some(m) = &self.cue_msg {
+            para(ui, m, 8.5, DIM);
+        }
+    }
+
+    /// 设置「工具」：外部编码器探测结果 + 文件关联。
+    fn tools_tab(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
+        section(ui, crate::tr!("依赖 / 外部工具"));
+
+        // 一行：圆点 + 名字 + 状态；下面缩进一行路径
+        let dep = |ui: &mut egui::Ui,
+                       name: &str,
+                       ok: bool,
+                       status: &str,
+                       detail: &str| {
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(
+                    egui::vec2(10.0, 10.0),
+                    egui::Sense::hover(),
+                );
+                ui.painter().circle_filled(
+                    r.center(),
+                    3.0,
+                    if ok { accent() } else { WARN },
+                );
+                ui.label(
+                    RichText::new(name)
+                        .size(9.5)
+                        .color(if ok { TEXT } else { MUTED }),
+                );
+                ui.label(
+                    RichText::new(status)
+                        .size(8.8)
+                        .color(if ok { accent() } else { WARN }),
+                );
+            });
+            if !detail.is_empty() {
+                ui.horizontal(|ui| {
+                    ui.add_space(14.0);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(detail).size(8.0).color(DIM),
+                        )
+                        .truncate(),
+                    );
+                });
+            }
+        };
+
+        // ffmpeg：核心依赖
+        {
+            let ok = self.tools.is_some();
+            let path = self
+                .tools
+                .as_ref()
+                .map(|t| t.ffmpeg.display().to_string())
+                .unwrap_or_else(|| crate::tr!("未找到 —— 所有转换都不可用").to_string());
+            let status = if ok {
+                format!(
+                    "{} · {} 个编码器",
+                    self.ffmpeg_ver.as_deref().unwrap_or(crate::tr!("版本未知")),
+                    self.encoders.len()
+                )
+            } else {
+                crate::tr!("未找到").to_string()
+            };
+            dep(ui, "ffmpeg", ok, &status, &path);
+        }
+        // ffprobe：读文件真实参数
+        {
+            let ok = self.tools.is_some();
+            let path = self
+                .tools
+                .as_ref()
+                .map(|t| t.ffprobe.display().to_string())
+                .unwrap_or_else(|| crate::tr!("未找到 —— 读不出采样率/位深").to_string());
+            let status = if ok { crate::tr!("已找到") } else { crate::tr!("未找到") };
+            dep(ui, "ffprobe", ok, status, &path);
+        }
+        // atracdenc：可选
+        {
+            let ok = self.atracdenc.is_some();
+            let status = if ok {
+                crate::tr!("已安装 · ATRAC1/3/3+ 可输出")
+            } else {
+                crate::tr!("未安装（可选）· ATRAC 只能解码")
+            };
+            let path = self
+                .atracdenc
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr!("装好后放到程序目录或 PATH，再点下面的「重新检测」")
+                        .to_string()
+                });
+            dep(ui, "atracdenc", ok, status, &path);
+        }
+        // speexenc：随包
+        {
+            let ok = self.speexenc.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · Speex 可输出")
+            } else {
+                crate::tr!("未找到 · Speex 不可输出")
+            };
+            let path = self
+                .speexenc
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr!("随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录")
+                        .to_string()
+                });
+            dep(ui, "speexenc", ok, status, &path);
+        }
+        // wavpack：可选，有损 hybrid 模式要靠它
+        {
+            let ok = self.wavpack.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · WavPack 有损可输出")
+            } else {
+                crate::tr!("未找到（可选）· 只有无损 WavPack")
+            };
+            let path = self
+                .wavpack
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr!("ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损")
+                        .to_string()
+                });
+            dep(ui, "wavpack", ok, status, &path);
+        }
+        // ofr：OptimFROG，官方不随包
+        {
+            let ok = self.ofr.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · OptimFROG 可输出")
+            } else {
+                crate::tr!("未安装（可选）· 只能解码")
+            };
+            let path = self
+                .ofr
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr!("官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录")
+                        .to_string()
+                });
+            dep(ui, "ofr", ok, status, &path);
+        }
+        // mpcenc：随包，Musepack 用
+        {
+            let ok = self.mpcenc.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · Musepack 可输出")
+            } else {
+                crate::tr!("未找到 · Musepack 不可输出")
+            };
+            let path = self
+                .mpcenc
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| crate::tr!("随包提供，通常在 musepack 目录").to_string());
+            dep(ui, "mpcenc", ok, status, &path);
+        }
+        // psxavenc：可选，PS1 XA / PS2 VAG 用
+        {
+            let ok = self.psxavenc.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · PS1 XA / PS2 VAG 可输出")
+            } else {
+                crate::tr!("未找到（可选）· PS1 XA / PS2 VAG 不可输出")
+            };
+            let path = self
+                .psxavenc
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| crate::tr!("放到程序目录或 psxavenc 子目录").to_string());
+            dep(ui, "psxavenc", ok, status, &path);
+        }
+        // qoaconv：可选，QOA 用
+        {
+            let ok = self.qoaconv.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · QOA 可输出")
+            } else {
+                crate::tr!("未找到（可选）· QOA 不可输出")
+            };
+            let path = self
+                .qoaconv
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| crate::tr!("放到程序目录或 qoa 子目录").to_string());
+            dep(ui, "qoaconv", ok, status, &path);
+        }
+        // VGAudioCli：可选，任天堂系容器用
+        {
+            let ok = self.vgaudio.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · BRSTM/BCSTM/BFSTM/DSP/IDSP 可输出")
+            } else {
+                crate::tr!("未找到（可选）· 任天堂容器不可输出")
+            };
+            let path = self
+                .vgaudio
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| crate::tr!("放到程序目录或 vgaudio 子目录").to_string());
+            dep(ui, "vgaudio", ok, status, &path);
+        }
+        // vadpcm：可选，N64 VADPCM 用
+        {
+            let ok = self.vadpcm.is_some();
+            let status = if ok {
+                crate::tr!("已找到 · N64 VADPCM 可输出")
+            } else {
+                crate::tr!("未找到（可选）· N64 VADPCM 不可输出")
+            };
+            let path = self
+                .vadpcm
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| crate::tr!("放到程序目录或 vadpcm 子目录").to_string());
+            dep(ui, "vadpcm", ok, status, &path);
+        }
+
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            let b = egui::Button::new(
+                RichText::new(crate::tr!("重新检测")).size(9.0).color(MUTED),
+            )
+            .fill(tint(Color32::WHITE, 10))
+            .stroke(line(Color32::WHITE, 18))
+            .rounding(Rounding::same(7.0));
+            if ui.add(b).clicked() {
+                self.tools = fc_core::locate();
+                if let Some(t) = &self.tools {
+                    self.ffmpeg_ver = fc_core::ffmpeg_version(&t.ffmpeg);
+                    self.encoders = fc_core::list_encoders(&t.ffmpeg);
+                }
+                self.atracdenc = fc_core::find_atracdenc();
+                self.speexenc = fc_core::find_speexenc();
+                self.wavpack = fc_core::find_wavpack();
+                self.ofr = fc_core::find_ofr();
+                self.mpcenc = fc_core::find_mpcenc();
+                self.psxavenc = fc_core::find_psxavenc();
+                self.qoaconv = fc_core::find_qoaconv();
+                self.vgaudio = fc_core::find_vgaudio();
+                self.vadpcm = fc_core::find_vadpcm();
+                *changed = true;
+            }
+            ui.label(
+                RichText::new(crate::tr!("换过工具目录或版本后点一下"))
+                    .size(8.5)
+                    .color(DIM),
+            );
+        });
+        para(
+            ui,
+            crate::tr!("atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。"),
+            8.5,
+            DIM,
+        );
+
+        section(ui, crate::tr!("文件关联"));
+        para(
+            ui,
+            crate::tr!("注册后 ToneLore 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。"),
+            8.5,
+            DIM,
+        );
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            let mk = |label: &str| {
+                egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
+                    .fill(tint(Color32::WHITE, 10))
+                    .stroke(line(Color32::WHITE, 18))
+                    .rounding(Rounding::same(7.0))
+            };
+            if ui.add(mk(crate::tr!("注册到打开方式"))).clicked() {
+                self.assoc_msg = Some(match crate::assoc::register() {
+                    Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneLore。").to_string(),
+                    Err(e) => crate::fmt2!("注册失败：{e}", "Registration failed: {e}"),
+                });
+            }
+            if ui.add(mk(crate::tr!("移除注册"))).clicked() {
+                self.assoc_msg = Some(match crate::assoc::unregister() {
+                    Ok(()) => crate::tr!("已移除注册。").to_string(),
+                    Err(e) => crate::fmt2!("移除失败：{e}", "Removal failed: {e}"),
+                });
+            }
+            if ui.add(mk(crate::tr!("打开默认应用设置"))).clicked() {
+                crate::assoc::open_default_apps();
+            }
+        });
+        if let Some(m) = &self.assoc_msg {
+            para(ui, m, 8.5, DIM);
+        }
+    }
     /// 标题栏那个小圆点（进度环）点开的面板：活动中心。
     ///
     /// 原来这里是"通知"面板；「任务」列被砍掉之后，任务的列表、开始按钮、

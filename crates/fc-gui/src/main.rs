@@ -723,7 +723,7 @@ impl App {
             ext_sel: target.ext,
             scenario: None,
             pl_sel: None,
-            settings_tab: overlays::SettingsTab::About,
+            settings_tab: overlays::SettingsTab::Display,
             qr_wechat: None,
             qr_alipay: None,
             console: Vec::new(),

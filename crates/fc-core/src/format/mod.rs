@@ -2089,6 +2089,15 @@ pub fn args_for_with(
         a.push(s("-ac"));
         a.push(ch.to_string());
     }
+    // 多声道源 → 只能装单/双声道的编码器：强制下混成 2.0。
+    // 不传 -ac 的话 ffmpeg 直接报 "channel layout not supported"，
+    // 用户只能看到一句 cannot write header（5.1 源验证时暴露过）。
+    if !channels_for(spec) && !a.iter().any(|x| x == "-ac") {
+        if src.map(|i| i.channels > 2).unwrap_or(false) {
+            a.push(s("-ac"));
+            a.push(s("2"));
+        }
+    }
     a
 }
 
@@ -2459,6 +2468,33 @@ mod tests {
         // 裸 PCM 还要带 muxer
         let a = args_for(spec("pcm"), &o);
         assert!(a.contains(&"f32le".to_string()), "裸 PCM 缺 muxer: {a:?}");
+    }
+
+    #[test]
+    fn multichannel_source_downmixes_for_stereo_only_targets() {
+        let mut src = mi("flac", 1411, 48000);
+        src.channels = 6;
+        // WMA / SWF 这些编码器只吃单/双声道：必须显式下混，
+        // 否则 ffmpeg 直接报 "channel layout not supported / cannot write header"。
+        for id in ["wma", "wma_v1", "lc3", "adx", "voc", "aptx"] {
+            let a = args_for_with(spec(id), &ConvertOptions::default(), Some(&src));
+            assert!(
+                a.windows(2).any(|w| w[0] == "-ac" && w[1] == "2"),
+                "{id} 没下混: {a:?}"
+            );
+        }
+        // 支持多声道的格式保持源布局，别乱下混
+        for id in ["flac", "ac3", "eac3", "opus", "vorbis"] {
+            let a = args_for_with(spec(id), &ConvertOptions::default(), Some(&src));
+            assert!(
+                !a.windows(2).any(|w| w[0] == "-ac" && w[1] == "2"),
+                "{id} 不该下混: {a:?}"
+            );
+        }
+        // 立体声源不加 -ac
+        let stereo = mi("flac", 1411, 48000);
+        let a = args_for_with(spec("wma"), &ConvertOptions::default(), Some(&stereo));
+        assert!(!a.windows(2).any(|w| w[0] == "-ac"));
     }
 
     #[test]

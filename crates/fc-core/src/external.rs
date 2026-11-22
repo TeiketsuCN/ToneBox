@@ -385,7 +385,7 @@ pub fn ofr_convert(
     let mut dec = Command::new(&tools.ffmpeg);
     dec.args(["-v", "error", "-nostdin", "-y", "-i"])
         .arg(input)
-        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le", "-ac", "2"])
         .arg(&tmp_wav)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -468,7 +468,7 @@ pub fn mpc_convert(
     let mut dec = Command::new(&tools.ffmpeg);
     dec.args(["-v", "error", "-nostdin", "-y", "-i"])
         .arg(input)
-        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", "-ac", "2"])
         .arg(&tmp_wav)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -634,7 +634,7 @@ pub fn qoa_convert(
     let mut dec = Command::new(&tools.ffmpeg);
     dec.args(["-v", "error", "-nostdin", "-y", "-i"])
         .arg(input)
-        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", "-ac", "2"])
         .arg(&tmp_wav)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
