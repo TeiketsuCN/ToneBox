@@ -71,9 +71,9 @@ pub enum Patent {
 impl Patent {
     pub fn label(self) -> &'static str {
         match self {
-            Patent::Free => "无专利",
-            Patent::Expiring => "专利部分过期",
-            Patent::Active => "专利在保护期",
+            Patent::Free => if en() { "No patent" } else { "无专利" },
+            Patent::Expiring => if en() { "Patents partly expired" } else { "专利部分过期" },
+            Patent::Active => if en() { "Patents active" } else { "专利在保护期" },
         }
     }
 }
@@ -758,10 +758,10 @@ pub enum BitDepth {
 impl BitDepth {
     pub fn label(self) -> &'static str {
         match self {
-            BitDepth::Auto => "自动（跟源）",
+            BitDepth::Auto => if en() { "Auto (follow source)" } else { "自动（跟源）" },
             BitDepth::Int16 => "16-bit",
             BitDepth::Int24 => "24-bit",
-            BitDepth::Int32f => "32-bit 浮点",
+            BitDepth::Int32f => if en() { "32-bit float" } else { "32-bit 浮点" },
         }
     }
     /// 小端（WAV / CAF / W64 / 裸 PCM 用）
@@ -857,7 +857,7 @@ pub enum VideoCodec {
 impl VideoCodec {
     pub fn label(self) -> &'static str {
         match self {
-            VideoCodec::Copy => "直接复制",
+            VideoCodec::Copy => if en() { "Copy" } else { "直接复制" },
             VideoCodec::H264 => "H.264",
             VideoCodec::Hevc => "H.265",
             VideoCodec::Vp9 => "VP9",
@@ -1445,8 +1445,8 @@ pub enum ChannelMode {
 impl ChannelMode {
     pub fn label(self) -> &'static str {
         match self {
-            ChannelMode::Auto => "保持源",
-            ChannelMode::Stereo => "立体声",
+            ChannelMode::Auto => if en() { "Keep source" } else { "保持源" },
+            ChannelMode::Stereo => if en() { "Stereo" } else { "立体声" },
             ChannelMode::Surround51 => "5.1",
         }
     }

@@ -137,7 +137,7 @@ impl App {
             for p in fc_core::PRESETS {
                 let on = self.target.id == p.format;
                 let b = egui::Button::new(
-                    RichText::new(p.name).size(9.5).color(if on {
+                    RichText::new(crate::i18n::tr(p.name)).size(9.5).color(if on {
                         accent()
                     } else {
                         MUTED
@@ -332,7 +332,7 @@ impl App {
             hint_below(ui, &w.body, WARN);
         }
         if fc_core::is_video(self.target) {
-            hint_below(ui, fc_core::video_knob_note(self.target.id), DIM);
+            hint_below(ui, crate::i18n::tr(fc_core::video_knob_note(self.target.id)), DIM);
         }
         // 外部编码器：让用户知道这一步不是 ffmpeg 干的
         if let Some(name) = fc_core::external_encoder(self.target.id) {
@@ -1325,7 +1325,7 @@ pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
         }
     });
     if let Some(note) = fc_core::by_id(id).and_then(fc_core::knob_note) {
-        hint_below(ui, note, DIM);
+        hint_below(ui, crate::i18n::tr(note), DIM);
     }
     changed
 }

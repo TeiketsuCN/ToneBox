@@ -1095,18 +1095,59 @@ Read-only reference; not an output.",
         "检查 Musepack 编码器" => "Checking Musepack encoder",
         "读取配置与音乐库" => "Reading settings and library",
         "输出已生成，但自检没通过" => "File written, but self-check failed",
+        "极光" => "Aurora",
+        "晚霞" => "Sunset",
+        "青瓷" => "Celadon",
+        "深海" => "Deep sea",
+        "紫罗兰" => "Violet",
+        "森林" => "Forest",
+        "琥珀" => "Amber",
+        "落樱" => "Falling petals",
+        "钢蓝" => "Steel blue",
+        "石墨" => "Graphite",
+        "杜比全景声 AC-4" => "Dolby Atmos AC-4",
+        "杜比全景声 E-AC-3" => "Dolby Atmos E-AC-3",
+        "杜比全景声 TrueHD" => "Dolby Atmos TrueHD",
+        "菁彩声 Audio Vivid" => "Audio Vivid",
+        "132k = LP2，66k = LP4。这档由外部的 atracdenc 决定，不是 ffmpeg。" => "132k = LP2, 66k = LP4. This is set by external atracdenc, not ffmpeg.",
+        "16/24/32/40kbps 四档，8kHz 单声道。" => "Four steps: 16/24/32/40 kbps, 8 kHz mono.",
+        "3GPP 手机容器：画面 MPEG-4、声音 AAC，体积小。" => "3GPP phone container: MPEG-4 video, AAC audio, small files.",
+        "3GPP2/CDMA 手机容器：MPEG-4/H.264 + AAC，老 CDMA 机只认它。" => "3GPP2/CDMA phone container: MPEG-4/H.264 + AAC; old CDMA phones only accept it.",
+        "AMV 规格是死的：画面会被缩到 160×120/30fps，声音强制 22.05k 单声道。" => "AMV is fixed: video is scaled to 160×120/30fps, audio forced to 22.05k mono.",
+        "AMV：160×120/30fps + 22.05k 单声道 ADPCM，老国产 MP4 播放器专用。" => "AMV: 160×120/30fps + 22.05k mono ADPCM, for old Chinese MP4 players.",
+        "AVI 装 H.265 基本没有播放器认，别选。" => "AVI with H.265 is unplayable almost everywhere; don't use it.",
+        "DV 规格是死的：画面会缩放到 720×576、25fps，声音强制 48kHz 立体声。" => "DV is fixed: video scaled to 720×576/25fps, audio forced to 48 kHz stereo.",
+        "DVD 的容器：画面固定 MPEG-2、声音 AC-3，方便直接刻盘。" => "DVD container: fixed MPEG-2 video, AC-3 audio, ready for disc authoring.",
+        "E-AC-3 同码率比 AC-3 省，但老功放、老电视只认 AC-3。" => "E-AC-3 is more efficient than AC-3 at the same bitrate, but old receivers/TVs only accept AC-3.",
+        "FLAC 支持多声道（5.1 无损），但很多播放器/手机只按立体声放。" => "FLAC supports multichannel (5.1 lossless), but many players/phones only output stereo.",
+        "H.264 裸流：没有容器头，剪辑/硬件工具常见。" => "H.264 raw: no container header; common in editors and hardware tools.",
+        "H.265 会加 hvc1 标记，苹果设备才认。" => "H.265 gets the hvc1 tag so Apple devices accept it.",
+        "ISMV 是给 IIS Smooth Streaming 的分片文件，普通播放器能放但不是通用格式。" => "ISMV is a fragmented file for IIS Smooth Streaming; players can open it but it is not a general format.",
+        "MOV 的 H.265 用 hvc1 标记，Final Cut/QuickTime 才认。" => "MOV H.265 uses the hvc1 tag so Final Cut/QuickTime accept it.",
+        "MPEG 节目流：画面 MPEG-2、声音 MP2，老播放器和车载屏认它。" => "MPEG program stream: MPEG-2 video, MP2 audio; old players and car screens accept it.",
+        "NUT 只适合自己存档/实验，别发给别人。" => "NUT is for your own archives/experiments; don't send it to others.",
+        "NUT 是 ffmpeg 的实验容器：什么都能装，但播放器基本不认。" => "NUT is ffmpeg's experimental container: holds anything, but players rarely accept it.",
+        "QuickTime 容器：画面 H.264/H.265，声音 AAC/ALAC/AC-3 都收。" => "QuickTime container: H.264/H.265 video, AAC/ALAC/AC-3 audio.",
+        "SVCD 是固定规格：480×576、25fps、2500k、MP2 224k；参数会被强制。" => "SVCD is fixed: 480×576, 25fps, 2500k, MP2 224k; options are forced.",
+        "SVCD：MPEG-2 + MP2，固定 480×576/25fps，比 VCD 清楚但设备支持更少。" => "SVCD: MPEG-2 + MP2, fixed 480×576/25fps; sharper than VCD but fewer devices.",
+        "SWF 只认 FLV1 + MP3；Flash 已经停止支持。" => "SWF only supports FLV1 + MP3; Flash is discontinued.",
+        "TS/M2TS 没有索引，剪起来难受；只是给电视/蓝光机放就无所谓。" => "TS/M2TS has no index, so editing is painful; fine for TV/Blu-ray playback.",
+        "VCD 是固定规格：352×288、25fps、1150k、MP2 224k；参数会被强制。" => "VCD is fixed: 352×288, 25fps, 1150k, MP2 224k; options are forced.",
+        "Windows Media：画面 WMV2、声音 WMA，给老 Windows 设备和老播放器用。" => "Windows Media: WMV2 video, WMA audio, for old Windows devices and players.",
+        "只有两档：5 = 5.3kbps，6 = 6.3kbps。" => "Only two settings: 5 = 5.3 kbps, 6 = 6.3 kbps.",
+        "档位取整显示：12 实际是 12.2kbps，8 是 7.95kbps。" => "Rounded display: 12 is actually 12.2 kbps, 8 is 7.95 kbps.",
+        "电视/蓝光容器：H.264/H.265 + AAC/AC-3，没索引、拖进度条不灵。" => "TV/Blu-ray container: H.264/H.265 + AAC/AC-3; no index, seeking is poor.",
+        "老播放器通常只认 128~192k，调高不一定放得动。" => "Old players usually only handle 128–192k; higher may not play.",
+        "老网页容器：只有 H.264 + AAC/MP3，别指望新设备认。" => "Legacy web container: H.264 + AAC/MP3 only; don't expect new devices to accept it.",
         _ => key,
     }
 }
 
-/// `tr!("中文")` / `tr!("中文 {}", x)`。占位符顺序必须与英文模板一致。
+/// `tr!("中文")`。带参数的句子请用 fmt2!/say2!/err2!。
 #[macro_export]
 macro_rules! tr {
     ($s:literal) => {
         $crate::i18n::tr($s)
-    };
-    ($s:literal, $($arg:tt)*) => {
-        format!($crate::i18n::tr($s), $($arg)*)
     };
 }
 
@@ -1130,7 +1171,7 @@ macro_rules! fmt2 {
     };
 }
 
-/// 双语 println：`say2!("中文 {}", "English {}", x)`
+/// 双语 println
 #[macro_export]
 macro_rules! say2 {
     ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
