@@ -134,7 +134,7 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
 pub const APP_NAME: &str = "声箱ToneBox";
 /// 版本号只写这一处：关于页、启动过场都读它，别再多抄几份
-pub(crate) const VERSION: &str = "1.4.0";
+pub(crate) const VERSION: &str = "1.5.0";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;
@@ -2641,7 +2641,18 @@ fn main() -> eframe::Result<()> {
         }
         // 带上源信息：视频容器要靠它决定"能不能直接 copy"，
         // 否则 CLI 一律按 copy 走，转 mpg/vob 这种会直接失败
-        let mut args = fc_core::args_for_with(target, &fc_core::ConvertOptions::default(), Some(&info));
+        // 视频容器要先按"这个 ffmpeg 里真有的编码器"挑一个，
+        // 否则默认会写 libx264，而随包构建只有 libopenh264，CLI 会直接报错
+        let mut opts = fc_core::ConvertOptions::default();
+        if fc_core::is_video(target) {
+            let src_v = info.video_codec.clone().unwrap_or_default();
+            let vc = fc_core::effective_video_codec(target.id, &opts, &src_v);
+            let encs = fc_core::list_encoders(&tools.ffmpeg);
+            if let Some(e) = fc_core::resolve_video_encoder(vc, &encs, "") {
+                opts.video_encoder = e.to_string();
+            }
+        }
+        let mut args = fc_core::args_for_with(target, &opts, Some(&info));
         // 芯片音乐没有固定时长：默认只渲染前 3 分钟（和 GUI 批量一致）
         if fc_core::is_chiptune(Path::new(input)) {
             args.push("-t".to_string());

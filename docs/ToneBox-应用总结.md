@@ -3,7 +3,7 @@
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.4.0**（1.5 开发中：可输出已到 85，新增老游戏语音、视频容器、PS1/PS2 输出与主机音乐输入）
+- 文档版本：对应应用 **1.5.0**（95 个可输出；新增主机音乐输入、PS1/PS2、任天堂容器与 8 个视频容器）
 - 整理时间：2026-11
 - 仓库：<https://github.com/TeiketsuCN/ToneBox>
 
@@ -18,7 +18,7 @@
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
 | 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
-| 当前能力 | **91 个可输出格式**、47 个只读参考格式（合计 138 条）、18 个视频容器 |
+| 当前能力 | **95 个可输出格式**、47 个只读参考格式（合计 142 条）、22 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
 
@@ -59,7 +59,7 @@
 
 ### 3.2 格式百科
 
-点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 138 个条目（91 可输出 + 47 只读）。
+点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 142 个条目（95 可输出 + 47 只读）。
 
 ### 3.3 音乐库
 
@@ -100,7 +100,7 @@ format-converter.exe --health <file>            内容体检
 
 ## 4. 格式能力
 
-### 4.1 可输出（91 个，按组）
+### 4.1 可输出（95 个，按组）
 
 | 组 | 数量 | 格式 |
 |---|---|---|
@@ -109,9 +109,9 @@ format-converter.exe --health <file>            内容体检
 | **语音/电话** | 20 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0、**ALP ADPCM** |
 | **空间音频** | 5 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | **音频容器** | 9 | WAV/AU/SND、RF64、BWF、IEC 61937、VOC、AAC-LATM、**SMAF（MMF）**、**SoX**、**IRCAM** |
-| **视频容器** | 18 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、**DV**、**GXF**、**NUT**、**MXF OPAtom** |
+| **视频容器** | 22 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、**3G2**、**F4V**、**ISMV**、**WTV** |
 | **设备专用** | 10 | ATRAC1、ATRAC3、ATRAC3+*、PS1 XA-ADPCM*、PS2 VAG*、**BRSTM、BCSTM、BFSTM、DSP、IDSP**（VGAudioCli） |
-| **合计** | **91** | |
+| **合计** | **95** | |
 
 `*` = 需要外部工具（见第 5 节）；`†` = 需要 ffmpeg 构建里带对应库（随包 LGPL 构建不包含，完整构建如 gyan 有）
 
@@ -249,6 +249,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | **1.3.0** | 2026-11 | 视频容器 8→13、GSM/AMR-WB/iLBC/LC3/Codec2、自建 ffmpeg 8.0 | 27.8 MB |
 | **1.3.1** | 2026-11 | OptimFROG、CLI 外部编码器修复、extras 工具包 | 27.9 MB + 0.15 MB |
 | **1.4.0** | 2026-11 | VOC / AAC-LATM / MXF / Musepack（69→73）、musepack 随包 | 28.0 MB + 0.15 MB |
+| **1.5.0** | 2026-11 | 73→95：主机音乐输入、老游戏语音、PS1/PS2、任天堂容器、8 个视频容器 | 28.2 MB + 4.74 MB |
 
 ---
 
@@ -262,7 +263,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ---
 
-## 10. 新增内容（1.4 已发布 / 1.5 开发中）
+## 10. 新增内容（1.4 / 1.5 均已发布）
 
 ### 10.1 1.4.0（已发布）
 
@@ -277,7 +278,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 加上这四个，可输出格式从 **69 → 73**。
 
-### 10.2 1.5（开发中，未发布）
+### 10.2 1.5.0（已发布）
 
 | 新增 | 类型 | 实测结果 |
 |---|---|---|
@@ -288,12 +289,13 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | **SoX** | 音频容器（PCM 32-bit） | 1.06 MB |
 | **IRCAM** | 音频容器（PCM 16-bit） | 530 KB |
 | **DV / GXF / NUT / MXF OPAtom** | 视频容器 | DV 720×576 / GXF 单声道 / NUT 直通 / MXF OPAtom |
+| **3G2 / F4V / ISMV / WTV** | 视频容器 | MP4 家族与老流媒体/录制容器，全部实测可出 |
 | **PS1 XA-ADPCM / PS2 VAG** | 设备专用（外部 psxavenc） | XA 133 KB / VAG 76 KB（3 秒正弦） |
 | **QOA** | 有损（外部 qoaconv） | 106 KB（3 秒立体声） |
 | **BRSTM / BCSTM / BFSTM / DSP / IDSP** | 设备专用（外部 VGAudioCli） | 各约 151 KB（3 秒） |
 | **主机芯片音乐输入** | 输入（libgme） | NSF 渲染 3 分钟 → 10.7 MB FLAC |
 
-可输出格式 **73 → 91**。NSF/SPC/VGM/PSF 等芯片音乐现在能当输入（默认渲染 3 分钟），但仍不能作为输出。
+可输出格式 **73 → 95**。NSF/SPC/VGM/PSF 等芯片音乐现在能当输入（默认渲染 3 分钟），但仍不能作为输出。
 
 ---
 

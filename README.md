@@ -1,8 +1,10 @@
 ﻿# 声箱 ToneBox
 
-> 一个讲道理的音频格式转换器：先告诉你"这么转会损失什么"，再让你决定。
+> 一个讲道理的音频格式转换器：先告诉你「这么转会损失什么」，再让你决定。
+>
+> 转换只是入口，它真正干的事是把格式知识摊开给你看。
 
-![版本](https://img.shields.io/badge/版本-1.4.0-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.5.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
@@ -11,12 +13,22 @@
 
 ---
 
+## 一分钟了解
+
+- **95 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
+- 22 个视频容器；支持保留第一条画面 + 全部音轨，音频逐条决定复制还是重编
+- 主机芯片音乐（NSF / SPC / GBS / VGM / PSF…）**能当输入**，渲染后转成普通音频
+- 全本地处理：不解 DRM、不联网、不上传文件、不做流媒体下载
+- 解压即用，不写注册表、不装服务；删掉文件夹就是卸载
+
+---
+
 ## 下载
 
 | 版本 | 安装包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.4.0** | [ToneBox-1.4.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.4.0/ToneBox-1.4.0-win64.zip) | 28.0 MB | `78D7FCC329CDB2DFDE6ACCBEE0C592CEDF5B64AFD9789D451CAC6B337FCA3D17` |
-| 1.4.0 可选工具 | [ToneBox-1.4.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.4.0/ToneBox-1.4.0-extras-win64.zip) | 0.15 MB | `FE31DD6C71B6BABF3EBCC391FBEE8AD4DEDCC56B291E7D17890A74A54AF0B15C` |
+| **1.5.0** | [ToneBox-1.5.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.5.0/ToneBox-1.5.0-win64.zip) | 28.2 MB | `B294BED39AE7ACB3E1FE96BA7DB61BC6C973A018939621EF95A30C1B2524B449` |
+| 1.5.0 可选工具 | [ToneBox-1.5.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.5.0/ToneBox-1.5.0-extras-win64.zip) | 4.74 MB | `3A543C67999CC353A42A52735D024B7FC1FC69E84E46A07897D8E8BA7E73F67A` |
 
 - Windows 10 / 11 x64，解压即用，**不需要安装**
 - 解压后双击 `format-converter.exe`
@@ -24,53 +36,56 @@
 
 ### 可选外部工具包（单独下载）
 
-主包里不含 atracdenc / psxavenc / VGAudioCli / qoaconv / OptimFROG 这几个可选编码器，
-需要时另下 `ToneBox-1.5.0-extras-win64.zip`：
+主包**不含**有分发限制或体积较大的可选编码器，需要时另下 `ToneBox-1.5.0-extras-win64.zip`：
 
-| 工具 | 包内形式 | 用途 |
-|---|---|---|
-| **atracdenc** | 直接带 `atracdenc\atracdenc.exe`（LGPL-2.1） | ATRAC1 / ATRAC3 / ATRAC3+ 输出 |
-| **psxavenc** | 直接带 `psxavenc\psxavenc.exe`（Zlib） | PS1 XA-ADPCM / PS2 VAG 输出 |
-| **VGAudioCli** | 直接带 `vgaudio\VGAudioCli.exe`（MIT） | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出 |
-| **qoaconv** | 直接带 `qoa\qoaconv.exe`（MIT） | QOA 输出 |
-| **OptimFROG** | 带 `install-ofr.cmd` 一键下载脚本 | OptimFROG 输出 |
+| 工具 | 包内形式 | 许可 | 用途 |
+|---|---|---|---|
+| **atracdenc** | `atracdenc\atracdenc.exe` | LGPL-2.1 | ATRAC1 / ATRAC3 / ATRAC3+ |
+| **psxavenc** | `psxavenc\psxavenc.exe` | Zlib | PS1 XA-ADPCM / PS2 VAG |
+| **VGAudioCli** | `vgaudio\VGAudioCli.exe` | MIT | BRSTM / BCSTM / BFSTM / DSP / IDSP |
+| **qoaconv** | `qoa\qoaconv.exe` | MIT | QOA |
+| **OptimFROG** | `install-ofr.cmd` 一键下载 | 闭源免费 | OptimFROG（官网下载 + SHA-1 校验，不涉及再分发） |
 
-用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），
-前四个立刻可用；OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校验官方 SHA-1（不涉及再分发）。
-- 卸载＝删掉这个文件夹：不写注册表、不装服务
+用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），前四个立刻可用；
+OptimFROG 双击一次 `install-ofr.cmd` 即可。装完回程序里点
+**设置 → 依赖 / 外部工具 → 重新检测**。
 
 > 这是测试性质的软件。转换前请备份原文件；设备和文件损坏请自己负责。
 
 ---
 
-## 它做什么
+## 1.5 有什么新东西
 
-- **转格式**：一次拖多个文件，统一目标格式，也可以给单个文件单独指定
-- **讲清楚代价**：转之前就告诉你"降采样会切掉多少高频""升位深只是补零""有损转无损不会变好"
-- **给出参数**：码率、位深、采样率、声道、压缩等级，每个格式只列它真正支持的
-- **管理音乐库**：歌曲/专辑/风格/艺术家，只读扫描，不碰你的文件
-
-**它不做什么**：不解 DRM、不联网、不上传文件、不做流媒体下载。全部本地处理。
+- **可输出格式 73 → 95**
+  - 老游戏语音：Westwood AUD、APM（Rayman 2）、ALP ADPCM、SMAF（MMF）
+  - 容器：SoX、IRCAM；视频：DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV
+  - 设备：PS1 XA-ADPCM、PS2 VAG（psxavenc）；BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli）
+  - 有损：QOA（qoaconv）
+- **主机芯片音乐当输入**：随包 ffmpeg 用 libgme 渲染 NSF / SPC / GBS / VGM / PSF 等，
+  默认只取前 3 分钟（芯片音乐没有固定时长）
+- 固定规格容器会强制参数：DV 锁 720×576/25fps/48k 立体声，GXF 锁 PAL/NTSC + 48k 单声道
 
 ---
 
 ## 支持的格式
 
-当前**可输出格式 91 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 95 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
-| 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF、**OptimFROG**（需自装 ofr.exe） |
-| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、ALP、APM、Westwood AUD（老游戏语音）、**QOA** |
+| 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、OptimFROG（需 ofr.exe） |
+| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、ALP、APM、Westwood AUD、QOA |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
-| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF、VOC、AAC-LATM（LOAS）、**SMAF（MMF）、SoX、IRCAM** |
-| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、**DV、GXF、NUT、MXF OPAtom** |
-| 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需 atracdenc）；PS1 XA-ADPCM、PS2 VAG（需 psxavenc）；**BRSTM、BCSTM、BFSTM、DSP、IDSP**（需 VGAudioCli） |
+| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937、RF64、BWF、VOC、AAC-LATM、SMAF（MMF）、SoX、IRCAM |
+| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV |
+| 设备专用 | ATRAC1 / ATRAC3 / ATRAC3+（atracdenc）、PS1 XA / PS2 VAG（psxavenc）、BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli） |
 
-视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
+视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转
+H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2 / DV，音轨逐条决定复制还是重编码。
 
-**只读格式**（能解析、能解释为什么不能输出）：APE、TAK、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
+**只读格式**（能解析、能解释为什么不能输出）：APE、TAK、Shorten、WMA Lossless、DSD（DSF/DFF/DST）、
+DTS-HD/X、MPEG-H、USAC、EVS、LC3plus、TwinVQ、RealAudio Cook 等。
 
 > 主机芯片音乐（NSF / SPC / GBS / VGM / PSF 等）**可以当输入**：随包 ffmpeg 用 libgme
 > 渲染成 PCM，再转成 FLAC/MP3。它们本身不是波形音频，所以不能作为输出，
@@ -82,23 +97,41 @@
 
 | 工具 | 是否随包 | 用途 |
 |---|---|---|
-| `ffmpeg` / `ffprobe` | ✅ 随包 | 解码、编码、探测（LGPL v3 自建，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2） |
-| `speexenc` | ✅ 随包 | Speex 输出（BSD） |
-| `wavpack` | ✅ 随包 | WavPack **有损**输出（hybrid 模式，ffmpeg 自带的编码器只做无损） |
-| `mpcenc` | ✅ 随包 | Musepack 输出（LGPL-2.1） |
-| `atracdenc` | 📦 在 extras 包里 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL-2.1） |
-| `psxavenc` | 📦 在 extras 包里 | PS1 XA-ADPCM / PS2 VAG 输出（Zlib） |
-| `VGAudioCli` | 📦 在 extras 包里 | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出（MIT） |
-| `qoaconv` | 📦 在 extras 包里 | QOA 输出（MIT） |
-| `ofr` | 📦 extras 里一键下载 | OptimFROG 输出（官方许可限制再分发，脚本代下载） |
+| `ffmpeg` / `ffprobe` | ✅ 主包 | 解码、编码、探测（LGPL v3 自建，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2 / libgme） |
+| `speexenc` | ✅ 主包 | Speex 输出（BSD） |
+| `wavpack` | ✅ 主包 | WavPack **有损**输出（hybrid 模式） |
+| `mpcenc` | ✅ 主包 | Musepack 输出（LGPL-2.1） |
+| `atracdenc` | 📦 extras | ATRAC1 / ATRAC3 / ATRAC3+（LGPL-2.1） |
+| `psxavenc` | 📦 extras | PS1 XA-ADPCM / PS2 VAG（Zlib） |
+| `VGAudioCli` | 📦 extras | BRSTM / BCSTM / BFSTM / DSP / IDSP（MIT） |
+| `qoaconv` | 📦 extras | QOA（MIT） |
+| `ofr` | ⬇️ extras 内一键下载 | OptimFROG（官方许可限制再分发） |
 
-程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。装了新的工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
+程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。
+装了新工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
+
+---
+
+## 命令行
+
+```
+format-converter.exe --version                 显示版本
+format-converter.exe --help                    列出全部参数
+format-converter.exe --formats                 列出可输出格式（id / 名称 / 后缀）
+format-converter.exe --convert in.flac out.mpc --to musepack
+format-converter.exe --tools                   探测 ffmpeg / 各外部编码器
+format-converter.exe --devices                 列出音频设备
+format-converter.exe --play <file> [秒数]       直接试听
+format-converter.exe --health <file>           内容体检
+```
+
+格式 id 见 `--formats`；`--convert` 会自动分派给 ffmpeg 或对应的外部编码器。
 
 ---
 
 ## 界面
 
-- 左侧：输出格式（按类别折叠，只读格式灰显）+ 格式说明
+- 左侧：输出格式（按类别折叠，只读格式灰显，徽章按运行时可用性着色）+ 格式说明
 - 中间：文件队列（拖进来就行），批量进度、失败原因逐条显示
 - 右侧：选中文件的真实参数、质量警告、输出参数
 - 顶部：设置、任务活动、转换进度；F11 / Esc 切换全屏
@@ -111,92 +144,90 @@
 需要 Rust 的 MSVC 或 GNU 工具链（1.75+）。仓库不含二进制依赖，首次构建前先抓取随包工具：
 
 ```powershell
-# 1. 抓依赖（ffmpeg / speex / wavpack / 测试样本）
+# 1. 抓依赖（ffmpeg / speex / wavpack / musepack）
 powershell -ExecutionPolicy Bypass -File tools\fetch-ffmpeg.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-speex.ps1
 powershell -ExecutionPolicy Bypass -File tools\fetch-wavpack.ps1
 
+# 可选：外部编码器（extras 包用）
+powershell -ExecutionPolicy Bypass -File tools\fetch-atracdenc.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-psxavenc.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-vgaudio.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-qoa.ps1
+powershell -ExecutionPolicy Bypass -File tools\fetch-optimfrog.ps1
+
 # 2. 编译
 cargo build --release -p fc-gui
 
-# 3. 跑测试（格式表、参数映射、警告逻辑）
+# 3. 测试（格式表、参数映射、警告逻辑、容器矩阵）
 cargo test -p fc-core --lib
 
 # 4. 打包（版本号从 Cargo.toml 读）
 powershell -ExecutionPolicy Bypass -File tools\package-release.ps1
+powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 ```
 
-想自己重新构建随包 ffmpeg（比如加别的编码库）：见 [`tools/build-ffmpeg.sh`](tools/build-ffmpeg.sh) 与 README 末尾的说明；首次约 20~40 分钟。
-
----
-
-## 仓库结构
-
-```
-crates/
-  fc-core/      格式表、参数、警告、ffmpeg/外部工具调用（纯逻辑，可测）
-  fc-analyze/   频谱、响度、波形分析
-  fc-player/    播放（rodio/cpal）
-  fc-gui/       egui/eframe 界面（三栏 + 过场 + 播放器）
-tools/          抓取、构建、打包、安装脚本
-docs/           设计笔记、格式总览、法律边界等
-```
+想自己重新构建随包 ffmpeg（带语音编码库 + libgme）：见 [`tools/build-ffmpeg.sh`](tools/build-ffmpeg.sh)
+与 [`tools/build-ffmpeg.ps1`](tools/build-ffmpeg.ps1)；首次约 20~40 分钟。
 
 ---
 
 ## 设计红线
 
 - **只做本地处理**：不联网、不上传、不解 DRM、不绕过任何版权保护
-- **不假装**：没有编码器的格式就灰着并说明原因，不给假的可用状态
+- **不假装**：没有编码器的格式就灰着并说明原因；做不到的事不写进格式表
 - **不改你的文件**：除非你明确选择「删除源文件」，否则只写新文件
-- **许可干净**：程序本体 MIT，随包 ffmpeg 是 LGPL v3（不含 GPL 组件）
+- **许可干净**：程序本体 MIT；随包 ffmpeg 是 LGPL v3（不含 GPL 组件）；
+  `ofr.exe` 不随包分发
 
 ---
 
 ## 已知问题
 
-- FLAC + 24bit + 截取/滤镜的组合，随包 ffmpeg 可能报 `invalid block size`：程序已内置两段式（先截成 WAV 再编码）规避
-- 部分 Android 手机的录音（.amr）时长元数据不规范，显示可能偏短
+- FLAC + 24bit + 截取/滤镜的组合，随包 ffmpeg 可能报 `invalid block size`：程序已内置两段式规避
+- 部分 Android 录音（.amr）时长元数据不规范，显示可能偏短
 - ATRAC9 只读：atracdenc 不支持，专利也在保护期
-- 视频容器输出会保留第一条画面；多画面（多角度）不处理
+- 视频容器只保留第一条画面；多画面（多角度）不处理
+- 芯片音乐默认只渲染 3 分钟（NSF/SPC 没有曲目长度字段，libgme 会一直循环）
+- HE-AAC / xHE-AAC / AAC-ELD 需要 libfdk-aac（非自由），不做
+- APE / TAK / DSD / AIFC / BW64 输出没有可用编码器，归入只读参考
 
 ---
 
 ## 许可与第三方
 
 - 程序本体：**MIT**（见 [`LICENSE`](LICENSE)）
-- 随包 ffmpeg：**LGPL-2.1-or-later**，按 LGPL 要求保留许可文件、允许替换 DLL、提供构建脚本
-- 其他随包组件（Speex / WavPack / 各编解码库）的许可与来源见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+- 随包 ffmpeg：**LGPL-2.1-or-later**，保留许可文件、允许替换 DLL、提供构建脚本
+- 其他随包/可选组件（Speex、WavPack、libgme、psxavenc、VGAudio、QOA 等）的许可与来源见
+  [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 
 ---
 
 ## 更新日志
 
-### 1.5（开发中）
-- 可输出格式 **73 → 91**
-  - 老游戏语音：**Westwood AUD**、**APM**（Ubisoft Rayman 2）、**ALP ADPCM**、**SMAF（MMF）**
-  - 容器：**SoX**、**IRCAM**
-  - 视频容器：**DV**、**GXF**、**NUT**、**MXF OPAtom**
-  - 设备专用：**PS1 XA-ADPCM**、**PS2 VAG**（extras 里的 psxavenc）；**BRSTM / BCSTM / BFSTM / DSP / IDSP**（extras 里的 VGAudioCli）
-  - 有损：**QOA**（extras 里的 qoaconv）
-- **主机芯片音乐可以当输入**：随包 ffmpeg 重建时加进 libgme，NSF / SPC / GBS / VGM / PSF 等能直接拖进来转成 FLAC/MP3（默认渲染前 3 分钟）
-- 固定规格容器会强制参数：DV 锁 720×576/25fps/48k 立体声，GXF 锁 PAL/NTSC + 48k 单声道
+### 1.5.0（2026-11）
+- 可输出格式 **73 → 95**
+- **主机芯片音乐可以当输入**：ffmpeg 加 libgme，NSF / SPC / GBS / VGM / PSF 等可用
+- 新增 PS1 XA-ADPCM / PS2 VAG（psxavenc）、QOA（qoaconv）、
+  BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli）
+- 新增视频容器：DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV
+- 新增老游戏语音：Westwood AUD、APM、ALP、SMAF（MMF）；容器 SoX、IRCAM
+- 修复 CLI 转视频时写死 `libx264` 的问题（随包构建只有 libopenh264）
+- `--version` / `--help` 现在是真正的 CLI 参数
+- extras 包新增 psxavenc / VGAudioCli / qoaconv，打包自动生成 `SHA256SUMS`
 
 ### 1.4.0（2026-11）
-- 可输出格式 **69 → 73**：新增 **VOC**（Creative Voice 音频容器）、**AAC-LATM / LOAS**（广播封装）、**MXF**（视频容器，MPEG-2 + PCM 48kHz）、**Musepack**（mpcenc，5 档质量）
-- 随包新增 Musepack 编码器 `musepack\mpcenc.exe`（LGPL-2.1），Musepack 开箱可用
-- 格式百科同步这四条，`--formats` 现在列出 73 项
+- 可输出格式 **69 → 73**：VOC、AAC-LATM / LOAS、MXF、Musepack
+- 随包 Musepack 编码器（LGPL-2.1），Musepack 开箱可用
 
 ### 1.3.1（2026-11）
-- 新增 **OptimFROG** 输出（走官方 ofr.exe，压缩预设 0–10 可调）
-- 修复命令行 `--convert` 不支持外部编码器（ATRAC / Speex / WavPack 有损 / OptimFROG）的问题
-- 新增**可选外部工具包**（extras）：atracdenc 直接带，OptimFROG 一键下载脚本
+- 新增 OptimFROG 输出（走官方 ofr.exe）
+- 修复命令行 `--convert` 不支持外部编码器
+- 新增可选外部工具包（extras）
 
 ### 1.3（2026-11）
-- 可输出格式 **43 → 68**：视频容器 8 → 13（MPEG-PS / VOB / OGV / WMV / 3GP）、新增 GSM / AMR-WB / iLBC / LC3 / Codec2 / DFPWM、WavPack 有损、IEC 61937、SND
+- 可输出格式 **43 → 68**：视频容器 8 → 13、GSM / AMR-WB / iLBC / LC3 / Codec2 / DFPWM、WavPack 有损、IEC 61937、SND
 - 随包 ffmpeg 换成自建 8.0（LGPL v3，152 MB → 59.6 MB）
-- 分组理顺（空间音频 / 语音）、设置页新增依赖面板、徽章按运行时可用性着色
-- 新格式补齐参数旋钮（AMR/G.723/G.726/WMA v1 码率、MLP 位深、Ogg FLAC 压缩等级、WavPack 有损码率）
 
 ### 1.2
 - 格式扩容（Speex / AMR-NB / G.711 / G.722 / ADPCM / AU / RF64 / BWF）

@@ -658,6 +658,7 @@ pub fn effective_video_codec(
         "vob" => VideoCodec::Mpeg2,
         "mpg" => VideoCodec::Mpeg2,
         "3gp" => VideoCodec::Mpeg4,
+        "3g2" => VideoCodec::Mpeg4,
         "dv" => VideoCodec::Dv,
         "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
@@ -895,6 +896,12 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "wmv" => &[VideoCodec::Copy, VideoCodec::Wmv2],
         // 3GP：MPEG-4 Part 2
         "3gp" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
+        // 3G2：CDMA 姊妹标准，MPEG-4/H.264
+        "3g2" => &[VideoCodec::Copy, VideoCodec::Mpeg4, VideoCodec::H264],
+        // F4V / ISMV：H.264 的 MP4 变体
+        "f4v" | "ismv" => &[VideoCodec::Copy, VideoCodec::H264],
+        // WTV：电视录制，MPEG-2/H.264 都行
+        "wtv" => &[VideoCodec::Copy, VideoCodec::Mpeg2, VideoCodec::H264],
         // MXF：广播封装，画面 MPEG-2
         "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         // MXF OPAtom：Avid 流程，画面 MPEG-2
@@ -938,6 +945,12 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "wmv" => matches!(c.as_str(), "wmv1" | "wmv2" | "wmv3" | "vc1"),
         // 3GP 收 H.263 / MPEG-4 Part 2 / H.264
         "3gp" => matches!(c.as_str(), "h263" | "mpeg4" | "h264"),
+        // 3G2 和 3GP 同一套
+        "3g2" => matches!(c.as_str(), "h263" | "mpeg4" | "h264"),
+        // F4V / ISMV 只收 H.264
+        "f4v" | "ismv" => matches!(c.as_str(), "h264"),
+        // WTV 是录制容器，MPEG-2 / H.264 / MPEG-4 / VC-1 都能装
+        "wtv" => matches!(c.as_str(), "mpeg2video" | "h264" | "mpeg4" | "vc1"),
         // MXF 只收 MPEG-2（以及 D-10 的变体）
         "mxf" => matches!(c.as_str(), "mpeg2video"),
         // MXF OPAtom 同样只收 MPEG-2
@@ -1002,6 +1015,15 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "ogv" => matches!(c.as_str(), "vorbis" | "opus" | "flac"),
         "wmv" => matches!(c.as_str(), "wmav1" | "wmav2" | "wmavoice" | "mp3"),
         "3gp" => matches!(c.as_str(), "aac" | "amr_nb" | "amr_wb"),
+        // 3G2 音频同 3GP：AAC / AMR
+        "3g2" => matches!(c.as_str(), "aac" | "amr_nb" | "amr_wb"),
+        // F4V / ISMV：AAC / MP3
+        "f4v" => matches!(c.as_str(), "aac" | "mp3"),
+        "ismv" => matches!(c.as_str(), "aac"),
+        // WTV：电视录制常见 AAC/MP3/AC-3 和 PCM
+        "wtv" => {
+            matches!(c.as_str(), "aac" | "mp3" | "ac3" | "eac3") || c.starts_with("pcm_")
+        }
         // MXF 只收未压缩 PCM，且必须 48kHz —— 这里一律不复制，交给 audio_plan 重编
         "mxf" => false, // MXF 只收 48kHz，源多半 44.1k，统一走重编码
         // MXF OPAtom 同样只收 PCM 48kHz
@@ -1084,6 +1106,26 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 96,
             label: "AAC",
         },
+        "3g2" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 96,
+            label: "AAC",
+        },
+        "f4v" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 128,
+            label: "AAC",
+        },
+        "ismv" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 192,
+            label: "AAC",
+        },
+        "wtv" => AudioPlan::Encode {
+            codec: "ac3",
+            kbps: 448,
+            label: "AC-3",
+        },
         // MXF 要未压缩 PCM，48kHz
         "mxf" => AudioPlan::Encode {
             codec: "pcm_s24le",
@@ -1133,6 +1175,10 @@ pub fn container_note(container: &str) -> &'static str {
         "ogv" => "Ogg 视频：画面 Theora、声音 Vorbis，全开源但认它的设备很少。",
         "wmv" => "Windows Media：画面 WMV2、声音 WMA，给老 Windows 设备和老播放器用。",
         "3gp" => "3GPP 手机容器：画面 MPEG-4、声音 AAC，体积小。",
+        "3g2" => "3GPP2/CDMA 手机容器：MPEG-4/H.264 + AAC，老 CDMA 机只认它。",
+        "f4v" => "Flash 的 MP4 变体：H.264 + AAC，Flash 已停更，只留给老课件。",
+        "ismv" => "IIS Smooth Streaming 分片 MP4：H.264 + AAC，配合老流媒体服务。",
+        "wtv" => "Windows Media Center 录制：MPEG-2/H.264 + AC-3，Win10 后基本没人用。",
         "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
         "mxf_opatom" => "MXF OPAtom（Avid）：画面 MPEG-2、声音 PCM 24bit/48kHz，一个文件一条流。",
         "gxf" => "GXF 广播交换：画面 MPEG-2、声音 PCM 16bit/48kHz **单声道**。",
@@ -1154,6 +1200,10 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "dv" => "DV 规格是死的：画面会缩放到 720×576、25fps，声音强制 48kHz 立体声。",
         "gxf" => "GXF 只收单声道 PCM；立体声源会被下混成单声道。",
         "nut" => "NUT 只适合自己存档/实验，别发给别人。",
+        "3g2" => "3G2 是 CDMA 手机的标准，兼容性看机型。",
+        "f4v" => "F4V 给已经停更的 Flash；新项目别选。",
+        "ismv" => "ISMV 是给 IIS Smooth Streaming 的分片文件，普通播放器能放但不是通用格式。",
+        "wtv" => "WTV 是 Media Center 录制格式，Win10 之后基本没人维护。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
     }
 }
@@ -1532,7 +1582,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "atrac3" => &[Knob::Atrac3Bitrate],
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
-        | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" => &[
+        | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" | "3g2" | "f4v" | "ismv"
+        | "wtv" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -2581,7 +2632,7 @@ mod tests {
     fn video_containers_are_selectable_targets() {
         for id in [
             "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
-            "3gp", "dv", "gxf", "nut", "mxf_opatom",
+            "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv", "wtv",
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
@@ -2598,7 +2649,8 @@ mod tests {
             video_containers().map(|f| f.id).collect::<Vec<_>>(),
             vec![
                 "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
-                "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom"
+                "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv",
+                "wtv"
             ]
         );
     }
