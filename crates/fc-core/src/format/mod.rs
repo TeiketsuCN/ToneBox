@@ -313,6 +313,8 @@ fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> 
         VideoCodec::Wmv2 => 0.17,
         // DV 是固定 25Mbps 的帧内编码，bpp 反推出来的值就很大
         VideoCodec::Dv => 2.4,
+        VideoCodec::Amv => 0.35,
+        VideoCodec::Flv => 0.12,
         VideoCodec::Copy => return 0,
     };
     // CRF 每差 6，码率大约差一倍；以 23 为基准
@@ -672,6 +674,8 @@ pub fn effective_video_codec(
         "m4v" => VideoCodec::Mpeg4,
         "ivf" => VideoCodec::Vp9,
         "avif" => VideoCodec::Av1,
+        "amv" => VideoCodec::Amv,
+        "swf" => VideoCodec::Flv,
         "dv" => VideoCodec::Dv,
         "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
@@ -782,6 +786,10 @@ pub enum VideoCodec {
     Wmv2,
     /// DV（miniDV 摄像机；画面固定 720×576/25fps）
     Dv,
+    /// AMV（国产 MP4 播放器；固定 160×120/30fps）
+    Amv,
+    /// FLV1（Flash 视频）
+    Flv,
 }
 
 impl VideoCodec {
@@ -798,6 +806,8 @@ impl VideoCodec {
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
             VideoCodec::Dv => "DV",
+            VideoCodec::Amv => "AMV",
+            VideoCodec::Flv => "FLV1",
         }
     }
     /// 短标签（旋钮上放得下）
@@ -814,6 +824,8 @@ impl VideoCodec {
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
             VideoCodec::Dv => "DV",
+            VideoCodec::Amv => "AMV",
+            VideoCodec::Flv => "FLV1",
         }
     }
     /// ffmpeg 编码器名；`Copy` 没有编码器
@@ -830,6 +842,8 @@ impl VideoCodec {
             VideoCodec::Theora => "libtheora",
             VideoCodec::Wmv2 => "wmv2",
             VideoCodec::Dv => "dvvideo",
+            VideoCodec::Amv => "amv",
+            VideoCodec::Flv => "flv",
         })
     }
 
@@ -852,6 +866,8 @@ impl VideoCodec {
             VideoCodec::Theora => &["libtheora"],
             VideoCodec::Wmv2 => &["wmv2"],
             VideoCodec::Dv => &["dvvideo"],
+            VideoCodec::Amv => &["amv"],
+            VideoCodec::Flv => &["flv"],
         }
     }
 }
@@ -933,6 +949,10 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "m2v" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         "m4v" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
         "avif" => &[VideoCodec::Copy, VideoCodec::Av1],
+        // AMV：画面只能 AMV，声音只能 ADPCM
+        "amv" => &[VideoCodec::Copy, VideoCodec::Amv],
+        // SWF：FLV1 视频
+        "swf" => &[VideoCodec::Copy, VideoCodec::Flv],
         // MXF：广播封装，画面 MPEG-2
         "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         // MXF OPAtom：Avid 流程，画面 MPEG-2
@@ -994,6 +1014,9 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "m2v" => matches!(c.as_str(), "mpeg2video"),
         "m4v" => matches!(c.as_str(), "mpeg4"),
         "avif" => matches!(c.as_str(), "av1"),
+        // AMV / SWF 各自只收本家编码
+        "amv" => matches!(c.as_str(), "amv"),
+        "swf" => matches!(c.as_str(), "flv1" | "flv"),
         // MXF 只收 MPEG-2（以及 D-10 的变体）
         "mxf" => matches!(c.as_str(), "mpeg2video"),
         // MXF OPAtom 同样只收 MPEG-2
@@ -1074,6 +1097,9 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "ipod" => matches!(c.as_str(), "aac" | "mp3" | "alac"),
         // 纯视频裸流没有音轨
         "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => false,
+        // AMV 音频固定 ADPCM，SWF 只收 MP3
+        "amv" => false,
+        "swf" => matches!(c.as_str(), "mp3"),
         // MXF 只收未压缩 PCM，且必须 48kHz —— 这里一律不复制，交给 audio_plan 重编
         "mxf" => false, // MXF 只收 48kHz，源多半 44.1k，统一走重编码
         // MXF OPAtom 同样只收 PCM 48kHz
@@ -1186,6 +1212,16 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 128,
             label: "AAC",
         },
+        "amv" => AudioPlan::Encode {
+            codec: "adpcm_ima_amv",
+            kbps: 88,
+            label: "ADPCM",
+        },
+        "swf" => AudioPlan::Encode {
+            codec: "libmp3lame",
+            kbps: 128,
+            label: "MP3",
+        },
         // MXF 要未压缩 PCM，48kHz
         "mxf" => AudioPlan::Encode {
             codec: "pcm_s24le",
@@ -1249,6 +1285,8 @@ pub fn container_note(container: &str) -> &'static str {
         "m2v" => "MPEG-2 裸流：老广播/光盘工具用。",
         "m4v" => "MPEG-4 Part 2 裸流：老 divx 工具链用。",
         "avif" => "AVIF 动图：AV1 编码的图片序列，没有音轨。",
+        "amv" => "AMV：160×120/30fps + 22.05k 单声道 ADPCM，老国产 MP4 播放器专用。",
+        "swf" => "SWF：FLV1 + MP3，Flash 已停更，只留给老课件。",
         "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
         "mxf_opatom" => "MXF OPAtom（Avid）：画面 MPEG-2、声音 PCM 24bit/48kHz，一个文件一条流。",
         "gxf" => "GXF 广播交换：画面 MPEG-2、声音 PCM 16bit/48kHz **单声道**。",
@@ -1279,6 +1317,8 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "psp" => "PSP 认 480×272，其它尺寸可能放不了。",
         "ipod" => "iPod 只认 H.264/AAC，老设备别用 H.265。",
         "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => "这是纯视频裸流：没有音轨，也不会做封装。",
+        "amv" => "AMV 规格是死的：画面会被缩到 160×120/30fps，声音强制 22.05k 单声道。",
+        "swf" => "SWF 只认 FLV1 + MP3；Flash 已经停止支持。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
     }
 }
@@ -1659,7 +1699,7 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
         | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" | "3g2" | "f4v" | "ismv"
         | "wtv" | "vcd" | "svcd" | "psp" | "ipod" | "ivf" | "h264" | "hevc" | "m2v" | "m4v"
-        | "avif" => &[
+        | "avif" | "amv" | "swf" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -2023,6 +2063,14 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         VideoCodec::Dv => {
             a.extend([s("-c:v"), s(enc)]);
         }
+        // AMV 是固定规格的帧内编码，没有质量参数
+        VideoCodec::Amv => {
+            a.extend([s("-c:v"), s(enc)]);
+        }
+        VideoCodec::Flv => {
+            a.extend([s("-c:v"), s(enc)]);
+            quality(&mut a, vc);
+        }
     }
     // 广播/固定规格容器的硬约束：采样率、声道、画面尺寸都在这里兜住，
     // 免得用户在界面上选了「保持」却产出一个装不进去的文件。
@@ -2061,6 +2109,23 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
                 a.extend([s("-b:v"), s(kbps)]);
             }
         }
+        "amv" => {
+            // AMV 只收 160×120/30fps + 22.05k 单声道 ADPCM；
+            // -strict -1 是因为 120 不是 16 的倍数，编码器默认会拒绝
+            a.extend([
+                s("-ac"),
+                s("1"),
+                s("-ar"),
+                s("22050"),
+                s("-block_size"),
+                s("735"),
+                s("-strict"),
+                s("-1"),
+            ]);
+            if vc != VideoCodec::Copy {
+                a.extend([s("-vf"), s("scale=160:120"), s("-r"), s("30")]);
+            }
+        }
         _ => {}
     }
 
@@ -2076,6 +2141,8 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         "m2v" => "mpeg2video",
         "m4v" => "m4v",
         "avif" => "avif",
+        "amv" => "amv",
+        "swf" => "swf",
         _ => "",
     };
     if !mux.is_empty() {
@@ -2084,7 +2151,7 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
 
     // copy 不能缩放/改帧率（effective_video_codec 已经保证这里不会是 copy）
     // DV / GXF / VCD / SVCD 的尺寸/帧率在上面固定死了，别让用户旋钮覆盖
-    if vc != VideoCodec::Copy && !matches!(spec.id, "dv" | "gxf" | "vcd" | "svcd") {
+    if vc != VideoCodec::Copy && !matches!(spec.id, "dv" | "gxf" | "vcd" | "svcd" | "amv") {
         if o.video_height > 0 {
             a.extend([s("-vf"), format!("scale=-2:{}", o.video_height)]);
         }
@@ -2752,7 +2819,7 @@ mod tests {
         for id in [
             "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
             "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv", "wtv", "vcd", "svcd",
-            "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v", "avif",
+            "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v", "avif", "amv", "swf",
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
@@ -2771,7 +2838,7 @@ mod tests {
                 "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
                 "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv",
                 "wtv", "vcd", "svcd", "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v",
-                "avif"
+                "avif", "amv", "swf"
             ]
         );
     }

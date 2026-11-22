@@ -18,7 +18,7 @@
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
 | 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
-| 当前能力 | **107 个可输出格式**、47 个只读参考格式（合计 154 条）、32 个视频容器 |
+| 当前能力 | **110 个可输出格式**、47 个只读参考格式（合计 157 条）、34 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
 
@@ -100,18 +100,18 @@ format-converter.exe --health <file>            内容体检
 
 ## 4. 格式能力
 
-### 4.1 可输出（107 个，按组）
+### 4.1 可输出（110 个，按组）
 
 | 组 | 数量 | 格式 |
 |---|---|---|
 | **无损** | 13 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、OptimFROG* |
-| **有损** | 17 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM、Westwood AUD、APM、QOA、**KVAG** |
+| **有损** | 18 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM、Westwood AUD、APM、QOA、KVAG、**Argonaut ASF** |
 | **语音/电话** | 20 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0、**ALP ADPCM** |
 | **空间音频** | 5 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | **音频容器** | 9 | WAV/AU/SND、RF64、BWF、IEC 61937、VOC、AAC-LATM、**SMAF（MMF）**、**SoX**、**IRCAM** |
-| **视频容器** | 32 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、**VCD**、**SVCD**、**PSP**、**iPod (M4V)**、**IVF**、**H.264 裸流**、**H.265 裸流**、**MPEG-2 裸流**、**MPEG-4 裸流**、**AVIF** |
+| **视频容器** | 34 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、**VCD**、**SVCD**、**PSP**、**iPod (M4V)**、**IVF**、**H.264 裸流**、**H.265 裸流**、**MPEG-2 裸流**、**MPEG-4 裸流**、AVIF、**AMV**、**SWF** |
 | **设备专用** | 11 | ATRAC1、ATRAC3、ATRAC3+*、PS1 XA-ADPCM*、PS2 VAG*、**BRSTM、BCSTM、BFSTM、DSP、IDSP**（VGAudioCli）、**N64 VADPCM**（vadpcm） |
-| **合计** | **107** | |
+| **合计** | **110** | |
 
 `*` = 需要外部工具（见第 5 节）；`†` = 需要 ffmpeg 构建里带对应库（随包 LGPL 构建不包含，完整构建如 gyan 有）
 
