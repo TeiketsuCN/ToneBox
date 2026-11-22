@@ -646,6 +646,7 @@ impl App {
             i18n::set_lang(&cfg.lang);
         }
         fc_analyze::health::set_en(i18n::is_en());
+        fc_core::format::set_en(i18n::is_en());
         // 界面缩放在建窗口时就要生效，否则第一帧会闪一下原尺寸
         cc.egui_ctx.set_zoom_factor(zoom());
         // 注意：窗口尺寸这里不能再动。
@@ -2587,6 +2588,7 @@ fn main() -> eframe::Result<()> {
     if let Ok(lang) = std::env::var("TONEBOX_LANG") {
         i18n::set_lang(&lang);
         fc_analyze::health::set_en(i18n::is_en());
+        fc_core::format::set_en(i18n::is_en());
     }
 
     // 先按屏幕挑缩放：后面开窗、建界面、原生命中区都读它

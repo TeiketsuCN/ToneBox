@@ -28,6 +28,23 @@ pub use reference::REFERENCE;
 pub use lossless::LOSSLESS;
 pub use lossy::LOSSY;
 pub use video::VIDEO;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static EN: AtomicBool = AtomicBool::new(false);
+/// 切换格式表输出语言（质量提示、警告文案）。
+pub fn set_en(v: bool) {
+    EN.store(v, Ordering::Relaxed);
+}
+fn en() -> bool {
+    EN.load(Ordering::Relaxed)
+}
+
+/// 双语气泡：`wmsg!("中文 {}", "English {}", x)`
+macro_rules! wmsg {
+    ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+        if en() { format!($en $(, $arg)*) } else { format!($zh $(, $arg)*) }
+    };
+}
 
 use crate::ffmpeg::MediaInfo;
 
@@ -397,9 +414,10 @@ pub fn quality_warnings(
     if src.is_lossy() && target_lossless {
         out.push(QualityWarning {
             kind: WarningKind::Container,
-            title: "不会增加任何信息量",
-            body: format!(
+            title: if en() { "Will not add information" } else { "不会增加任何信息量" },
+            body: wmsg!(
                 "源文件是 {} 有损压缩。转成 {} 只是换了个更大的容器，文件会变大，声音不会变好。",
+                "Source is {} lossy. Converting to {} only changes the container: the file gets bigger, the sound does not improve.",
                 src.codec_label(),
                 spec.name
             ),
@@ -407,16 +425,18 @@ pub fn quality_warnings(
     } else if !src.is_lossy() && spec.kind == Kind::Lossy {
         out.push(QualityWarning {
             kind: WarningKind::Lossy,
-            title: "会丢掉一部分细节",
+            title: if en() { "Will lose some detail" } else { "会丢掉一部分细节" },
             body: match target_kbps {
-                Some(k) => format!(
+                Some(k) => wmsg!(
                     "源文件是 {}（无损）。转成 {} {} kbps 会永久丢掉一部分信息——这是有损编码的定义决定的。留档请选无损格式，随身听可以接受。",
+                    "Source is {} (lossless). Converting to {} at {} kbps permanently discards information—that is what lossy coding does. Use a lossless format for archiving; portable listening is fine.",
                     src.codec_label(),
                     spec.name,
                     k
                 ),
-                None => format!(
+                None => wmsg!(
                     "源文件是 {}（无损）。转成 {} 会永久丢掉一部分信息；留档请选无损格式。",
+                    "Source is {} (lossless). Converting to {} permanently discards information; use a lossless format for archiving.",
                     src.codec_label(),
                     spec.name
                 ),
@@ -428,9 +448,10 @@ pub fn quality_warnings(
             if k + 8 < src_kbps {
                 out.push(QualityWarning {
                     kind: WarningKind::LowerBitrate,
-                    title: "目标码率比源文件低",
-                    body: format!(
+                    title: if en() { "Target bitrate is lower than the source" } else { "目标码率比源文件低" },
+                    body: wmsg!(
                         "源是 {} {} kbps，目标是 {} {} kbps。这是一次二次有损编码，细节会再少一点；差得越多越明显。",
+                        "Source is {} at {} kbps, target is {} at {} kbps. This is a second lossy generation; detail will drop a little more, more so with a bigger gap.",
                         src.codec_label(),
                         src_kbps,
                         spec.name,
@@ -440,9 +461,10 @@ pub fn quality_warnings(
             } else if k > src_kbps + src_kbps / 5 {
                 out.push(QualityWarning {
                     kind: WarningKind::HigherBitrate,
-                    title: "码率调高也不会变好",
-                    body: format!(
+                    title: if en() { "Raising the bitrate will not help" } else { "码率调高也不会变好" },
+                    body: wmsg!(
                         "源已经是 {} {} kbps 的有损文件。重新编码到 {} {} kbps 只会让文件变大：丢掉的高频不会回来，二次编码还会再掉一点。",
+                        "The source is already lossy {} at {} kbps. Re-encoding to {} at {} kbps only makes the file bigger: lost highs do not return, and a second generation loses a little more.",
                         src.codec_label(),
                         src_kbps,
                         spec.name,
@@ -464,9 +486,10 @@ pub fn quality_warnings(
             if out_rate > src.sample_rate && can_pick_rate && o.sample_rate.is_some() {
                 out.push(QualityWarning {
                     kind: WarningKind::Upsample,
-                    title: "升采样不会增加信息",
-                    body: format!(
+                    title: if en() { "Upsampling adds no information" } else { "升采样不会增加信息" },
+                    body: wmsg!(
                         "源是 {} Hz，输出 {} Hz。高出来的那段频段是空的，文件只会变大，不会更接近母带。要原样保留就把采样率改回「自动」。",
+                        "Source is {} Hz, output {} Hz. The extra band is empty; the file only gets bigger and does not get closer to the master. Set sample rate back to Auto to keep it unchanged.",
                         src.sample_rate, out_rate
                     ),
                 });
@@ -474,15 +497,17 @@ pub fn quality_warnings(
                 let nyq = (out_rate as f64 / 2000.0 * 10.0).round() / 10.0;
                 out.push(QualityWarning {
                     kind: WarningKind::Downsample,
-                    title: "降采样会丢掉高频",
+                    title: if en() { "Downsampling loses high frequencies" } else { "降采样会丢掉高频" },
                     body: if o.sample_rate.is_some() {
-                        format!(
+                        wmsg!(
                             "源是 {} Hz，输出 {} Hz。约 {} kHz 以上的频段会被切掉，文件会小一点，但内容回不来；要原样保留就把采样率改回「自动」。",
+                            "Source is {} Hz, output {} Hz. Content above about {} kHz is cut off; the file gets smaller, but the content cannot be restored. Set sample rate back to Auto to keep it unchanged.",
                             src.sample_rate, out_rate, nyq
                         )
                     } else {
-                        format!(
+                        wmsg!(
                             "源是 {} Hz，这个格式最高只到 {} Hz，约 {} kHz 以上的频段会被丢掉。",
+                            "Source is {} Hz; this format tops out at {} Hz, so content above about {} kHz is discarded.",
                             src.sample_rate, out_rate, nyq
                         )
                     },
@@ -516,18 +541,20 @@ pub fn quality_warnings(
         if out_bits < src_bits {
             out.push(QualityWarning {
                 kind: WarningKind::BitDepthDown,
-                title: "降位深会丢掉动态范围",
-                body: format!(
+                title: if en() { "Lowering bit depth loses dynamic range" } else { "降位深会丢掉动态范围" },
+                body: wmsg!(
                     "源是 {} bit，输出 {} bit。最低的电平会被量化噪声盖住；要原样保留就选 {} bit。",
+                    "Source is {} bit, output {} bit. The quietest levels get buried in quantization noise; choose {} bit to keep it unchanged.",
                     src_bits, label, src_bits
                 ),
             });
         } else if out_bits > src_bits {
             out.push(QualityWarning {
                 kind: WarningKind::BitDepthUp,
-                title: "升位深不会增加精度",
-                body: format!(
+                title: if en() { "Raising bit depth adds no precision" } else { "升位深不会增加精度" },
+                body: wmsg!(
                     "源是 {} bit，输出 {} bit。多出来的低位是补零，文件只会变大，不会更接近母带。",
+                    "Source is {} bit, output {} bit. The extra low bits are zero padding; the file only gets bigger and does not get closer to the master.",
                     src_bits, label
                 ),
             });
@@ -553,9 +580,10 @@ fn video_warnings(
         if o.video_codec == VideoCodec::Copy && !copy_ok {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "这个容器装不了原来的画面",
-                body: format!(
+                title: if en() { "This container cannot hold the original video" } else { "这个容器装不了原来的画面" },
+                body: wmsg!(
                     "{} 不在 {} 接受的视频编码里，会自动改用 {} 重新编码；画质会掉一点，速度也慢。想无损换容器就选 MKV。",
+                    "{} is not a video codec {} accepts; it will be re-encoded to {} automatically. Quality drops slightly and encoding is slower. Use MKV for a lossless container change.",
                     src_v.to_uppercase(),
                     spec.name,
                     vc.label()
@@ -564,9 +592,10 @@ fn video_warnings(
         } else if o.video_codec != VideoCodec::Copy {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "画面会重新编码",
-                body: format!(
+                title: if en() { "Video will be re-encoded" } else { "画面会重新编码" },
+                body: wmsg!(
                     "原画面是 {}，目标是 {} {}（CRF {}）。重编码一定会有损失；只想换容器就把视频编码改回「直接复制」。",
+                    "Original video is {}, target is {} {} (CRF {}). Re-encoding always loses something; to change only the container, set video codec back to Copy.",
                     src_v.to_uppercase(),
                     spec.name,
                     vc.label(),
@@ -576,16 +605,21 @@ fn video_warnings(
         } else if o.video_height > 0 || o.video_fps > 0 {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "改分辨率/帧率必须重新编码",
-                body: "「直接复制」不能缩放画面，所以会自动改成重编码。".into(),
+                title: if en() { "Changing resolution/FPS requires re-encoding" } else { "改分辨率/帧率必须重新编码" },
+                body: if en() {
+                    "Copy cannot scale video, so it will be re-encoded automatically.".into()
+                } else {
+                    "「直接复制」不能缩放画面，所以会自动改成重编码。".into()
+                },
             });
         }
         if o.video_height > 0 && src.height > 0 && o.video_height < src.height {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "降低分辨率会丢掉画面细节",
-                body: format!(
+                title: if en() { "Lowering resolution loses detail" } else { "降低分辨率会丢掉画面细节" },
+                body: wmsg!(
                     "源画面 {}×{}，输出高度 {}。降下去之后回不来；要留原画质就选「保持」。",
+                    "Source is {}×{}, output height {}. This cannot be undone; choose Keep to preserve the original.",
                     src.width, src.height, o.video_height
                 ),
             });
@@ -593,9 +627,10 @@ fn video_warnings(
         if o.video_fps > 0 && src.fps > 0.0 && (o.video_fps as f64) < src.fps - 0.01 {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "降低帧率会丢掉运动细节",
-                body: format!(
+                title: if en() { "Lowering frame rate loses motion detail" } else { "降低帧率会丢掉运动细节" },
+                body: wmsg!(
                     "源是 {:.3} fps，输出 {} fps。快速运动的画面会变卡顿；要原样保留就选「保持」。",
+                    "Source is {:.3} fps, output {} fps. Fast motion will look choppy; choose Keep to preserve it.",
                     src.fps, o.video_fps
                 ),
             });
@@ -615,13 +650,14 @@ fn video_warnings(
             let total = src.audio_tracks.len();
             let (_, label, kbps) = encodes[0];
             let title = if total > 1 {
-                "部分音轨会被重编码"
+                if en() { "Some audio tracks will be re-encoded" } else { "部分音轨会被重编码" }
             } else {
-                "音轨会被重编码"
+                if en() { "Audio track will be re-encoded" } else { "音轨会被重编码" }
             };
             let body = if total > 1 {
-                format!(
+                wmsg!(
                     "{} 条音轨里有 {} 条不在 {} 支持的编码里，会转成 {} {}k；其余音轨原样复制。",
+                    "{} of {} audio tracks are not codecs {} supports and will be encoded to {} {}k; the rest are copied.",
                     total,
                     encodes.len(),
                     spec.name,
@@ -629,8 +665,9 @@ fn video_warnings(
                     kbps
                 )
             } else {
-                format!(
+                wmsg!(
                     "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
+                    "{} is not a codec {} supports; the track will be encoded to {} {}k.",
                     src.codec_label(),
                     spec.name,
                     label,
@@ -647,9 +684,10 @@ fn video_warnings(
         if let AudioPlan::Encode { label, kbps, .. } = audio_plan(spec.id, &src.codec) {
             out.push(QualityWarning {
                 kind: WarningKind::Container,
-                title: "音轨会被重编码",
-                body: format!(
+                title: if en() { "Audio track will be re-encoded" } else { "音轨会被重编码" },
+                body: wmsg!(
                     "{} 不在 {} 支持的音频编码里，音轨会转成 {} {}k。",
+                    "{} is not a codec {} supports; the track will be encoded to {} {}k.",
                     src.codec_label(),
                     spec.name,
                     label,
