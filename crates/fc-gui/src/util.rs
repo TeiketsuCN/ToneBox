@@ -381,7 +381,7 @@ pub(crate) fn start_button(ui: &mut egui::Ui, can: bool, running: bool, progress
     p.text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
-        "开始转换",
+        crate::tr!("开始转换"),
         egui::FontId::proportional(13.0),
         if can {
             on_accent()

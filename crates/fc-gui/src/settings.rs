@@ -57,10 +57,10 @@ pub enum WindowSize {
 impl WindowSize {
     pub fn label(self) -> &'static str {
         match self {
-            WindowSize::Compact => "小",
-            WindowSize::Normal => "中",
-            WindowSize::Large => "大",
-            WindowSize::Huge => "超大",
+            WindowSize::Compact => crate::tr!("小"),
+            WindowSize::Normal => crate::tr!("中"),
+            WindowSize::Large => crate::tr!("大"),
+            WindowSize::Huge => crate::tr!("超大"),
         }
     }
     /// 返回 (宽, 高)，单位是物理像素。
@@ -102,10 +102,10 @@ pub enum BgMode {
 impl BgMode {
     pub fn label(self) -> &'static str {
         match self {
-            BgMode::Wallpaper => "壁纸模糊",
-            BgMode::Solid => "纯色",
-            BgMode::Gradient => "渐变",
-            BgMode::Off => "关闭",
+            BgMode::Wallpaper => crate::tr!("壁纸模糊"),
+            BgMode::Solid => crate::tr!("纯色"),
+            BgMode::Gradient => crate::tr!("渐变"),
+            BgMode::Off => crate::tr!("关闭"),
         }
     }
     pub fn all() -> [BgMode; 4] {

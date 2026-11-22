@@ -41,7 +41,7 @@ fn reg(args: &[&str]) -> Result<(), String> {
         Ok(())
     } else {
         let err = String::from_utf8_lossy(&out.stderr);
-        Err(err.lines().next().unwrap_or("reg 失败").to_string())
+        Err(err.lines().next().unwrap_or(crate::tr!("reg 失败")).to_string())
     }
 }
 
@@ -55,7 +55,7 @@ fn exe_path() -> Result<String, String> {
 pub fn register() -> Result<(), String> {
     let exe = exe_path()?;
     let base = format!(r"HKCU\Software\Classes\{PROGID}");
-    reg(&["add", &base, "/ve", "/t", "REG_SZ", "/d", "ToneBox 音频文件", "/f"])?;
+    reg(&["add", &base, "/ve", "/t", "REG_SZ", "/d", crate::tr!("ToneBox 音频文件"), "/f"])?;
     reg(&[
         "add",
         &format!(r"{base}\DefaultIcon"),
@@ -102,7 +102,7 @@ pub fn register() -> Result<(), String> {
         "/t",
         "REG_SZ",
         "/d",
-        "声箱 ToneBox — 音频格式转换与试听",
+        crate::tr!("声箱 ToneBox — 音频格式转换与试听"),
         "/f",
     ])?;
     for ext in EXTS {

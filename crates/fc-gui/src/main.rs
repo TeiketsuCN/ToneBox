@@ -670,7 +670,7 @@ impl App {
             })
             .collect();
         let cached_status = if cached_lib.is_empty() {
-            "还没有扫描".to_string()
+            crate::tr!("还没有扫描").to_string()
         } else {
             format!("上次扫描：{} 首", cached_lib.len())
         };
@@ -997,7 +997,7 @@ impl App {
             if spec.id == "wavpack_lossy" {
                 if self.wavpack.is_none() {
                     self.tasks[i].state = State::Failed(
-                        "找不到 wavpack.exe，WavPack 有损输出不可用（设置页有说明）".to_string(),
+                        crate::tr!("找不到 wavpack.exe，WavPack 有损输出不可用（设置页有说明）").to_string(),
                     );
                     continue;
                 }
@@ -1016,7 +1016,7 @@ impl App {
             if spec.id == "optimfrog" {
                 if self.ofr.is_none() {
                     self.tasks[i].state = State::Failed(
-                        "找不到 ofr.exe，OptimFROG 输出不可用（losslessaudio.org 下载后放到程序目录）"
+                        crate::tr!("找不到 ofr.exe，OptimFROG 输出不可用（losslessaudio.org 下载后放到程序目录）")
                             .to_string(),
                     );
                     continue;
@@ -1036,7 +1036,7 @@ impl App {
             if spec.id == "musepack" {
                 if self.mpcenc.is_none() {
                     self.tasks[i].state =
-                        State::Failed("找不到 mpcenc.exe，Musepack 输出不可用".to_string());
+                        State::Failed(crate::tr!("找不到 mpcenc.exe，Musepack 输出不可用").to_string());
                     continue;
                 }
                 jobs.push(Job::Mpc {
@@ -1054,7 +1054,7 @@ impl App {
             if spec.id == "xa" || spec.id == "vag" {
                 if self.psxavenc.is_none() {
                     self.tasks[i].state = State::Failed(
-                        "找不到 psxavenc.exe，PS1 XA / PS2 VAG 输出不可用（extras 包里有）"
+                        crate::tr!("找不到 psxavenc.exe，PS1 XA / PS2 VAG 输出不可用（extras 包里有）")
                             .to_string(),
                     );
                     continue;
@@ -1074,7 +1074,7 @@ impl App {
             if spec.id == "qoa" {
                 if self.qoaconv.is_none() {
                     self.tasks[i].state =
-                        State::Failed("找不到 qoaconv.exe，QOA 输出不可用（extras 包里有）".to_string());
+                        State::Failed(crate::tr!("找不到 qoaconv.exe，QOA 输出不可用（extras 包里有）").to_string());
                     continue;
                 }
                 jobs.push(Job::Qoa {
@@ -1091,7 +1091,7 @@ impl App {
             if matches!(spec.id, "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp") {
                 if self.vgaudio.is_none() {
                     self.tasks[i].state = State::Failed(
-                        "找不到 VGAudioCli.exe，任天堂容器输出不可用（extras 包里有）".to_string(),
+                        crate::tr!("找不到 VGAudioCli.exe，任天堂容器输出不可用（extras 包里有）").to_string(),
                     );
                     continue;
                 }
@@ -1109,7 +1109,7 @@ impl App {
             if spec.id == "vadpcm" {
                 if self.vadpcm.is_none() {
                     self.tasks[i].state = State::Failed(
-                        "找不到 vadpcm.exe，N64 VADPCM 输出不可用（extras 包里有）".to_string(),
+                        crate::tr!("找不到 vadpcm.exe，N64 VADPCM 输出不可用（extras 包里有）").to_string(),
                     );
                     continue;
                 }
@@ -1127,7 +1127,7 @@ impl App {
             if spec.id == "speex" {
                 if self.speexenc.is_none() {
                     self.tasks[i].state =
-                        State::Failed("找不到 speexenc，Speex 输出不可用".to_string());
+                        State::Failed(crate::tr!("找不到 speexenc，Speex 输出不可用").to_string());
                     continue;
                 }
                 jobs.push(Job::Speex {
@@ -1158,7 +1158,7 @@ impl App {
             }
             if spec.id == "ac4" && src_info.map(|m| m.codec.as_str() != "ac4").unwrap_or(true) {
                 self.tasks[i].state = State::Failed(
-                    "AC-4 只能从 AC-4 源直通封装；普通音频没有 AC-4 编码器。".to_string(),
+                    crate::tr!("AC-4 只能从 AC-4 源直通封装；普通音频没有 AC-4 编码器。").to_string(),
                 );
                 continue;
             }
@@ -1174,7 +1174,7 @@ impl App {
                     .unwrap_or(true)
             {
                 self.tasks[i].state = State::Failed(
-                    "IEC 61937 只能直通压缩音频（AC-3 / E-AC-3 / DTS / MPEG），PCM 源没有可直通的比特流。"
+                    crate::tr!("IEC 61937 只能直通压缩音频（AC-3 / E-AC-3 / DTS / MPEG），PCM 源没有可直通的比特流。")
                         .to_string(),
                 );
                 continue;
@@ -1337,7 +1337,7 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!(
-                                "找不到 atracdenc。ATRAC 输出需要你自己装它（设置页有说明）。"
+                                crate::tr!("找不到 atracdenc。ATRAC 输出需要你自己装它（设置页有说明）。")
                             )),
                         }
                     }
@@ -1361,7 +1361,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 speexenc")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 speexenc"))),
                         }
                     }
                     Job::Psx {
@@ -1386,7 +1386,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 psxavenc.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 psxavenc.exe"))),
                         }
                     }
                     Job::Qoa {
@@ -1409,7 +1409,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 qoaconv.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 qoaconv.exe"))),
                         }
                     }
                     Job::Vgaudio {
@@ -1432,7 +1432,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 VGAudioCli.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 VGAudioCli.exe"))),
                         }
                     }
                     Job::Vadpcm {
@@ -1455,7 +1455,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 vadpcm.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 vadpcm.exe"))),
                         }
                     }
                     Job::Mpc {
@@ -1480,7 +1480,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 mpcenc.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 mpcenc.exe"))),
                         }
                     }
                     Job::Ofr {
@@ -1505,7 +1505,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 ofr.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 ofr.exe"))),
                         }
                     }
                     Job::Wavpack {
@@ -1530,7 +1530,7 @@ impl App {
                                     ctx_p.request_repaint();
                                 }),
                             ),
-                            None => Err(anyhow::anyhow!("找不到 wavpack.exe")),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 wavpack.exe"))),
                         }
                     }
                 };
@@ -1538,7 +1538,7 @@ impl App {
                 let res = res.and_then(|size| {
                     match fc_core::verify_output(&tools, &out, job_dur) {
                         Ok(()) => Ok(size),
-                        Err(why) => Err(anyhow::anyhow!("输出已生成，但自检没通过：{why}")),
+                        Err(why) => Err(anyhow::anyhow!(crate::tr!("输出已生成，但自检没通过：{why}"))),
                     }
                 });
                 match res {
@@ -1645,7 +1645,7 @@ impl App {
             if it.encrypted.is_some() {
                 self.player = None;
                 self.player_for = Some(self.items[idx].path.clone());
-                self.play_error = Some("加密文件：本工具只识别，不解码也不播放。".into());
+                self.play_error = Some(crate::tr!("加密文件：本工具只识别，不解码也不播放。").into());
                 return;
             }
         }
@@ -1655,13 +1655,13 @@ impl App {
         self.player = None;
         self.play_error = None;
         let Some(tools) = self.tools.clone() else {
-            self.play_error = Some("找不到 ffmpeg，无法试听".into());
+            self.play_error = Some(crate::tr!("找不到 ffmpeg，无法试听").into());
             self.player_for = Some(self.items[idx].path.clone());
             return;
         };
         let Some(it) = self.items.get(idx) else { return };
         let Some(info) = it.info.clone() else {
-            self.play_error = Some("这个文件解不出音频，没法试听".into());
+            self.play_error = Some(crate::tr!("这个文件解不出音频，没法试听").into());
             self.player_for = Some(self.items[idx].path.clone());
             return;
         };
@@ -1837,7 +1837,7 @@ impl App {
                     self.batch_done += 1;
                     self.push_notice(
                         true,
-                        "转换完成",
+                        crate::tr!("转换完成"),
                         format!("{name} → {out_name} · {}", fmt_size(size)),
                     );
                 }
@@ -1857,7 +1857,7 @@ impl App {
                         }
                     }
                     self.batch_done += 1;
-                    self.push_notice(false, "转换失败", format!("{name}\n{e}"));
+                    self.push_notice(false, crate::tr!("转换失败"), format!("{name}\n{e}"));
                 }
                 Msg::Finished => {
                     self.running = false;
@@ -1872,7 +1872,7 @@ impl App {
                         let ok = self.batch_total.saturating_sub(fail);
                         self.push_notice(
                             fail == 0,
-                            "本批转换结束",
+                            crate::tr!("本批转换结束"),
                             format!("{ok} 个成功，{fail} 个失败"),
                         );
                     }
@@ -2058,7 +2058,7 @@ impl eframe::App for App {
                 Ok(Err(e)) => self.cue_msg = Some(format!("分轨失败：{e}")),
                 Err(std::sync::mpsc::TryRecvError::Empty) => self.cue_rx = Some(rx),
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.cue_msg = Some("分轨线程结束".to_string());
+                    self.cue_msg = Some(crate::tr!("分轨线程结束").to_string());
                 }
             }
         }
@@ -2719,7 +2719,7 @@ fn main() -> eframe::Result<()> {
             }
             None => fc_core::default_target(),
         };
-        let tools = fc_core::locate().expect("找不到 ffmpeg / ffprobe");
+        let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg / ffprobe"));
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
             Err(e) => {
@@ -3019,13 +3019,13 @@ fn main() -> eframe::Result<()> {
                 for d in list {
                     println!(
                         "{}{:<10} {:<12}{}{}",
-                        if d.is_default { "[默认] " } else { "       " },
+                        if d.is_default { crate::tr!("[默认] ") } else { "       " },
                         match d.flow {
-                            fc_player::devices::Flow::Output => "输出",
-                            fc_player::devices::Flow::Input => "输入",
+                            fc_player::devices::Flow::Output => crate::tr!("输出"),
+                            fc_player::devices::Flow::Input => crate::tr!("输入"),
                         },
                         d.kind.label(),
-                        if d.is_bluetooth { "蓝牙 " } else { "" },
+                        if d.is_bluetooth { crate::tr!("蓝牙 ") } else { "" },
                         format!("{} | {}", d.name, d.format_label)
                     );
                 }
@@ -3076,7 +3076,7 @@ fn main() -> eframe::Result<()> {
             eprintln!("用法: format-converter --tags <文件>");
             std::process::exit(2);
         };
-        let tools = fc_core::locate().expect("找不到 ffprobe");
+        let tools = fc_core::locate().expect(crate::tr!("找不到 ffprobe"));
         let path = Path::new(input);
         let t = fc_core::read_tags(&tools.ffprobe, path);
         println!("标题: {}", t.display_title("(无)"));
@@ -3199,7 +3199,7 @@ fn main() -> eframe::Result<()> {
             eprintln!("用法: format-converter --health <文件>");
             std::process::exit(2);
         };
-        let tools = fc_core::locate().expect("找不到 ffmpeg");
+        let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
         match fc_analyze::health::analyze(&tools, Path::new(input)) {
             Ok(h) => {
                 for c in &h.checks {
@@ -3229,8 +3229,8 @@ fn main() -> eframe::Result<()> {
             eprintln!("用法: format-converter --warnings <文件>");
             std::process::exit(2);
         };
-        let tools = fc_core::locate().expect("找不到 ffmpeg");
-        let info = fc_core::probe(&tools, Path::new(input)).expect("读不到音频信息");
+        let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
+        let info = fc_core::probe(&tools, Path::new(input)).expect(crate::tr!("读不到音频信息"));
         let mut opts = fc_core::ConvertOptions::default();
         opts.bit_depth = fc_core::format::BitDepth::Int24;
         opts.sample_rate = Some(48000);
@@ -3251,7 +3251,7 @@ fn main() -> eframe::Result<()> {
             std::process::exit(2);
         };
         let secs: f64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(4.0);
-        let tools = fc_core::locate().expect("找不到 ffmpeg");
+        let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg"));
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
             Err(e) => {
@@ -3353,7 +3353,7 @@ fn main() -> eframe::Result<()> {
     }
 
     let title = if cfg!(feature = "vulkan") {
-        "声箱ToneBox Vulkan"
+        crate::tr!("声箱ToneBox Vulkan")
     } else {
         APP_NAME
     };

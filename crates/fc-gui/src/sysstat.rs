@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(s.stats.codec_procs, 1, "应该看到 1 个子进程");
         assert!(
             s.stats.cpu_children > 0.0,
-            "子进程 CPU 应该 > 0，实际 {}",
+            crate::tr!("子进程 CPU 应该 > 0，实际 {}"),
             s.stats.cpu_children
         );
         assert!(s.stats.mem_total > 0, "整机内存应该读得到");

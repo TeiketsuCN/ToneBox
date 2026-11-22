@@ -161,9 +161,9 @@ impl App {
                                         ui.add_space(6.0);
                                         ui.horizontal(|ui| {
                                             let kind = match spec.kind {
-                                                fc_core::Kind::Lossless => "无损",
-                                                fc_core::Kind::Lossy => "有损",
-                                                _ => "设备专用",
+                                                fc_core::Kind::Lossless => crate::tr!("无损"),
+                                                fc_core::Kind::Lossy => crate::tr!("有损"),
+                                                _ => crate::tr!("设备专用"),
                                             };
                                             ui.label(
                                                 RichText::new(kind).size(9.5).color(accent()),
@@ -182,11 +182,11 @@ impl App {
                                             );
                                             ui.label(RichText::new("·").size(9.5).color(DIM));
                                             let (w, wc) = if !spec.can_encode {
-                                                ("只能读，不能转出", WARN)
+                                                (crate::tr!("只能读，不能转出"), WARN)
                                             } else if self.target_available(spec) {
-                                                ("可以转成这个", accent())
+                                                (crate::tr!("可以转成这个"), accent())
                                             } else {
-                                                ("要装外部编码器才能转出", WARN)
+                                                (crate::tr!("要装外部编码器才能转出"), WARN)
                                             };
                                             ui.label(RichText::new(w).size(9.5).color(wc));
                                         });
@@ -225,16 +225,16 @@ impl App {
                                             ui.add_space(4.0);
                                             para(
                                                 ui,
-                                                "选中后的码率等参数在右侧「输出」列调整。",
+                                                crate::tr!("选中后的码率等参数在右侧「输出」列调整。"),
                                                 8.5,
                                                 DIM,
                                             );
                                         } else if spec.can_encode {
                                             ui.add_space(2.0);
                                             let why = if fc_core::external_encoder(spec.id).is_some() {
-                                                "你的系统里还没装 atracdenc（外部编码器），暂时不能转成它。装好后到设置里点「重新检测」。"
+                                                crate::tr!("你的系统里还没装 atracdenc（外部编码器），暂时不能转成它。装好后到设置里点「重新检测」。")
                                             } else {
-                                                "你的 ffmpeg 里没有这个编码器，暂时不能转成它。"
+                                                crate::tr!("你的 ffmpeg 里没有这个编码器，暂时不能转成它。")
                                             };
                                             card(ui, DANGER, |ui| {
                                                 para(ui, why, 10.0, MUTED);
@@ -476,7 +476,7 @@ impl App {
                                 });
                                 ui.add_space(6.0);
                                 ui.horizontal(|ui| {
-                                    if seg_button(ui, "全屏", self.fullscreen) {
+                                    if seg_button(ui, crate::tr!("全屏"), self.fullscreen) {
                                         crate::set_fullscreen(
                                             &mut self.fullscreen,
                                             ui.ctx(),
@@ -553,16 +553,16 @@ impl App {
                                     .num_columns(2)
                                     .spacing([16.0, 6.0])
                                     .show(ui, |ui| {
-                                        row(ui, "程序", APP_NAME);
-                                        row(ui, "版本", crate::VERSION);
+                                        row(ui, crate::tr!("程序"), APP_NAME);
+                                        row(ui, crate::tr!("版本"), crate::VERSION);
                                         // 署名用昵称，不写真名：隐私和以后转手都方便
-                                        row(ui, "开发", "克洛伊Chloe");
+                                        row(ui, crate::tr!("开发"), crate::tr!("克洛伊Chloe"));
                                         // 不写真名：昵称和收款码上的署名一致，隐私和转手都方便
-                                        row(ui, "字体", "Noto Sans SC（SIL OFL 1.1）");
-                                        row(ui, "音频解码", "ffmpeg 子进程");
-                                        row(ui, "ATRAC 编码", "atracdenc（LGPL-2.1+，需自行安装）");
-                                        row(ui, "频谱分析", "fc-analyze（自研）");
-                                        row(ui, "许可", "开源，详见仓库");
+                                        row(ui, crate::tr!("字体"), "Noto Sans SC（SIL OFL 1.1）");
+                                        row(ui, crate::tr!("音频解码"), crate::tr!("ffmpeg 子进程"));
+                                        row(ui, crate::tr!("ATRAC 编码"), crate::tr!("atracdenc（LGPL-2.1+，需自行安装）"));
+                                        row(ui, crate::tr!("频谱分析"), crate::tr!("fc-analyze（自研）"));
+                                        row(ui, crate::tr!("许可"), crate::tr!("开源，详见仓库"));
                                     });
 
                                 // GitHub：图标 + 仓库链接，点哪个都打开仓库
@@ -643,15 +643,15 @@ impl App {
                                         .tools
                                         .as_ref()
                                         .map(|t| t.ffmpeg.display().to_string())
-                                        .unwrap_or_else(|| "未找到 —— 所有转换都不可用".to_string());
+                                        .unwrap_or_else(|| crate::tr!("未找到 —— 所有转换都不可用").to_string());
                                     let status = if ok {
                                         format!(
                                             "{} · {} 个编码器",
-                                            self.ffmpeg_ver.as_deref().unwrap_or("版本未知"),
+                                            self.ffmpeg_ver.as_deref().unwrap_or(crate::tr!("版本未知")),
                                             self.encoders.len()
                                         )
                                     } else {
-                                        "未找到".to_string()
+                                        crate::tr!("未找到").to_string()
                                     };
                                     dep(ui, "ffmpeg", ok, &status, &path);
                                 }
@@ -662,24 +662,24 @@ impl App {
                                         .tools
                                         .as_ref()
                                         .map(|t| t.ffprobe.display().to_string())
-                                        .unwrap_or_else(|| "未找到 —— 读不出采样率/位深".to_string());
-                                    let status = if ok { "已找到" } else { "未找到" };
+                                        .unwrap_or_else(|| crate::tr!("未找到 —— 读不出采样率/位深").to_string());
+                                    let status = if ok { crate::tr!("已找到") } else { crate::tr!("未找到") };
                                     dep(ui, "ffprobe", ok, status, &path);
                                 }
                                 // atracdenc：可选
                                 {
                                     let ok = self.atracdenc.is_some();
                                     let status = if ok {
-                                        "已安装 · ATRAC1/3/3+ 可输出"
+                                        crate::tr!("已安装 · ATRAC1/3/3+ 可输出")
                                     } else {
-                                        "未安装（可选）· ATRAC 只能解码"
+                                        crate::tr!("未安装（可选）· ATRAC 只能解码")
                                     };
                                     let path = self
                                         .atracdenc
                                         .as_ref()
                                         .map(|p| p.display().to_string())
                                         .unwrap_or_else(|| {
-                                            "装好后放到程序目录或 PATH，再点下面的「重新检测」"
+                                            crate::tr!("装好后放到程序目录或 PATH，再点下面的「重新检测」")
                                                 .to_string()
                                         });
                                     dep(ui, "atracdenc", ok, status, &path);
@@ -688,16 +688,16 @@ impl App {
                                 {
                                     let ok = self.speexenc.is_some();
                                     let status = if ok {
-                                        "已找到 · Speex 可输出"
+                                        crate::tr!("已找到 · Speex 可输出")
                                     } else {
-                                        "未找到 · Speex 不可输出"
+                                        crate::tr!("未找到 · Speex 不可输出")
                                     };
                                     let path = self
                                         .speexenc
                                         .as_ref()
                                         .map(|p| p.display().to_string())
                                         .unwrap_or_else(|| {
-                                            "随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录"
+                                            crate::tr!("随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录")
                                                 .to_string()
                                         });
                                     dep(ui, "speexenc", ok, status, &path);
@@ -706,16 +706,16 @@ impl App {
                                 {
                                     let ok = self.wavpack.is_some();
                                     let status = if ok {
-                                        "已找到 · WavPack 有损可输出"
+                                        crate::tr!("已找到 · WavPack 有损可输出")
                                     } else {
-                                        "未找到（可选）· 只有无损 WavPack"
+                                        crate::tr!("未找到（可选）· 只有无损 WavPack")
                                     };
                                     let path = self
                                         .wavpack
                                         .as_ref()
                                         .map(|p| p.display().to_string())
                                         .unwrap_or_else(|| {
-                                            "ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损"
+                                            crate::tr!("ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损")
                                                 .to_string()
                                         });
                                     dep(ui, "wavpack", ok, status, &path);
@@ -724,16 +724,16 @@ impl App {
                                 {
                                     let ok = self.ofr.is_some();
                                     let status = if ok {
-                                        "已找到 · OptimFROG 可输出"
+                                        crate::tr!("已找到 · OptimFROG 可输出")
                                     } else {
-                                        "未安装（可选）· 只能解码"
+                                        crate::tr!("未安装（可选）· 只能解码")
                                     };
                                     let path = self
                                         .ofr
                                         .as_ref()
                                         .map(|p| p.display().to_string())
                                         .unwrap_or_else(|| {
-                                            "官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录"
+                                            crate::tr!("官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录")
                                                 .to_string()
                                         });
                                     dep(ui, "ofr", ok, status, &path);
@@ -742,75 +742,75 @@ impl App {
                                 {
                                     let ok = self.mpcenc.is_some();
                                     let status = if ok {
-                                        "已找到 · Musepack 可输出"
+                                        crate::tr!("已找到 · Musepack 可输出")
                                     } else {
-                                        "未找到 · Musepack 不可输出"
+                                        crate::tr!("未找到 · Musepack 不可输出")
                                     };
                                     let path = self
                                         .mpcenc
                                         .as_ref()
                                         .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| "随包提供，通常在 musepack 目录".to_string());
+                                        .unwrap_or_else(|| crate::tr!("随包提供，通常在 musepack 目录").to_string());
                                     dep(ui, "mpcenc", ok, status, &path);
                                 }
                                 // psxavenc：可选，PS1 XA / PS2 VAG 用
                                 {
                                     let ok = self.psxavenc.is_some();
                                     let status = if ok {
-                                        "已找到 · PS1 XA / PS2 VAG 可输出"
+                                        crate::tr!("已找到 · PS1 XA / PS2 VAG 可输出")
                                     } else {
-                                        "未找到（可选）· PS1 XA / PS2 VAG 不可输出"
+                                        crate::tr!("未找到（可选）· PS1 XA / PS2 VAG 不可输出")
                                     };
                                     let path = self
                                         .psxavenc
                                         .as_ref()
                                         .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| "放到程序目录或 psxavenc 子目录".to_string());
+                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 psxavenc 子目录").to_string());
                                     dep(ui, "psxavenc", ok, status, &path);
                                 }
                                 // qoaconv：可选，QOA 用
                                 {
                                     let ok = self.qoaconv.is_some();
                                     let status = if ok {
-                                        "已找到 · QOA 可输出"
+                                        crate::tr!("已找到 · QOA 可输出")
                                     } else {
-                                        "未找到（可选）· QOA 不可输出"
+                                        crate::tr!("未找到（可选）· QOA 不可输出")
                                     };
                                     let path = self
                                         .qoaconv
                                         .as_ref()
                                         .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| "放到程序目录或 qoa 子目录".to_string());
+                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 qoa 子目录").to_string());
                                     dep(ui, "qoaconv", ok, status, &path);
                                 }
                                 // VGAudioCli：可选，任天堂系容器用
                                 {
                                     let ok = self.vgaudio.is_some();
                                     let status = if ok {
-                                        "已找到 · BRSTM/BCSTM/BFSTM/DSP/IDSP 可输出"
+                                        crate::tr!("已找到 · BRSTM/BCSTM/BFSTM/DSP/IDSP 可输出")
                                     } else {
-                                        "未找到（可选）· 任天堂容器不可输出"
+                                        crate::tr!("未找到（可选）· 任天堂容器不可输出")
                                     };
                                     let path = self
                                         .vgaudio
                                         .as_ref()
                                         .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| "放到程序目录或 vgaudio 子目录".to_string());
+                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 vgaudio 子目录").to_string());
                                     dep(ui, "vgaudio", ok, status, &path);
                                 }
                                 // vadpcm：可选，N64 VADPCM 用
                                 {
                                     let ok = self.vadpcm.is_some();
                                     let status = if ok {
-                                        "已找到 · N64 VADPCM 可输出"
+                                        crate::tr!("已找到 · N64 VADPCM 可输出")
                                     } else {
-                                        "未找到（可选）· N64 VADPCM 不可输出"
+                                        crate::tr!("未找到（可选）· N64 VADPCM 不可输出")
                                     };
                                     let path = self
                                         .vadpcm
                                         .as_ref()
                                         .map(|p| p.display().to_string())
-                                        .unwrap_or_else(|| "放到程序目录或 vadpcm 子目录".to_string());
+                                        .unwrap_or_else(|| crate::tr!("放到程序目录或 vadpcm 子目录").to_string());
                                     dep(ui, "vadpcm", ok, status, &path);
                                 }
 
@@ -847,7 +847,7 @@ impl App {
                                 });
                                 para(
                                     ui,
-                                    "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。",
+                                    crate::tr!("atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。"),
                                     8.5,
                                     DIM,
                                 );
@@ -856,7 +856,7 @@ impl App {
                                 section(ui, crate::tr!("文件关联"));
                                 para(
                                     ui,
-                                    "注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。",
+                                    crate::tr!("注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。"),
                                     8.5,
                                     DIM,
                                 );
@@ -868,19 +868,19 @@ impl App {
                                             .stroke(line(Color32::WHITE, 18))
                                             .rounding(Rounding::same(7.0))
                                     };
-                                    if ui.add(mk("注册到打开方式")).clicked() {
+                                    if ui.add(mk(crate::tr!("注册到打开方式"))).clicked() {
                                         self.assoc_msg = Some(match crate::assoc::register() {
-                                            Ok(()) => "已注册：右键「打开方式」里能看到 ToneBox。".to_string(),
+                                            Ok(()) => crate::tr!("已注册：右键「打开方式」里能看到 ToneBox。").to_string(),
                                             Err(e) => format!("注册失败：{e}"),
                                         });
                                     }
-                                    if ui.add(mk("移除注册")).clicked() {
+                                    if ui.add(mk(crate::tr!("移除注册"))).clicked() {
                                         self.assoc_msg = Some(match crate::assoc::unregister() {
-                                            Ok(()) => "已移除注册。".to_string(),
+                                            Ok(()) => crate::tr!("已移除注册。").to_string(),
                                             Err(e) => format!("移除失败：{e}"),
                                         });
                                     }
-                                    if ui.add(mk("打开默认应用设置")).clicked() {
+                                    if ui.add(mk(crate::tr!("打开默认应用设置"))).clicked() {
                                         crate::assoc::open_default_apps();
                                     }
                                 });
@@ -892,7 +892,7 @@ impl App {
                                 section(ui, crate::tr!("语言 / Language"));
                                 ui.horizontal(|ui| {
                                     if ui
-                                        .selectable_label(self.cfg.lang == "zh", "中文")
+                                        .selectable_label(self.cfg.lang == "zh", crate::tr!("中文"))
                                         .clicked()
                                     {
                                         self.cfg.lang = "zh".to_string();
@@ -921,7 +921,7 @@ impl App {
                                 section(ui, crate::tr!("CUE 分轨"));
                                 para(
                                     ui,
-                                    "选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。",
+                                    crate::tr!("选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。"),
                                     8.5,
                                     DIM,
                                 );
@@ -943,7 +943,7 @@ impl App {
                                             .parent()
                                             .unwrap_or_else(|| std::path::Path::new("."))
                                             .to_path_buf();
-                                        self.cue_msg = Some("正在分轨…".to_string());
+                                        self.cue_msg = Some(crate::tr!("正在分轨…").to_string());
                                         let (tx, rx) = std::sync::mpsc::channel();
                                         self.cue_rx = Some(rx);
                                         std::thread::spawn(move || {
@@ -952,7 +952,7 @@ impl App {
                                                     &t, &cue, &out, target, |_, _| {},
                                                 )
                                                 .map_err(|e| format!("{e:#}")),
-                                                None => Err("找不到 ffmpeg".to_string()),
+                                                None => Err(crate::tr!("找不到 ffmpeg").to_string()),
                                             };
                                             let _ = tx.send(res);
                                         });
@@ -966,15 +966,15 @@ impl App {
                                 section(ui, crate::tr!("支持开发"));
                                 para(
                                     ui,
-                                    "免费、开源、不卖授权。觉得有用就扫下面任意一个。",
+                                    crate::tr!("免费、开源、不卖授权。觉得有用就扫下面任意一个。"),
                                     9.5,
                                     MUTED,
                                 );
                                 ui.add_space(10.0);
                                 ui.horizontal(|ui| {
                                     for (tex, label) in [
-                                        (&self.donate_wechat, "微信"),
-                                        (&self.donate_alipay, "支付宝"),
+                                        (&self.donate_wechat, crate::tr!("微信")),
+                                        (&self.donate_alipay, crate::tr!("支付宝")),
                                     ] {
                                         ui.vertical(|ui| {
                                             if let Some(t) = tex {
@@ -1063,7 +1063,7 @@ impl App {
                                         accent(),
                                     )
                                 } else {
-                                    ("开始转换".to_string(), if can { on_accent() } else { DIM })
+                                    (crate::tr!("开始转换").to_string(), if can { on_accent() } else { DIM })
                                 };
                                 let b = egui::Button::new(RichText::new(label).size(10.0).color(col))
                                     .fill(if can {
@@ -1216,7 +1216,7 @@ impl App {
                         };
                         Self::stat_row(
                             ui,
-                            "内存",
+                            crate::tr!("内存"),
                             &format!(
                                 "{:.1}/{:.1} GB {:.0}%",
                                 used as f64 / 1_073_741_824.0,
@@ -1228,12 +1228,12 @@ impl App {
                         );
                         Self::stat_row(
                             ui,
-                            "编解码压力",
+                            crate::tr!("编解码压力"),
                             &format!("{:.0}%", s.cpu_children * 100.0),
                             &if s.codec_procs > 0 {
                                 format!("{} 个进程", s.codec_procs)
                             } else {
-                                "空闲（无编解码任务）".to_string()
+                                crate::tr!("空闲（无编解码任务）").to_string()
                             },
                             s.cpu_children,
                         );

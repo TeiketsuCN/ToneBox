@@ -72,7 +72,7 @@ impl App {
                 let it = &self.items[i];
                 it.tags.display_title(&it.name())
             })
-            .unwrap_or_else(|| "没有在播放".to_string());
+            .unwrap_or_else(|| crate::tr!("没有在播放").to_string());
         let sub = display
             .map(|i| self.items[i].tags.display_sub())
             .unwrap_or_default();
@@ -272,11 +272,11 @@ impl App {
                     wrect.center(),
                     Align2::CENTER_CENTER,
                     if encrypted {
-                        "加密文件：只识别，不解码也不播放"
+                        crate::tr!("加密文件：只识别，不解码也不播放")
                     } else if has_player {
-                        "波形生成中…"
+                        crate::tr!("波形生成中…")
                     } else {
-                        "双击队列里的文件就能试听"
+                        crate::tr!("双击队列里的文件就能试听")
                     },
                     FontId::proportional(9.5),
                     DIM,
@@ -544,7 +544,7 @@ impl App {
                         p.text(
                             screen.center(),
                             egui::Align2::CENTER_CENTER,
-                            "这个文件没有内嵌封面",
+                            crate::tr!("这个文件没有内嵌封面"),
                             egui::FontId::proportional(13.0),
                             MUTED.gamma_multiply(t),
                         );
@@ -553,7 +553,7 @@ impl App {
                 p.text(
                     egui::pos2(screen.center().x, screen.bottom() - 24.0),
                     egui::Align2::CENTER_CENTER,
-                    "点击任意处或按 Esc 关闭",
+                    crate::tr!("点击任意处或按 Esc 关闭"),
                     egui::FontId::proportional(9.5),
                     DIM.gamma_multiply(t),
                 );

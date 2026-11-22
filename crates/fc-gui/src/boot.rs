@@ -108,9 +108,9 @@ impl Boot {
                     t.ffmpeg
                         .parent()
                         .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "已在 PATH".to_string()),
+                        .unwrap_or_else(|| crate::tr!("已在 PATH").to_string()),
                 ),
-                None => send(0, Step::Warn, "没找到，转换不可用".to_string()),
+                None => send(0, Step::Warn, crate::tr!("没找到，转换不可用").to_string()),
             }
 
             // 1 版本
@@ -120,7 +120,7 @@ impl Boot {
                 .and_then(|t| fc_core::ffmpeg_version(&t.ffmpeg));
             match &ver {
                 Some(v) => send(1, Step::Ok, v.clone()),
-                None => send(1, Step::Skip, "读不到".to_string()),
+                None => send(1, Step::Skip, crate::tr!("读不到").to_string()),
             }
 
             // 2 编码器表
@@ -165,7 +165,7 @@ impl Boot {
             libs.sort();
             libs.dedup();
             let detail = if libs.is_empty() {
-                "没发现外挂解码库".to_string()
+                crate::tr!("没发现外挂解码库").to_string()
             } else {
                 format!(
                     "{} … 共 {} 个",
@@ -201,7 +201,7 @@ impl Boot {
                     Step::Skip
                 },
                 if miss.is_empty() {
-                    "FLAC / ALAC / PCM 可用".to_string()
+                    crate::tr!("FLAC / ALAC / PCM 可用").to_string()
                 } else {
                     format!("缺 {}", miss.join(" / "))
                 },
@@ -223,7 +223,7 @@ impl Boot {
                     Step::Ok
                 },
                 if have.is_empty() {
-                    "没有 MP3 / Opus / Vorbis 编码器".to_string()
+                    crate::tr!("没有 MP3 / Opus / Vorbis 编码器").to_string()
                 } else {
                     format!("{} 个可用", have.len())
                 },
@@ -245,7 +245,7 @@ impl Boot {
                     Step::Ok
                 },
                 if vhave.is_empty() {
-                    "这个构建没有外挂视频编码器".to_string()
+                    crate::tr!("这个构建没有外挂视频编码器").to_string()
                 } else {
                     format!("{} / 共 {} 个", vhave.join(" / "), vhave.len())
                 },
@@ -257,42 +257,42 @@ impl Boot {
                 Ok(list) if !list.is_empty() => {
                     send(8, Step::Ok, format!("{} 个设备", list.len()))
                 }
-                _ => send(8, Step::Skip, "枚举不到".to_string()),
+                _ => send(8, Step::Skip, crate::tr!("枚举不到").to_string()),
             }
 
             // 9 ATRAC 编码器（可选）
             send(9, Step::Running, String::new());
             match fc_core::find_atracdenc() {
-                Some(_) => send(9, Step::Ok, "已安装".to_string()),
-                None => send(9, Step::Skip, "未安装（可选）".to_string()),
+                Some(_) => send(9, Step::Ok, crate::tr!("已安装").to_string()),
+                None => send(9, Step::Skip, crate::tr!("未安装（可选）").to_string()),
             }
 
             // 10 Speex 编码器
             send(10, Step::Running, String::new());
             match fc_core::find_speexenc() {
-                Some(_) => send(10, Step::Ok, "已找到".to_string()),
-                None => send(10, Step::Skip, "未找到".to_string()),
+                Some(_) => send(10, Step::Ok, crate::tr!("已找到").to_string()),
+                None => send(10, Step::Skip, crate::tr!("未找到").to_string()),
             }
 
             // 11 WavPack 有损：hybrid 模式必须靠官方 CLI
             send(11, Step::Running, String::new());
             match fc_core::find_wavpack() {
-                Some(_) => send(11, Step::Ok, "已找到".to_string()),
-                None => send(11, Step::Skip, "未找到".to_string()),
+                Some(_) => send(11, Step::Ok, crate::tr!("已找到").to_string()),
+                None => send(11, Step::Skip, crate::tr!("未找到").to_string()),
             }
 
             // 12 OptimFROG：官方不随包，用户自装
             send(12, Step::Running, String::new());
             match fc_core::find_ofr() {
-                Some(_) => send(12, Step::Ok, "已找到".to_string()),
-                None => send(12, Step::Skip, "未安装（可选）".to_string()),
+                Some(_) => send(12, Step::Ok, crate::tr!("已找到").to_string()),
+                None => send(12, Step::Skip, crate::tr!("未安装（可选）").to_string()),
             }
 
             // 13 Musepack（随包 mpcenc）
             send(13, Step::Running, String::new());
             match fc_core::find_mpcenc() {
-                Some(_) => send(13, Step::Ok, "已找到".to_string()),
-                None => send(13, Step::Skip, "未找到".to_string()),
+                Some(_) => send(13, Step::Ok, crate::tr!("已找到").to_string()),
+                None => send(13, Step::Skip, crate::tr!("未找到").to_string()),
             }
 
             // 14 配置与音乐库缓存
@@ -302,7 +302,7 @@ impl Boot {
                 14,
                 Step::Ok,
                 if cfg.library_cache.is_empty() {
-                    "配置就绪，音乐库还没扫".to_string()
+                    crate::tr!("配置就绪，音乐库还没扫").to_string()
                 } else {
                     format!("音乐库 {} 首", cfg.library_cache.len())
                 },
@@ -377,7 +377,7 @@ impl Boot {
     /// 所以看起来像清单在逐行往下走。
     fn current(&self) -> (String, String, Step) {
         if self.data.is_some() {
-            return ("正在加载项目…".to_string(), String::new(), Step::Running);
+            return (crate::tr!("正在加载项目…").to_string(), String::new(), Step::Running);
         }
         if let Some(it) = self
             .items
@@ -390,7 +390,7 @@ impl Boot {
         if let Some(it) = self.items.iter().find(|i| i.state == Step::Running) {
             return (it.label.to_string(), String::new(), Step::Running);
         }
-        ("准备中…".to_string(), String::new(), Step::Running)
+        (crate::tr!("准备中…").to_string(), String::new(), Step::Running)
     }
 
     /// 进度：检查阶段走到 70%，「加载项目」那 2 秒走完剩下的 30%
@@ -525,7 +525,7 @@ impl Boot {
         p.text(
             egui::pos2(area.right() - m, bar.top() - 10.0),
             Align2::RIGHT_BOTTOM,
-            "建议所有操作备份 · 慎防设备损坏，请自己负责",
+            crate::tr!("建议所有操作备份 · 慎防设备损坏，请自己负责"),
             FontId::proportional(9.5),
             tint(TEXT, 75),
         );
@@ -535,7 +535,7 @@ impl Boot {
 fn load_logo(ctx: &egui::Context) -> egui::TextureHandle {
     const PNG: &[u8] = include_bytes!("../assets/icon.png");
     let img = image::load_from_memory(PNG)
-        .expect("内置 icon.png 读不出来")
+        .expect(crate::tr!("内置 icon.png 读不出来"))
         .to_rgba8();
     let size = [img.width() as usize, img.height() as usize];
     let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
@@ -546,7 +546,7 @@ fn load_logo(ctx: &egui::Context) -> egui::TextureHandle {
 fn load_shot(ctx: &egui::Context) -> egui::TextureHandle {
     const JPG: &[u8] = include_bytes!("../assets/splash.jpg");
     let img = image::load_from_memory(JPG)
-        .expect("内置 splash.jpg 读不出来")
+        .expect(crate::tr!("内置 splash.jpg 读不出来"))
         .to_rgba8();
     let size = [img.width() as usize, img.height() as usize];
     let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());

@@ -35,12 +35,12 @@ impl App {
         // 按钮放在列表顶部：播放栏是悬浮的，底部按钮会被它盖住
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
-            if lib_button(ui, "添加文件", true) {
+            if lib_button(ui, crate::tr!("添加文件"), true) {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     self.add_files(paths);
                 }
             }
-            if lib_button(ui, "清空", false) && !self.running {
+            if lib_button(ui, crate::tr!("清空"), false) && !self.running {
                 self.items.clear();
                 self.selected = 0;
             }
@@ -142,7 +142,7 @@ impl App {
                                         let mut parts: Vec<String> = Vec::new();
                                         if m.has_video() {
                                             // 视频文件先报画面：只写音频编码会让人以为这是个纯音频
-                                            let v = m.video_label().unwrap_or("视频");
+                                            let v = m.video_label().unwrap_or(crate::tr!("视频"));
                                             if m.width > 0 && m.height > 0 {
                                                 parts.push(format!("{v} {}×{}", m.width, m.height));
                                             } else {
@@ -178,7 +178,7 @@ impl App {
                                     None => {
                                         let e = error
                                             .clone()
-                                            .unwrap_or_else(|| "读取失败".into());
+                                            .unwrap_or_else(|| crate::tr!("读取失败").into());
                                         let first: String =
                                             e.lines().next().unwrap_or("").chars().take(46).collect();
                                         format!("{first}…")
@@ -235,7 +235,7 @@ impl App {
                                     |ui| {
                                         ui.set_min_width(120.0);
                                         if ui
-                                            .selectable_label(override_id.is_none(), "跟随全局")
+                                            .selectable_label(override_id.is_none(), crate::tr!("跟随全局"))
                                             .clicked()
                                         {
                                             self.items[i].override_id = None;

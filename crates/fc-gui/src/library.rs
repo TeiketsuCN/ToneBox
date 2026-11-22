@@ -27,11 +27,11 @@ impl App {
         let mut animating = false;
 
         let title = match self.lib_tab {
-            LibTab::Songs => "歌曲",
-            LibTab::Albums => "专辑",
-            LibTab::Genres => "风格",
-            LibTab::Artists => "艺术家",
-            LibTab::Folders => "库",
+            LibTab::Songs => crate::tr!("歌曲"),
+            LibTab::Albums => crate::tr!("专辑"),
+            LibTab::Genres => crate::tr!("风格"),
+            LibTab::Artists => crate::tr!("艺术家"),
+            LibTab::Folders => crate::tr!("库"),
         };
         ui.horizontal(|ui| {
             ui.label(RichText::new(title).size(14.0).color(TEXT).strong());
@@ -63,13 +63,13 @@ impl App {
         let mut rescan = false;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
-            add_files = lib_button(ui, "添加音乐", true);
-            add_dir = lib_button(ui, "添加文件夹", false);
-            rescan = lib_button(ui, "重新扫描", false);
+            add_files = lib_button(ui, crate::tr!("添加音乐"), true);
+            add_dir = lib_button(ui, crate::tr!("添加文件夹"), false);
+            rescan = lib_button(ui, crate::tr!("重新扫描"), false);
             if self.lib_tab != LibTab::Folders {
                 ui.add_space(6.0);
                 let w = (ui.available_width() - 8.0).max(120.0);
-                if search_box(ui, &mut self.lib_filter, "搜歌名 / 艺术家 / 专辑 / 风格…", w) {
+                if search_box(ui, &mut self.lib_filter, crate::tr!("搜歌名 / 艺术家 / 专辑 / 风格…"), w) {
                     animating = true;
                 }
             }
@@ -94,7 +94,7 @@ impl App {
                 ui.add_space(4.0);
                 para(
                     ui,
-                    "点上面「添加文件夹」扫一个目录，或者「添加音乐」挑几个文件。只读扫描，不搬文件、不改文件。",
+                    crate::tr!("点上面「添加文件夹」扫一个目录，或者「添加音乐」挑几个文件。只读扫描，不搬文件、不改文件。"),
                     9.5,
                     MUTED,
                 );
@@ -110,12 +110,12 @@ impl App {
                 ui.add_space(4.0);
                 para(
                     ui,
-                    "扫描结果会记在配置里，以后打开直接显示；加了新歌再扫一遍就行。",
+                    crate::tr!("扫描结果会记在配置里，以后打开直接显示；加了新歌再扫一遍就行。"),
                     9.5,
                     MUTED,
                 );
                 ui.add_space(8.0);
-                go = lib_button(ui, "开始扫描", true);
+                go = lib_button(ui, crate::tr!("开始扫描"), true);
             });
             if go {
                 self.scan_library();
@@ -177,9 +177,9 @@ impl App {
                                 ui.label(
                                     RichText::new(format!(
                                         "{} · {} · {}",
-                                        if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
-                                        if e.album.is_empty() { "未知专辑" } else { &e.album },
-                                        if e.genre.is_empty() { "未知风格" } else { &e.genre }
+                                        if e.artist.is_empty() { crate::tr!("未知艺术家") } else { &e.artist },
+                                        if e.album.is_empty() { crate::tr!("未知专辑") } else { &e.album },
+                                        if e.genre.is_empty() { crate::tr!("未知风格") } else { &e.genre }
                                     ))
                                     .size(9.0)
                                     .color(MUTED),
@@ -261,8 +261,8 @@ impl App {
                             let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
                                 "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
                                 e.title,
-                                if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
-                                if e.album.is_empty() { "未知专辑" } else { &e.album },
+                                if e.artist.is_empty() { crate::tr!("未知艺术家") } else { &e.artist },
+                                if e.album.is_empty() { crate::tr!("未知专辑") } else { &e.album },
                                 e.bitrate_kbps,
                                 e.sample_rate,
                                 e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
@@ -296,7 +296,7 @@ impl App {
                                     .filter(|&&j| lib_key(tab, &self.lib_entries[j]) == key)
                                     .count();
                                 let shown = key.trim();
-                                lib_group(ui, if shown.is_empty() { "未知" } else { shown }, n);
+                                lib_group(ui, if shown.is_empty() { crate::tr!("未知") } else { shown }, n);
                             }
                             let e = &self.lib_entries[i];
                             let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
@@ -315,8 +315,8 @@ impl App {
                             let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
                                 "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
                                 e.title,
-                                if e.artist.is_empty() { "未知艺术家" } else { &e.artist },
-                                if e.album.is_empty() { "未知专辑" } else { &e.album },
+                                if e.artist.is_empty() { crate::tr!("未知艺术家") } else { &e.artist },
+                                if e.album.is_empty() { crate::tr!("未知专辑") } else { &e.album },
                                 e.bitrate_kbps,
                                 e.sample_rate,
                                 e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
@@ -361,7 +361,7 @@ impl App {
         if self.cfg.library_dirs.is_empty() && self.cfg.library_files.is_empty() {
             para(
                 ui,
-                "还没有添加任何东西。用上面的「添加文件夹」扫一个目录，或「添加音乐」挑几个文件。",
+                crate::tr!("还没有添加任何东西。用上面的「添加文件夹」扫一个目录，或「添加音乐」挑几个文件。"),
                 10.0,
                 DIM,
             );
@@ -471,7 +471,7 @@ impl App {
         ui.add_space(4.0);
         para(
             ui,
-            "扫描只读：读标签和时长，结果只存在内存里，关掉就没了，下次打开重扫。",
+            crate::tr!("扫描只读：读标签和时长，结果只存在内存里，关掉就没了，下次打开重扫。"),
             8.5,
             DIM,
         );
@@ -498,7 +498,7 @@ impl App {
             "wma", "ac3", "eac3", "oma", "aa3", "at3", "at9", "ape", "wv", "tta", "caf", "w64",
         ];
         let Some(paths) = rfd::FileDialog::new()
-            .add_filter("音频文件", EXT)
+            .add_filter(crate::tr!("音频文件"), EXT)
             .pick_files()
         else {
             return;
@@ -526,7 +526,7 @@ impl App {
             return;
         }
         let Some(tools) = self.tools.clone() else {
-            self.lib_status = "找不到 ffmpeg，扫不了".into();
+            self.lib_status = crate::tr!("找不到 ffmpeg，扫不了").into();
             return;
         };
         let dirs: Vec<PathBuf> = self
@@ -544,7 +544,7 @@ impl App {
             .filter(|p| p.is_file())
             .collect();
         if dirs.is_empty() && seed.is_empty() {
-            self.lib_status = "没有可用的文件夹或文件".into();
+            self.lib_status = crate::tr!("没有可用的文件夹或文件").into();
             return;
         }
         self.lib_scanning = true;
@@ -553,7 +553,7 @@ impl App {
         // 重扫就丢掉旧封面缓存（文件可能换了封面）
         self.lib_covers.clear();
         self.lib_cover_pending.clear();
-        self.lib_status = "正在扫描…".into();
+        self.lib_status = crate::tr!("正在扫描…").into();
         let tx = self.lib_tx.clone();
         std::thread::spawn(move || {
             let mut files = seed;
@@ -721,7 +721,7 @@ pub(crate) fn lib_row(
     }
 
     // 右边的音质标识（上方）+ 时长（下方）
-    let q = if e.codec.starts_with("杜比全景声") {
+    let q = if e.codec.starts_with(crate::tr!("杜比全景声")) {
         let spec = if e.codec.contains("E-AC-3") {
             "E-AC-3"
         } else if e.codec.contains("TrueHD") {
@@ -730,7 +730,7 @@ pub(crate) fn lib_row(
             "AC-4"
         };
         Some(Quality::Atmos(spec))
-    } else if e.codec.starts_with("菁彩声") {
+    } else if e.codec.starts_with(crate::tr!("菁彩声")) {
         Some(Quality::Vivid)
     } else if e.codec.contains("E-AC-3") {
         Some(Quality::Eac3)

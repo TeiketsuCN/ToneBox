@@ -34,7 +34,7 @@ impl App {
         let Some(i) = idx else { return };
         let Some(item) = self.items.get(i) else { return };
         let Some(tools) = self.tools.clone() else {
-            self.spec_err = Some("找不到 ffmpeg，读不了频谱".into());
+            self.spec_err = Some(crate::tr!("找不到 ffmpeg，读不了频谱").into());
             self.spec_open = true;
             return;
         };
@@ -135,7 +135,7 @@ impl App {
                 p.text(
                     panel.min + egui::vec2(24.0, 22.0),
                     egui::Align2::LEFT_CENTER,
-                    "频谱",
+                    crate::tr!("频谱"),
                     egui::FontId::proportional(13.0),
                     TEXT,
                 );
@@ -234,7 +234,7 @@ impl App {
                     p.text(
                         plot.center(),
                         egui::Align2::CENTER_CENTER,
-                        "正在算频谱…",
+                        crate::tr!("正在算频谱…"),
                         egui::FontId::proportional(11.0),
                         MUTED,
                     );
@@ -250,7 +250,7 @@ impl App {
                     p.text(
                         plot.center(),
                         egui::Align2::CENTER_CENTER,
-                        "没有可显示的数据",
+                        crate::tr!("没有可显示的数据"),
                         egui::FontId::proportional(10.0),
                         DIM,
                     );
@@ -259,7 +259,7 @@ impl App {
                 p.text(
                     egui::pos2(panel.center().x, panel.bottom() - 16.0),
                     egui::Align2::CENTER_CENTER,
-                    "点击任意处或按 Esc 关闭",
+                    crate::tr!("点击任意处或按 Esc 关闭"),
                     egui::FontId::proportional(8.5),
                     DIM,
                 );

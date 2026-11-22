@@ -117,9 +117,9 @@ impl App {
     /// 用户配置：列表 + 重命名 + 导出/导入（现在放在设置页里）
     pub(crate) fn profile_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if tiny_text_button(ui, "＋ 新建配置") {
+            if tiny_text_button(ui, crate::tr!("＋ 新建配置")) {
                 self.cfg.add_profile();
-                self.profile_msg = "已新建一套配置".into();
+                self.profile_msg = crate::tr!("已新建一套配置").into();
             }
             if !self.profile_msg.is_empty() {
                 ui.label(RichText::new(&self.profile_msg).size(9.0).color(accent()));
@@ -210,22 +210,22 @@ impl App {
                 egui::popup::PopupCloseBehavior::CloseOnClickOutside,
                 |ui| {
                     ui.set_min_width(104.0);
-                    if menu_button(ui, "重命名") {
+                    if menu_button(ui, crate::tr!("重命名")) {
                         start_rename = Some(i);
                         ui.memory_mut(|m| m.close_popup());
                     }
-                    if menu_button(ui, "删除这套") {
+                    if menu_button(ui, crate::tr!("删除这套")) {
                         remove = Some(i);
                         ui.memory_mut(|m| m.close_popup());
                     }
                 },
             );
             resp.context_menu(|ui| {
-                if menu_button(ui, "重命名") {
+                if menu_button(ui, crate::tr!("重命名")) {
                     start_rename = Some(i);
                     ui.close_menu();
                 }
-                if menu_button(ui, "删除这套配置") {
+                if menu_button(ui, crate::tr!("删除这套配置")) {
                     remove = Some(i);
                     ui.close_menu();
                 }
@@ -258,10 +258,10 @@ impl App {
 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            if tiny_text_button(ui, "导出") {
+            if tiny_text_button(ui, crate::tr!("导出")) {
                 self.export_profiles();
             }
-            if tiny_text_button(ui, "导入") {
+            if tiny_text_button(ui, crate::tr!("导入")) {
                 self.import_profiles();
             }
         });
@@ -319,12 +319,12 @@ impl App {
         let pkg: Pkg = match serde_json::from_str(&text) {
             Ok(p) => p,
             Err(_) => {
-                self.profile_msg = "导入失败：这不是配置 JSON".into();
+                self.profile_msg = crate::tr!("导入失败：这不是配置 JSON").into();
                 return;
             }
         };
         if pkg.profiles.is_empty() {
-            self.profile_msg = "导入失败：文件里没有配置".into();
+            self.profile_msg = crate::tr!("导入失败：文件里没有配置").into();
             return;
         }
         self.cfg.snapshot_active();
@@ -332,7 +332,7 @@ impl App {
         let mut added = 0;
         for mut p in pkg.profiles {
             let base = if p.name.trim().is_empty() {
-                "导入的配置".to_string()
+                crate::tr!("导入的配置").to_string()
             } else {
                 p.name.trim().to_string()
             };
@@ -433,11 +433,11 @@ impl App {
         let artists = uniq(&self.lib_entries, |e| &e.artist);
         let rows: [(LibTab, &str, usize); 5] = [
             // 「库」放最前：加音乐/加文件夹都在这里，别让人找
-            (LibTab::Folders, "库", self.cfg.library_dirs.len() + self.cfg.library_files.len()),
-            (LibTab::Songs, "歌曲", songs),
-            (LibTab::Albums, "专辑", albums),
-            (LibTab::Genres, "风格", genres),
-            (LibTab::Artists, "艺术家", artists),
+            (LibTab::Folders, crate::tr!("库"), self.cfg.library_dirs.len() + self.cfg.library_files.len()),
+            (LibTab::Songs, crate::tr!("歌曲"), songs),
+            (LibTab::Albums, crate::tr!("专辑"), albums),
+            (LibTab::Genres, crate::tr!("风格"), genres),
+            (LibTab::Artists, crate::tr!("艺术家"), artists),
         ];
         for (tab, label, n) in rows {
             if rail_sub(ui, label, n, self.lib_tab == tab) {

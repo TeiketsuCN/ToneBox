@@ -83,7 +83,7 @@ impl App {
         if exts.len() > 1 {
             let cur = self.ext_sel;
             let mut pick: Option<&'static str> = None;
-            field_row(ui, "后缀", |ui| {
+            field_row(ui, crate::tr!("后缀"), |ui| {
                 for e in exts.iter() {
                     if seg_button(ui, &format!(".{e}"), cur == *e) {
                         pick = Some(e);
@@ -95,7 +95,7 @@ impl App {
                 self.ext_sel = e;
                 changed = true;
             }
-            hint_below(ui, "只改后缀和封装，编码参数不变", DIM);
+            hint_below(ui, crate::tr!("只改后缀和封装，编码参数不变"), DIM);
         }
 
         // 视频容器：先把「这个容器收什么」说一句，再看下面具体旋钮
@@ -194,11 +194,11 @@ impl App {
                     apply_preset = Some(i);
                 }
                 resp.context_menu(|ui| {
-                    if menu_btn(ui, "重命名") {
+                    if menu_btn(ui, crate::tr!("重命名")) {
                         rename_preset = Some(i);
                         ui.close_menu();
                     }
-                    if menu_btn(ui, "删除") {
+                    if menu_btn(ui, crate::tr!("删除")) {
                         delete_preset = Some(i);
                         ui.close_menu();
                     }
@@ -371,10 +371,10 @@ impl App {
                 .and_then(|m| m.audio_tracks.first())
                 .map(|t| fc_core::audio_plan(self.target.id, &t.codec))
                 .unwrap_or(fc_core::AudioPlan::Copy);
-            field_row(ui, "音频", |ui| {
+            field_row(ui, crate::tr!("音频"), |ui| {
                 // 纯视频文件没有音轨：写"无音轨"，别假装会转出一条 FLAC 900k
                 let text = if n_tracks == 0 {
-                    "无音轨（纯视频）".to_string()
+                    crate::tr!("无音轨（纯视频）").to_string()
                 } else if n_tracks == 1 {
                     first_plan.label()
                 } else if encodes == 0 {
@@ -409,9 +409,9 @@ impl App {
         }
 
         // 响度归一化：和旋钮分开一行，因为它是"处理"不是"编码参数"
-        field_row(ui, "响度", |ui| {
+        field_row(ui, crate::tr!("响度"), |ui| {
             let opts: [(&str, Option<f32>); 4] = [
-                ("关", None),
+                (crate::tr!("关"), None),
                 ("-14", Some(-14.0)),
                 ("-16", Some(-16.0)),
                 ("-23", Some(-23.0)),
@@ -425,7 +425,7 @@ impl App {
             }
         });
         if self.cfg.loudness.is_some() {
-            hint_below(ui, "按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。", DIM);
+            hint_below(ui, crate::tr!("按 EBU R128 测整合响度，转换时补增益（峰值留 1 dB 余量）。"), DIM);
             ui.add_space(4.0);
             self.loudness_preview(ui);
         }
@@ -435,7 +435,7 @@ impl App {
         ui.add_space(4.0);
         if radio_dot(
             ui,
-            "源文件同目录",
+            crate::tr!("源文件同目录"),
             self.cfg.output_mode == settings::OutputMode::Source,
         ) {
             self.cfg.output_mode = settings::OutputMode::Source;
@@ -443,7 +443,7 @@ impl App {
         }
         if radio_dot(
             ui,
-            "指定目录",
+            crate::tr!("指定目录"),
             self.cfg.output_mode == settings::OutputMode::Custom,
         ) {
             self.cfg.output_mode = settings::OutputMode::Custom;
@@ -491,7 +491,7 @@ impl App {
         ui.add_space(12.0);
         ui.label(RichText::new(crate::tr!("转换后")).size(9.0).color(DIM));
         ui.add_space(4.0);
-        if radio_dot(ui, "保留源文件", !self.delete_source) {
+        if radio_dot(ui, crate::tr!("保留源文件"), !self.delete_source) {
             self.delete_source = false;
             changed = true;
         }
@@ -516,7 +516,7 @@ impl App {
         hp.text(
             hrect.left_center() + egui::vec2(2.0, 0.0),
             egui::Align2::LEFT_CENTER,
-            "元数据",
+            crate::tr!("元数据"),
             egui::FontId::proportional(9.5),
             MUTED,
         );
@@ -566,24 +566,24 @@ impl App {
         ui.add_space(8.0);
         ui.label(RichText::new(crate::tr!("歌词文件")).size(9.5).color(MUTED));
         ui.horizontal(|ui| {
-            if radio_dot_inline(ui, "不生成", self.cfg.lyric_mode == crate::settings::LyricMode::None) {
+            if radio_dot_inline(ui, crate::tr!("不生成"), self.cfg.lyric_mode == crate::settings::LyricMode::None) {
                 self.cfg.lyric_mode = crate::settings::LyricMode::None;
                 changed = true;
             }
             ui.add_space(8.0);
-            if radio_dot_inline(ui, "同名空白 .lyc", self.cfg.lyric_mode == crate::settings::LyricMode::Lyc) {
+            if radio_dot_inline(ui, crate::tr!("同名空白 .lyc"), self.cfg.lyric_mode == crate::settings::LyricMode::Lyc) {
                 self.cfg.lyric_mode = crate::settings::LyricMode::Lyc;
                 changed = true;
             }
             ui.add_space(8.0);
-            if radio_dot_inline(ui, "同名空白 .txt", self.cfg.lyric_mode == crate::settings::LyricMode::Txt) {
+            if radio_dot_inline(ui, crate::tr!("同名空白 .txt"), self.cfg.lyric_mode == crate::settings::LyricMode::Txt) {
                 self.cfg.lyric_mode = crate::settings::LyricMode::Txt;
                 changed = true;
             }
         });
         para(
             ui,
-            "在输出文件旁生成同名空文件；已有同名不覆盖。",
+            crate::tr!("在输出文件旁生成同名空文件；已有同名不覆盖。"),
             8.5,
             DIM,
         );
@@ -591,12 +591,12 @@ impl App {
 
         if self.meta_open {
             ui.horizontal(|ui| {
-                if radio_dot_inline(ui, "自动", !self.cfg.write_tags) {
+                if radio_dot_inline(ui, crate::tr!("自动"), !self.cfg.write_tags) {
                     self.cfg.write_tags = false;
                     changed = true;
                 }
                 ui.add_space(10.0);
-                if radio_dot_inline(ui, "写入标签", self.cfg.write_tags) {
+                if radio_dot_inline(ui, crate::tr!("写入标签"), self.cfg.write_tags) {
                     self.cfg.write_tags = true;
                     changed = true;
                 }
@@ -613,7 +613,7 @@ impl App {
                 ui.add_space(4.0);
                 para(
                     ui,
-                    "自动：沿用源文件的标签和封面，不改写。要统一改名/换封面就选「写入标签」。",
+                    crate::tr!("自动：沿用源文件的标签和封面，不改写。要统一改名/换封面就选「写入标签」。"),
                     8.5,
                     DIM,
                 );
@@ -705,7 +705,7 @@ impl App {
                 let name = std::path::Path::new(&self.cfg.meta_cover)
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "沿用源文件".into());
+                    .unwrap_or_else(|| crate::tr!("沿用源文件").into());
                 ui.label(RichText::new(name).size(9.0).color(DIM));
             });
             ui.horizontal(|ui| {
@@ -717,7 +717,7 @@ impl App {
                     .clicked()
                 {
                     if let Some(p) = rfd::FileDialog::new()
-                        .add_filter("图片", &["jpg", "jpeg", "png", "webp"])
+                        .add_filter(crate::tr!("图片"), &["jpg", "jpeg", "png", "webp"])
                         .pick_file()
                     {
                         self.cfg.meta_cover = p.to_string_lossy().to_string();
@@ -802,9 +802,9 @@ impl App {
         let Some(l) = it.lufs else {
             // 分析失败（比如样本太短）就别一直显示"测量中"
             let text = if matches!(it.analysis, Analysis::Failed(_)) {
-                "测不出响度（样本太短或解码失败）"
+                crate::tr!("测不出响度（样本太短或解码失败）")
             } else {
-                "响度测量中…"
+                crate::tr!("响度测量中…")
             };
             ui.label(RichText::new(text).size(8.5).color(DIM));
             return;
@@ -894,7 +894,7 @@ impl App {
             p.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                "波形生成中…",
+                crate::tr!("波形生成中…"),
                 FontId::proportional(9.0),
                 DIM,
             );
@@ -916,7 +916,7 @@ impl App {
             });
         });
         if limited {
-            out_hint(ui, "峰值会顶到 -1 dBFS：增益已自动下调，不会削波", WARN);
+            out_hint(ui, crate::tr!("峰值会顶到 -1 dBFS：增益已自动下调，不会削波"), WARN);
         } else if gain.abs() >= 0.05 {
             out_hint(
                 ui,
@@ -924,7 +924,7 @@ impl App {
                 DIM,
             );
         } else {
-            out_hint(ui, "已经是目标响度，不用补增益", DIM);
+            out_hint(ui, crate::tr!("已经是目标响度，不用补增益"), DIM);
         }
     }
 
@@ -956,7 +956,7 @@ impl App {
         p.text(
             egui::pos2(c.x + 14.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
-            "清除所有",
+            crate::tr!("清除所有"),
             egui::FontId::proportional(10.0),
             if holding { WARN } else { MUTED },
         );
@@ -1011,16 +1011,16 @@ impl App {
         p.text(
             egui::pos2(c.x + r + 7.0, c.y),
             egui::Align2::LEFT_CENTER,
-            "删除源文件",
+            crate::tr!("删除源文件"),
             egui::FontId::proportional(10.0),
             if selected { DANGER } else { MUTED },
         );
         let hint = if selected {
-            "已选择".to_string()
+            crate::tr!("已选择").to_string()
         } else if holding {
             format!("{:.1}s", (3.0 - self.delete_hold).max(0.0))
         } else {
-            "长按 3 秒".to_string()
+            crate::tr!("长按 3 秒").to_string()
         };
         p.text(
             egui::pos2(rect.right() - 2.0, c.y),
@@ -1047,7 +1047,7 @@ impl App {
         let mut changed = false;
         match k {
             Knob::FlacLevel => {
-                field_row(ui, "压缩等级", |ui| {
+                field_row(ui, crate::tr!("压缩等级"), |ui| {
                     let mut v = self.cfg.opts.flac_level as i32;
                     if level_slider_inline(ui, &mut v, 0, 12) {
                         self.cfg.opts.flac_level = v as u8;
@@ -1055,24 +1055,24 @@ impl App {
                     }
                 });
                 // 这条滑块到底在改什么：左右两端各是什么结果 + 当前档位的人话
-                slider_ends(ui, "← 编码快 · 文件大", "编码慢 · 文件小 →");
+                slider_ends(ui, crate::tr!("← 编码快 · 文件大"), crate::tr!("编码慢 · 文件小 →"));
                 let lv = self.cfg.opts.flac_level;
                 out_hint(ui, &flac_level_hint(lv), DIM);
             }
             Knob::VorbisQuality => {
-                field_row(ui, "质量", |ui| {
+                field_row(ui, crate::tr!("质量"), |ui| {
                     let mut v = self.cfg.opts.vorbis_q as i32;
                     if level_slider_inline(ui, &mut v, 0, 10) {
                         self.cfg.opts.vorbis_q = v as u8;
                         changed = true;
                     }
                 });
-                slider_ends(ui, "← 省空间 · 细节少", "细节多 · 文件大 →");
+                slider_ends(ui, crate::tr!("← 省空间 · 细节少"), crate::tr!("细节多 · 文件大 →"));
                 let q = self.cfg.opts.vorbis_q;
                 out_hint(ui, &vorbis_q_hint(q), DIM);
             }
             Knob::Channels => {
-                field_row(ui, "声道", |ui| {
+                field_row(ui, crate::tr!("声道"), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     for m in fc_core::ChannelMode::all() {
                         if seg_button(ui, m.label(), self.cfg.opts.channels == m) {
@@ -1094,10 +1094,10 @@ impl App {
                     };
                     changed = true;
                 }
-                field_row(ui, "位深", |ui| {
+                field_row(ui, crate::tr!("位深"), |ui| {
                     for d in depths {
                         let label = match d {
-                            BitDepth::Auto => "自动",
+                            BitDepth::Auto => crate::tr!("自动"),
                             BitDepth::Int16 => "16",
                             BitDepth::Int24 => "24",
                             BitDepth::Int32f => "32f",
@@ -1127,7 +1127,7 @@ impl App {
                 changed |= bitrate_row(ui, "wavpack_lossy", &mut self.cfg.opts.wavpack_bitrate)
             }
             Knob::MpcProfile => {
-                field_row(ui, "质量档", |ui| {
+                field_row(ui, crate::tr!("质量档"), |ui| {
                     for (i, label) in ["thumb", "radio", "standard", "extreme", "insane"].iter().enumerate() {
                         let on = self.cfg.opts.mpc_profile as usize == i;
                         if seg_button(ui, label, on) {
@@ -1136,22 +1136,22 @@ impl App {
                         }
                     }
                 });
-                out_hint(ui, "standard 约 180kbps（默认），extreme / insane 约 210 / 240kbps。", DIM);
+                out_hint(ui, crate::tr!("standard 约 180kbps（默认），extreme / insane 约 210 / 240kbps。"), DIM);
             }
             Knob::OfrPreset => {
-                field_row(ui, "压缩预设", |ui| {
+                field_row(ui, crate::tr!("压缩预设"), |ui| {
                     let mut v = self.cfg.opts.ofr_preset as i32;
                     if level_slider_inline(ui, &mut v, 0, 10) {
                         self.cfg.opts.ofr_preset = v as u8;
                         changed = true;
                     }
                 });
-                slider_ends(ui, "← 编码快 · 文件大", "编码慢 · 文件小 →");
+                slider_ends(ui, crate::tr!("← 编码快 · 文件大"), crate::tr!("编码慢 · 文件小 →"));
                 let note = match self.cfg.opts.ofr_preset {
-                    0..=3 => "低预设：编得快，但省不了多少体积。",
-                    4..=7 => "中预设：速度和体积比较平衡。",
-                    8..=9 => "高预设：慢一些，体积更小（默认 8）。",
-                    _ => "最高预设：最慢，体积最小。",
+                    0..=3 => crate::tr!("低预设：编得快，但省不了多少体积。"),
+                    4..=7 => crate::tr!("中预设：速度和体积比较平衡。"),
+                    8..=9 => crate::tr!("高预设：慢一些，体积更小（默认 8）。"),
+                    _ => crate::tr!("最高预设：最慢，体积最小。"),
                 };
                 out_hint(ui, note, DIM);
             }
@@ -1213,16 +1213,16 @@ impl App {
                     }
                 });
             }
-            Knob::VideoQuality => field_row(ui, "质量", |ui| {
+            Knob::VideoQuality => field_row(ui, crate::tr!("质量"), |ui| {
                 let mut v = self.cfg.opts.video_crf as i32;
                 if level_slider_inline(ui, &mut v, 16, 32) {
                     self.cfg.opts.video_crf = v as u8;
                     changed = true;
                 }
             }),
-            Knob::VideoScale => field_row(ui, "分辨率", |ui| {
+            Knob::VideoScale => field_row(ui, crate::tr!("分辨率"), |ui| {
                 // 0 = 保持；只给高度，宽按比例自动算
-                for (label, h) in [("保持", 0u32), ("1080p", 1080), ("720p", 720), ("480p", 480)] {
+                for (label, h) in [(crate::tr!("保持"), 0u32), ("1080p", 1080), ("720p", 720), ("480p", 480)] {
                     let on = self.cfg.opts.video_height == h;
                     if seg_button(ui, label, on) {
                         self.cfg.opts.video_height = h;
@@ -1230,8 +1230,8 @@ impl App {
                     }
                 }
             }),
-            Knob::VideoFps => field_row(ui, "帧率", |ui| {
-                for (label, f) in [("保持", 0u32), ("24", 24), ("30", 30), ("60", 60)] {
+            Knob::VideoFps => field_row(ui, crate::tr!("帧率"), |ui| {
+                for (label, f) in [(crate::tr!("保持"), 0u32), ("24", 24), ("30", 30), ("60", 60)] {
                     let on = self.cfg.opts.video_fps == f;
                     if seg_button(ui, label, on) {
                         self.cfg.opts.video_fps = f;
@@ -1268,10 +1268,10 @@ impl App {
         } else {
             effective
         };
-        field_row(ui, "采样率", |ui| {
+        field_row(ui, crate::tr!("采样率"), |ui| {
             // 「自动」永远在第一个位置，不按状态显示/隐藏——
             // 藏起来的话，点完它自己消失，看起来就像 bug（AC-3 上踩过）。
-            if seg_button(ui, "自动", auto_on) {
+            if seg_button(ui, crate::tr!("自动"), auto_on) {
                 self.cfg.opts.sample_rate = None;
                 changed = true;
             }
@@ -1280,9 +1280,9 @@ impl App {
                 changed = true;
             }
             let text = match (auto_on, shown) {
-                (true, _) => "自动".to_string(),
+                (true, _) => crate::tr!("自动").to_string(),
                 (false, Some(r)) => fmt_rate(r),
-                (false, None) => "自动".to_string(),
+                (false, None) => crate::tr!("自动").to_string(),
             };
             ui.label(
                 RichText::new(text)
@@ -1313,7 +1313,7 @@ pub(crate) fn menu_btn(ui: &mut egui::Ui, label: &str) -> bool {
 
 pub(crate) fn bitrate_row(ui: &mut egui::Ui, id: &str, val: &mut u32) -> bool {
     let mut changed = false;
-    field_row(ui, "码率", |ui| {
+    field_row(ui, crate::tr!("码率"), |ui| {
         for &v in fc_core::bitrate_choices(id) {
             let on = *val == v;
             if seg_button(ui, &format!("{v}"), on) {
@@ -1342,11 +1342,11 @@ fn slider_ends(ui: &mut egui::Ui, left: &str, right: &str) {
 /// FLAC 压缩等级 0~12 的人话解释（无损：只有速度和体积变，音质不变）
 fn flac_level_hint(level: u8) -> String {
     let what = match level {
-        0..=2 => "编码最快，文件比默认大一些",
-        3..=6 => "偏快档，文件略大于默认",
-        7..=9 => "默认档（8 就是 ffmpeg 默认），速度和体积比较均衡",
-        10..=12 => "编码最慢，体积只比默认再小一点点，长文件会慢好几倍",
-        _ => "默认档",
+        0..=2 => crate::tr!("编码最快，文件比默认大一些"),
+        3..=6 => crate::tr!("偏快档，文件略大于默认"),
+        7..=9 => crate::tr!("默认档（8 就是 ffmpeg 默认），速度和体积比较均衡"),
+        10..=12 => crate::tr!("编码最慢，体积只比默认再小一点点，长文件会慢好几倍"),
+        _ => crate::tr!("默认档"),
     };
     format!("当前 {level}：{what}；音质完全不变（无损）")
 }
@@ -1354,10 +1354,10 @@ fn flac_level_hint(level: u8) -> String {
 /// Vorbis 质量 0~10 的人话解释（有损：越往右细节越多、文件越大）
 fn vorbis_q_hint(q: u8) -> String {
     let what = match q {
-        0..=3 => "低质量档，适合语音/试听，高频会明显变糊",
-        4..=6 => "中等档，日常听够用",
-        7..=9 => "高质量档，接近透明",
-        _ => "最高档，文件最大，和 8~9 档差别很小",
+        0..=3 => crate::tr!("低质量档，适合语音/试听，高频会明显变糊"),
+        4..=6 => crate::tr!("中等档，日常听够用"),
+        7..=9 => crate::tr!("高质量档，接近透明"),
+        _ => crate::tr!("最高档，文件最大，和 8~9 档差别很小"),
     };
     format!("当前 {q}：{what}")
 }

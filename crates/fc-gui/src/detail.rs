@@ -100,7 +100,7 @@ impl App {
             ui.horizontal(|ui| {
                 // 纯视频文件没有音频编码，chip 别画成空白
                 let codec = if m.codec.is_empty() && m.has_video() {
-                    m.video_label().unwrap_or("视频").to_string()
+                    m.video_label().unwrap_or(crate::tr!("视频")).to_string()
                 } else {
                     m.codec_label().to_string()
                 };
@@ -148,7 +148,7 @@ impl App {
                 .spacing([12.0, 7.0])
                 .show(ui, |ui| {
                     if m.bitrate_kbps > 0 {
-                        row(ui, "码率", &format!("{} kbps", m.bitrate_kbps));
+                        row(ui, crate::tr!("码率"), &format!("{} kbps", m.bitrate_kbps));
                     }
                     if m.sample_rate > 0 {
                         let text = if is_dsd(&m.codec) {
@@ -161,16 +161,16 @@ impl App {
                         } else {
                             format!("{} Hz", m.sample_rate)
                         };
-                        row(ui, "采样率", &text);
+                        row(ui, crate::tr!("采样率"), &text);
                     }
                     if is_dsd(&m.codec) {
                         // DSD 是 1-bit 脉冲密度，ffprobe 报的 8 bit 是打包字节数
-                        row(ui, "位深", "1 bit");
+                        row(ui, crate::tr!("位深"), "1 bit");
                     } else if let Some(b) = m.bits {
-                        row(ui, "位深", &format!("{b} bit"));
+                        row(ui, crate::tr!("位深"), &format!("{b} bit"));
                     }
                     if m.channels > 0 {
-                        row(ui, "声道", &format!("{}", m.channels));
+                        row(ui, crate::tr!("声道"), &format!("{}", m.channels));
                     }
                     // 多音轨（视频常见）：列出来；转音频格式时只会取第一条
                     if m.audio_tracks.len() > 1 {
@@ -185,31 +185,31 @@ impl App {
                         if n > 3 {
                             text.push_str(" …");
                         }
-                        row(ui, "音轨", &text);
+                        row(ui, crate::tr!("音轨"), &text);
                     }
                     // 视频文件只报音频参数没有意义：画面编码/分辨率/帧率才是它的身份
                     if m.has_video() {
-                        let codec = m.video_label().unwrap_or("画面");
+                        let codec = m.video_label().unwrap_or(crate::tr!("画面"));
                         let detail = if m.width > 0 && m.height > 0 {
                             format!("{codec} · {}×{}", m.width, m.height)
                         } else {
                             codec.to_string()
                         };
-                        row(ui, "画面", &detail);
+                        row(ui, crate::tr!("画面"), &detail);
                         if m.fps > 0.0 {
-                            row(ui, "帧率", &fmt_fps(m.fps));
+                            row(ui, crate::tr!("帧率"), &fmt_fps(m.fps));
                         }
                     }
                     if m.duration_s > 0.0 {
-                        row(ui, "时长", &fmt_duration(m.duration_s));
+                        row(ui, crate::tr!("时长"), &fmt_duration(m.duration_s));
                     }
                     if m.size_bytes > 0 {
-                        row(ui, "体积", &fmt_size(m.size_bytes));
+                        row(ui, crate::tr!("体积"), &fmt_size(m.size_bytes));
                     }
                     let spec = it.spec(self.target);
                     let est = estimate_size(m, spec, &self.cfg.opts);
                     if est > 0 {
-                        row(ui, "输出", &format!("{} ≈ {}", spec.name, fmt_size(est)));
+                        row(ui, crate::tr!("输出"), &format!("{} ≈ {}", spec.name, fmt_size(est)));
                     }
                 });
 
@@ -229,7 +229,7 @@ impl App {
                     } else {
                         ui.horizontal(|ui| {
                             para(ui, crate::tr!("未分析（自动分析已关闭）"), 9.5, DIM);
-                            if ui.small_button("分析频谱").clicked() {
+                            if ui.small_button(crate::tr!("分析频谱")).clicked() {
                                 self.pending_analyze = Some(self.selected);
                             }
                         });
@@ -295,11 +295,11 @@ impl App {
                             .show(ui, |ui| {
                                 row(
                                     ui,
-                                    "编码",
+                                    crate::tr!("编码"),
                                     &format!("{tier} · {}", fmt_mhz(d.bit_rate_hz)),
                                 );
-                                row(ui, "位深", "1 bit");
-                                row(ui, "判定", "无损源码");
+                                row(ui, crate::tr!("位深"), "1 bit");
+                                row(ui, crate::tr!("判定"), crate::tr!("无损源码"));
                             });
                     } else {
                         para(ui, crate::tr!("质量评估"), 10.0, DIM);
@@ -310,7 +310,7 @@ impl App {
                             .show(ui, |ui| {
                                 row(
                                     ui,
-                                    "截止频率",
+                                    crate::tr!("截止频率"),
                                     &format!("{:.1} kHz", r.cutoff_hz / 1000.0),
                                 );
                                 let est = if !r.estimate.is_empty()
@@ -334,7 +334,7 @@ impl App {
                                     );
                                     ui.end_row();
                                 } else {
-                                    row(ui, "推测源质量", &est);
+                                    row(ui, crate::tr!("推测源质量"), &est);
                                 }
 
                                 ui.label(RichText::new(crate::tr!("置信度")).size(10.0).color(tint(TEXT, 168)));
@@ -373,7 +373,7 @@ impl App {
                                 );
                                 ui.end_row();
                                 if let Some(l) = it.lufs {
-                                    row(ui, "响度", &format!("{:.1} LUFS", l.lufs));
+                                    row(ui, crate::tr!("响度"), &format!("{:.1} LUFS", l.lufs));
                                 }
                             });
                     }
@@ -508,8 +508,8 @@ impl App {
             }
             ui.add_space(6.0);
             egui::Grid::new("enc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                row(ui, "平台", enc.platform);
-                row(ui, "格式", enc.format);
+                row(ui, crate::tr!("平台"), enc.platform);
+                row(ui, crate::tr!("格式"), enc.format);
                 ui.label(RichText::new(crate::tr!("置信度")).size(10.0).color(tint(TEXT, 168)));
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(150.0, 12.0), egui::Sense::hover());
@@ -618,19 +618,19 @@ impl App {
                 Knob::Channels => {}
                 Knob::SampleRate => match fc_core::output_rate(self.target, o) {
                     Some(r) => parts.push(fmt_rate(r)),
-                    None => parts.push("跟源".into()),
+                    None => parts.push(crate::tr!("跟源").into()),
                 },
                 Knob::VideoCodec => parts.push(o.video_codec.short().to_string()),
                 Knob::VideoQuality => parts.push(format!("CRF {}", o.video_crf)),
                 Knob::VideoScale => parts.push(if o.video_height > 0 {
                     format!("{}p", o.video_height)
                 } else {
-                    "原分辨率".into()
+                    crate::tr!("原分辨率").into()
                 }),
                 Knob::VideoFps => parts.push(if o.video_fps > 0 {
                     format!("{}fps", o.video_fps)
                 } else {
-                    "原帧率".into()
+                    crate::tr!("原帧率").into()
                 }),
             }
         }
@@ -639,7 +639,7 @@ impl App {
             // 否则标题只有"默认"，用户不知道会转成多少
             match fc_core::bitrate_of(self.target, o) {
                 Some(k) => format!("{k}k"),
-                None => "默认".into(),
+                None => crate::tr!("默认").into(),
             }
         } else {
             parts.join(" · ")

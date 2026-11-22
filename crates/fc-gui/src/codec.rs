@@ -96,7 +96,7 @@ impl App {
         }
         if !self.devices_loaded && !self.devices_loading {
             self.devices_loading = true;
-            self.activity = Some("正在检测音频设备…".to_string());
+            self.activity = Some(crate::tr!("正在检测音频设备…").to_string());
             let (tx, rx) = std::sync::mpsc::channel();
             std::thread::spawn(move || {
                 let _ = tx.send(fc_player::devices::list().map_err(|e| format!("{e:#}")));
@@ -116,7 +116,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(crate::tr!("引擎和设备")).size(14.0).color(TEXT).strong());
                     ui.add_space(12.0);
-                    if tiny_text_button(ui, "重新检测") {
+                    if tiny_text_button(ui, crate::tr!("重新检测")) {
                         self.devices_loaded = false;
                         self.audio_devices.clear();
                         self.devices_error = None;
@@ -192,7 +192,7 @@ impl App {
         ui.add_space(6.0);
         para(
             ui,
-            "耳机/摄像头/USB 声卡按设备名和驱动描述判断；Steam 串流设备标深蓝，Realtek 板载标深蓝。",
+            crate::tr!("耳机/摄像头/USB 声卡按设备名和驱动描述判断；Steam 串流设备标深蓝，Realtek 板载标深蓝。"),
             8.5,
             DIM,
         );
@@ -216,7 +216,7 @@ impl App {
         });
         para(
             ui,
-            "配对/取消配对由 Windows 完成（PIN、确认、驱动）；配好后回这里点「重新检测」看协议。",
+            crate::tr!("配对/取消配对由 Windows 完成（PIN、确认、驱动）；配好后回这里点「重新检测」看协议。"),
             8.5,
             DIM,
         );
@@ -261,7 +261,7 @@ impl App {
                     let _ = tx.send(fc_player::bluetooth::unpair(&id));
                 });
                 self.bt_action_rx = Some(rx);
-                self.bt_msg = Some("正在取消配对…".into());
+                self.bt_msg = Some(crate::tr!("正在取消配对…").into());
             }
             ui.add_space(6.0);
         }
@@ -286,9 +286,9 @@ impl App {
         ui.horizontal(|ui| {
             let b = egui::Button::new(
                 RichText::new(if self.bt_scanning {
-                    "扫描中…（8 秒）"
+                    crate::tr!("扫描中…（8 秒）")
                 } else {
-                    "扫描附近未配对设备"
+                    crate::tr!("扫描附近未配对设备")
                 })
                 .size(9.0)
                 .color(MUTED),
@@ -310,7 +310,7 @@ impl App {
         for d in &self.bt_found {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(&d.name).size(9.5).color(TEXT));
-                if ui.small_button("配对").clicked() {
+                if ui.small_button(crate::tr!("配对")).clicked() {
                     pair_id = Some(d.id.clone());
                 }
             });
@@ -321,7 +321,7 @@ impl App {
                 let _ = tx.send(fc_player::bluetooth::pair(&id));
             });
             self.bt_action_rx = Some(rx);
-            self.bt_msg = Some("正在配对…（Windows 可能弹确认框）".into());
+            self.bt_msg = Some(crate::tr!("正在配对…（Windows 可能弹确认框）").into());
         }
         if let Some(msg) = &self.bt_msg {
             para(ui, msg, 8.5, DIM);
@@ -334,7 +334,7 @@ impl App {
             ui.add_space(4.0);
             para(
                 ui,
-                "先在 Windows 设置里把耳机/音箱连上，再点右上角「重新检测」。",
+                crate::tr!("先在 Windows 设置里把耳机/音箱连上，再点右上角「重新检测」。"),
                 8.5,
                 DIM,
             );
@@ -385,7 +385,7 @@ impl App {
                     |ui| {
                         para(
                             ui,
-                            "实际编解码（SBC / AAC / aptX / LDAC）由耳机和驱动协商，Windows 不公开；这里报的是蓝牙协议。",
+                            crate::tr!("实际编解码（SBC / AAC / aptX / LDAC）由耳机和驱动协商，Windows 不公开；这里报的是蓝牙协议。"),
                             8.0,
                             DIM,
                         );
@@ -431,7 +431,7 @@ impl App {
         ui.label(RichText::new(crate::tr!("播放")).size(10.0).color(DIM));
         ui.add_space(6.0);
         let mut rg = self.cfg.replaygain;
-        if transparent_toggle(ui, &mut rg, "播放时应用 ReplayGain（按文件里的响度标签调整）") {
+        if transparent_toggle(ui, &mut rg, crate::tr!("播放时应用 ReplayGain（按文件里的响度标签调整）")) {
             self.cfg.replaygain = rg;
             self.cfg.save();
         }
@@ -446,31 +446,31 @@ impl App {
                 para(ui, crate::tr!("ReplayGain 是什么？"), 9.0, MUTED);
                 para(
                     ui,
-                    "同一张专辑里，歌和歌的响度经常不一样：有的母带压得响，有的轻。",
+                    crate::tr!("同一张专辑里，歌和歌的响度经常不一样：有的母带压得响，有的轻。"),
                     8.5,
                     DIM,
                 );
                 para(
                     ui,
-                    "ReplayGain 是文件里的一条标签，写着「这首歌该降/升多少 dB，才能和别的歌一样响」。",
+                    crate::tr!("ReplayGain 是文件里的一条标签，写着「这首歌该降/升多少 dB，才能和别的歌一样响」。"),
                     8.5,
                     DIM,
                 );
                 para(
                     ui,
-                    "打开后，播放时会按标签把音量调平，不改文件本身；没有这条标签的歌不受影响。",
+                    crate::tr!("打开后，播放时会按标签把音量调平，不改文件本身；没有这条标签的歌不受影响。"),
                     8.5,
                     DIM,
                 );
                 para(
                     ui,
-                    "这里读的是单曲增益（REPLAYGAIN_TRACK_GAIN），不是整张专辑一起调的那种。",
+                    crate::tr!("这里读的是单曲增益（REPLAYGAIN_TRACK_GAIN），不是整张专辑一起调的那种。"),
                     8.5,
                     DIM,
                 );
                 pose_hint(
                     ui,
-                    "独占输出为了原样把数据送给声卡，不应用 ReplayGain；需要调响度时用共享输出。",
+                    crate::tr!("独占输出为了原样把数据送给声卡，不应用 ReplayGain；需要调响度时用共享输出。"),
                 );
             },
         );
@@ -491,10 +491,10 @@ impl App {
         let mut picked = cur;
         if Self::engine_row(
             ui,
-            "WASAPI 共享",
-            "可用",
+            crate::tr!("WASAPI 共享"),
+            crate::tr!("可用"),
             GOOD,
-            "走 Windows 混音器，最省事；采样率由系统混音格式决定，音量和 ReplayGain 都生效。",
+            crate::tr!("走 Windows 混音器，最省事；采样率由系统混音格式决定，音量和 ReplayGain 都生效。"),
             cur == fc_player::Engine::Shared,
             true,
         ) {
@@ -502,10 +502,10 @@ impl App {
         }
         if Self::engine_row(
             ui,
-            "WASAPI 独占",
-            "可用",
+            crate::tr!("WASAPI 独占"),
+            crate::tr!("可用"),
             GOOD,
-            "直通声卡：按源采样率、32-bit 整数原样写；音量和 ReplayGain 不介入。",
+            crate::tr!("直通声卡：按源采样率、32-bit 整数原样写；音量和 ReplayGain 不介入。"),
             cur == fc_player::Engine::Exclusive,
             true,
         ) {
@@ -521,14 +521,14 @@ impl App {
                 let msg = if let Some(err) = err {
                     err
                 } else if list.is_empty() {
-                    "没装 ASIO 驱动（注册表 HKLM\\SOFTWARE\\ASIO 是空的）".to_string()
+                    crate::tr!("没装 ASIO 驱动（注册表 HKLM\\SOFTWARE\\ASIO 是空的）").to_string()
                 } else {
                     list.iter()
                         .map(|(n, s)| format!("{n}：{s}"))
                         .collect::<Vec<_>>()
                         .join("；")
                 };
-                let ok = !list.is_empty() && list.iter().all(|(_, s)| s.starts_with("可用"));
+                let ok = !list.is_empty() && list.iter().all(|(_, s)| s.starts_with(crate::tr!("可用")));
                 self.asio_status = Some((ok, msg));
             }
         }
@@ -536,7 +536,7 @@ impl App {
             #[cfg(windows)]
             {
                 self.asio_probing = true;
-                self.activity = Some("正在检测 ASIO 驱动…".to_string());
+                self.activity = Some(crate::tr!("正在检测 ASIO 驱动…").to_string());
                 let (tx, rx) = std::sync::mpsc::channel();
                 std::thread::spawn(move || {
                     let _ = tx.send(probe_asio_isolated());
@@ -545,11 +545,11 @@ impl App {
             }
             #[cfg(not(windows))]
             {
-                self.asio_status = Some((false, "只有 Windows 有 ASIO".to_string()));
+                self.asio_status = Some((false, crate::tr!("只有 Windows 有 ASIO").to_string()));
             }
         }
         let (asio_ok, asio_msg) = if self.asio_probing {
-            (false, "正在检测 ASIO 驱动…".to_string())
+            (false, crate::tr!("正在检测 ASIO 驱动…").to_string())
         } else {
             self.asio_status.clone().unwrap_or((false, String::new()))
         };
@@ -557,11 +557,11 @@ impl App {
             ui,
             "ASIO",
             if self.asio_probing {
-                "检测中"
+                crate::tr!("检测中")
             } else if asio_ok {
-                "可用"
+                crate::tr!("可用")
             } else {
-                "不可用"
+                crate::tr!("不可用")
             },
             if asio_ok { GOOD } else { WARN },
             &asio_msg,
@@ -571,11 +571,11 @@ impl App {
             picked = fc_player::Engine::Asio;
         }
         // 驱动说"没硬件"时，多半要在它自己的控制面板里选一次输出设备
-        if !asio_ok && !asio_msg.starts_with("没装") {
+        if !asio_ok && !asio_msg.starts_with(crate::tr!("没装")) {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.add_space(26.0);
-                if tiny_text_button(ui, "打开 ASIO 控制面板") {
+                if tiny_text_button(ui, crate::tr!("打开 ASIO 控制面板")) {
                     #[cfg(windows)]
                     match fc_player::asio::open_control_panel() {
                         Ok(()) => {
@@ -596,7 +596,7 @@ impl App {
         if Self::engine_row(
             ui,
             "Apple Core Audio",
-            if cfg!(target_os = "macos") { "可用" } else { "兼容层" },
+            if cfg!(target_os = "macos") { crate::tr!("可用") } else { crate::tr!("兼容层") },
             if cfg!(target_os = "macos") { GOOD } else { WARN },
             &ca_note,
             cur == fc_player::Engine::CoreAudio,
@@ -606,10 +606,10 @@ impl App {
         }
         if Self::engine_row(
             ui,
-            "自研引擎",
-            "可用",
+            crate::tr!("自研引擎"),
+            crate::tr!("可用"),
             GOOD,
-            "自己的管线：s32 → f32 → 32 抽头窗函数 sinc 重采样 → 环形缓冲 → WASAPI 共享写设备，不经过 cpal。",
+            crate::tr!("自己的管线：s32 → f32 → 32 抽头窗函数 sinc 重采样 → 环形缓冲 → WASAPI 共享写设备，不经过 cpal。"),
             cur == fc_player::Engine::Native,
             true,
         ) {
@@ -618,7 +618,7 @@ impl App {
         if picked != cur {
             self.cfg.set_engine(picked);
             self.cfg.save();
-            pose_hint(ui, "引擎切换在下次播放时生效（正在播的那首不会中途换）。");
+            pose_hint(ui, crate::tr!("引擎切换在下次播放时生效（正在播的那首不会中途换）。"));
         }
 
         ui.add_space(14.0);
@@ -628,18 +628,18 @@ impl App {
             .num_columns(2)
             .spacing([14.0, 5.0])
             .show(ui, |ui| {
-                row(ui, "解码/编码", "ffmpeg 子进程（崩溃隔离）");
+                row(ui, crate::tr!("解码/编码"), crate::tr!("ffmpeg 子进程（崩溃隔离）"));
                 if let Some(t) = &self.tools {
                     row(ui, "ffmpeg", &t.ffmpeg.display().to_string());
                 } else {
-                    row(ui, "ffmpeg", "没找到");
+                    row(ui, "ffmpeg", crate::tr!("没找到"));
                 }
                 match &self.atracdenc {
-                    Some(p) => row(ui, "ATRAC 编码", &p.display().to_string()),
-                    None => row(ui, "ATRAC 编码", "未安装 atracdenc"),
+                    Some(p) => row(ui, crate::tr!("ATRAC 编码"), &p.display().to_string()),
+                    None => row(ui, crate::tr!("ATRAC 编码"), crate::tr!("未安装 atracdenc")),
                 }
-                row(ui, "可用编码器", &format!("{} 个", self.encoders.len()));
-                row(ui, "格式表", &format!("{} 条", fc_core::all().count()));
+                row(ui, crate::tr!("可用编码器"), &format!("{} 个", self.encoders.len()));
+                row(ui, crate::tr!("格式表"), &format!("{} 条", fc_core::all().count()));
             });
 
         ui.add_space(14.0);
@@ -649,15 +649,15 @@ impl App {
             .num_columns(2)
             .spacing([14.0, 5.0])
             .show(ui, |ui| {
-                row(ui, "独占输出", if self.cfg.exclusive_output {
-                    "开 · WASAPI 直通"
+                row(ui, crate::tr!("独占输出"), if self.cfg.exclusive_output {
+                    crate::tr!("开 · WASAPI 直通")
                 } else {
-                    "关（用共享输出）"
+                    crate::tr!("关（用共享输出）")
                 });
-                row(ui, "采样率", "独占时按源采样率；共享时由 Windows 混音格式决定");
-                row(ui, "数据直通", "独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入");
-                row(ui, "连续播放", "未做：要先有队列连播（现在是单文件试听）");
-                row(ui, "DSD", "解成 PCM 播放；DoP/原生 DSD 未做");
+                row(ui, crate::tr!("采样率"), crate::tr!("独占时按源采样率；共享时由 Windows 混音格式决定"));
+                row(ui, crate::tr!("数据直通"), crate::tr!("独占 + 32-bit int：队列字节原样写声卡，音量/ReplayGain 不介入"));
+                row(ui, crate::tr!("连续播放"), crate::tr!("未做：要先有队列连播（现在是单文件试听）"));
+                row(ui, "DSD", crate::tr!("解成 PCM 播放；DoP/原生 DSD 未做"));
             });
     }
 
@@ -805,7 +805,7 @@ fn engine_row(
         let mut x = text_x;
         // NVIDIA 显卡音频：类型保持中文"显示器HDMI音频输出"，右边角标绿框白字「英伟达」
         let kind = if dev.is_nvidia {
-            "显示器HDMI音频输出"
+            crate::tr!("显示器HDMI音频输出")
         } else {
             dev.kind.label()
         };
@@ -859,28 +859,28 @@ fn engine_row(
 fn badges(d: &fc_player::devices::AudioDevice) -> Vec<(String, Color32)> {
     let mut out = Vec::new();
     if d.is_default {
-        out.push(("默认设备".to_string(), accent()));
+        out.push((crate::tr!("默认设备").to_string(), accent()));
     }
     if d.is_steam {
         out.push(("Steam".to_string(), C_STEAM));
     }
     if d.is_realtek {
-        out.push(("瑞鼎".to_string(), C_REALTEK));
+        out.push((crate::tr!("瑞鼎").to_string(), C_REALTEK));
     }
     if d.is_camera {
-        out.push(("摄像头".to_string(), C_CAMERA));
+        out.push((crate::tr!("摄像头").to_string(), C_CAMERA));
     }
     if d.is_nvidia {
-        out.push(("英伟达".to_string(), C_NVIDIA));
+        out.push((crate::tr!("英伟达").to_string(), C_NVIDIA));
     }
     if d.is_fxsound {
         out.push(("FxSound".to_string(), C_FXSOUND));
     }
     if d.kind == fc_player::devices::Kind::Usb {
-        out.push(("独立声卡".to_string(), C_USB));
+        out.push((crate::tr!("独立声卡").to_string(), C_USB));
     }
     if d.is_bluetooth {
-        out.push(("蓝牙".to_string(), C_BT));
+        out.push((crate::tr!("蓝牙").to_string(), C_BT));
     }
     out
 }
@@ -1060,13 +1060,13 @@ fn paint_device_icon(
 fn profile_state(p: &fc_player::devices::BtProfile) -> (&'static str, Color32) {
     if p.active {
         return match p.name {
-            "AVRCP" => ("可用", MUTED),
-            _ => ("正在使用", C_BT),
+            "AVRCP" => (crate::tr!("可用"), MUTED),
+            _ => (crate::tr!("正在使用"), C_BT),
         };
     }
     match p.name {
-        "HSP" => ("兼容备用", DIM),
-        _ => ("未连接", DIM),
+        "HSP" => (crate::tr!("兼容备用"), DIM),
+        _ => (crate::tr!("未连接"), DIM),
     }
 }
 

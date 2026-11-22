@@ -77,10 +77,10 @@ impl App {
                 .map(|m| m.codec_label())
                 .unwrap_or("?");
             let (label, color) = match &t.state {
-                State::Pending => ("待转换".to_string(), DIM),
+                State::Pending => (crate::tr!("待转换").to_string(), DIM),
                 State::Running(p) => (format!("{:.0}%", p * 100.0), accent()),
-                State::Done(_, _) => ("完成".to_string(), accent()),
-                State::Failed(_) => ("失败".to_string(), DANGER),
+                State::Done(_, _) => (crate::tr!("完成").to_string(), accent()),
+                State::Failed(_) => (crate::tr!("失败").to_string(), DANGER),
             };
             let (rect, resp) =
                 ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
@@ -168,7 +168,7 @@ impl App {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if tiny_text_button(ui, "全部清除") {
+            if tiny_text_button(ui, crate::tr!("全部清除")) {
                 clear_all = true;
             }
         });

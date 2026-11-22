@@ -119,22 +119,22 @@ pub(crate) fn quality_label(q: Quality, kbps: u64) -> String {
         }
         Quality::Atmos(spec) => {
             if spec == "TrueHD" {
-                "杜比全景声 TrueHD 无损".to_string()
+                crate::tr!("杜比全景声 TrueHD 无损").to_string()
             } else {
                 format!("杜比全景声 {spec} 有损")
             }
         }
-        Quality::Vivid => "菁彩声 Audio Vivid 有损".to_string(),
-        Quality::Ac3 => "杜比 AC-3 有损".to_string(),
-        Quality::Eac3 => "杜比 E-AC-3 有损".to_string(),
-        Quality::TrueHd => "杜比 TrueHD 无损".to_string(),
-        Quality::HiRes => "Hi-Res 无损".to_string(),
-        Quality::Cd => "CD 无损".to_string(),
+        Quality::Vivid => crate::tr!("菁彩声 Audio Vivid 有损").to_string(),
+        Quality::Ac3 => crate::tr!("杜比 AC-3 有损").to_string(),
+        Quality::Eac3 => crate::tr!("杜比 E-AC-3 有损").to_string(),
+        Quality::TrueHd => crate::tr!("杜比 TrueHD 无损").to_string(),
+        Quality::HiRes => crate::tr!("Hi-Res 无损").to_string(),
+        Quality::Cd => crate::tr!("CD 无损").to_string(),
         Quality::Hq | Quality::Std | Quality::Lq => {
             if kbps > 0 {
                 format!("有损 {kbps}k")
             } else {
-                "有损".to_string()
+                crate::tr!("有损").to_string()
             }
         }
     }
