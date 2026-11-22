@@ -1538,7 +1538,10 @@ impl App {
                 let res = res.and_then(|size| {
                     match fc_core::verify_output(&tools, &out, job_dur) {
                         Ok(()) => Ok(size),
-                        Err(why) => Err(anyhow::anyhow!(crate::tr!("输出已生成，但自检没通过：{why}"))),
+                        Err(why) => Err(anyhow::anyhow!(
+                            "{}: {why}",
+                            crate::i18n::tr("输出已生成，但自检没通过")
+                        )),
                     }
                 });
                 match res {

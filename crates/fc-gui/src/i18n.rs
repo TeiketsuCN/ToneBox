@@ -734,6 +734,367 @@ Fine for memes and web animations—do not use it to store video.",
         "APNG 动图：PNG 的无损动画，没有音轨。
 颜色比 GIF 好，但文件通常更大。" => "APNG animation: PNG's lossless animation, no audio.
 Better colors than GIF, but usually larger files.",
+        "Creative Voice File —— Sound Blaster 时代的老格式。
+DOS 游戏、老音频软件留下的 .voc 文件就是它。
+只存 PCM，没有元数据。" => "Creative Voice File—an old Sound Blaster format.
+.voc files left by DOS games and old audio software.
+PCM only, no metadata.",
+        "AAC 的 LATM/LOAS 封装，广播（DVB）里很常见。
+和 ADTS 的区别是带 StreamMuxConfig，码率省一点点。" => "AAC's LATM/LOAS packaging, common in broadcast (DVB).
+Unlike ADTS it carries StreamMuxConfig and saves a little bitrate.",
+        "RFC 3951 的低码率语音，专为丢包设计（WebRTC 也用它）。
+编码器是 ffmpeg 的 libilbc —— 随包构建没编进去，
+换成带它的完整构建这一行才会亮。" => "RFC 3951 low-bitrate speech designed for packet loss (WebRTC uses it too).
+The encoder is ffmpeg's libilbc—not included in the bundled build;
+switch to a full build with it to enable this row.",
+        "蓝牙 LE Audio 的 LC3（Low Complexity Communication Codec）。
+编码器是 ffmpeg 的 liblc3，48kHz 单声道/立体声。
+随包构建没编进去，完整构建才有。" => "Bluetooth LE Audio's LC3 (Low Complexity Communication Codec).
+The encoder is ffmpeg's liblc3, 48 kHz mono/stereo.
+Not included in the bundled build; full builds have it.",
+        "业余无线电用的超低码率语音（700C~3200bps），8kHz。
+编码器是 ffmpeg 的 libcodec2，随包构建没编进去。" => "Ultra-low-bitrate speech for amateur radio (700C–3200 bps), 8 kHz.
+The encoder is ffmpeg's libcodec2, not included in the bundled build.",
+        "GSM 06.10 全速率电话语音：8kHz 单声道、13kbps（33 字节/帧）。
+编码器是 ffmpeg 的 libgsm —— 随包那份没编进去，
+换成带 libgsm 的完整构建（比如 gyan full）后这一行才会亮。" => "GSM 06.10 full-rate telephony: 8 kHz mono, 13 kbps (33 bytes/frame).
+The encoder is ffmpeg's libgsm—not included in the bundled build;
+switch to a full build with libgsm (e.g. gyan full) to enable this row.",
+        "S/PDIF 上的压缩音频直通封装（IEC 61937）。
+**只能直通**：源必须是 AC-3 / E-AC-3 / DTS / MPEG 音频，
+普通 PCM 源没有可直通的比特流。" => "Compressed-audio passthrough packaging over S/PDIF (IEC 61937).
+**Passthrough only**: the source must be AC-3 / E-AC-3 / DTS / MPEG audio;
+ordinary PCM has no bitstream to pass through.",
+        "电话/G.711 A-law，8 kHz 单声道。
+随包 ffmpeg 可直接编码成 WAV。" => "Telephony G.711 A-law, 8 kHz mono.
+The bundled ffmpeg can encode it directly into WAV.",
+        "北美电话/G.711 μ-law，8 kHz 单声道。
+随包 ffmpeg 可直接编码成 WAV。" => "North American telephony G.711 μ-law, 8 kHz mono.
+The bundled ffmpeg can encode it directly into WAV.",
+        "G.722 宽带语音，16 kHz 单声道。
+随包 ffmpeg 有 g722 编码器。" => "G.722 wideband speech, 16 kHz mono.
+The bundled ffmpeg includes a g722 encoder.",
+        "Microsoft ADPCM，WAV 里常见。
+有损，但比 PCM 小很多。" => "Microsoft ADPCM, common in WAV.
+Lossy, but much smaller than PCM.",
+        "IMA/DVI ADPCM，游戏和电话常用。
+输出 WAV，4-bit 差分。" => "IMA/DVI ADPCM, common in games and telephony.
+Writes WAV, 4-bit delta.",
+        "Flash 的 Nellymoser 语音编码。
+只能封装成 FLV；8 kHz 单声道。" => "Flash's Nellymoser speech codec.
+Can only be muxed into FLV; 8 kHz mono.",
+        "AAC-LC 多声道（这里固定 5.1 / 384k）。
+不是对象音频；只是多声道 AAC。" => "AAC-LC multichannel (fixed 5.1 / 384k here).
+Not object audio—just multichannel AAC.",
+        "Sun/NeXT AU，未压缩 PCM。
+随包 ffmpeg 有 au 封装器。" => "Sun/NeXT AU, uncompressed PCM.
+The bundled ffmpeg has an au muxer.",
+        "超过 4 GB 的 WAV 扩展（RF64）。
+用 wav 封装器 + -rf64 always。" => "WAV extension for files over 4 GB (RF64).
+Uses the wav muxer with -rf64 always.",
+        "Broadcast Wave Format，带广播 bext 元数据。
+随包 ffmpeg 用 -write_bext。" => "Broadcast Wave Format with bext broadcast metadata.
+The bundled ffmpeg uses -write_bext.",
+        "雅马哈 ADPCM，老声卡和游戏机里常见。
+输出 WAV，4-bit 差分，体积约为 PCM 的四分之一。" => "Yamaha ADPCM, common in old sound cards and consoles.
+Writes WAV, 4-bit delta, about a quarter of PCM size.",
+        "QuickTime 里的 IMA ADPCM，老 Mac 视频工程常用。
+输出 .mov，4-bit 差分。" => "IMA ADPCM in QuickTime, common in old Mac video projects.
+Writes .mov, 4-bit delta.",
+        "1996 年的 ITU 窄带语音编码，5.3 / 6.3kbps。
+会议系统和语音网关里常见，只适合人声。
+输出装进 WAV 容器，本软件和其它播放器都能认。" => "ITU narrowband speech codec from 1996, 5.3 / 6.3 kbps.
+Common in conferencing and voice gateways; speech only.
+Output is wrapped in WAV, readable here and by other players.",
+        "ITU G.726 电话 ADPCM（16/24/32/40kbps）。
+交换机和语音网关用得多，8kHz 单声道。
+输出装进 WAV 容器，便于试听和再导入。" => "ITU G.726 telephony ADPCM (16/24/32/40 kbps).
+Common in switches and voice gateways, 8 kHz mono.
+Output is wrapped in WAV for preview and re-import.",
+        "1995 年 RealAudio 1.0 的语音编码（RA144）。
+当年「网上听广播」就靠它，音质大致是 AM 水平。" => "RealAudio 1.0 speech codec from 1995 (RA144).
+It powered early internet radio; quality is roughly AM.",
+        "1-bit 差分脉宽调制，ComputerCraft（我的世界里的电脑模组）用的音频。
+8kHz 单声道、码率固定，体积非常小。
+`.dfpwm` 是 ffmpeg 的叫法，那个模组自己也这么存。" => "1-bit differential pulse-width modulation, used by ComputerCraft (a Minecraft computer mod).
+8 kHz mono, fixed bitrate, very small files.
+.dfpwm is ffmpeg's name; the mod stores it the same way.",
+        "High Voltage Software 的 ALP ADPCM，Wii/PS2 时代几款游戏用过。
+**只支持 22.05kHz 单声道**，程序会强制重采样。
+适合还原老游戏语音，不适合音乐。" => "High Voltage Software's ALP ADPCM, used by a few Wii/PS2-era games.
+**22.05 kHz mono only**; the app forces resampling.
+For restoring old game speech, not music.",
+        "Yamaha SMAF 手机铃声/游戏配乐（.mmf），2000 年代功能机的标准。
+里面是 4-bit Yamaha ADPCM，这里固定 8kHz 单声道。
+现在的手机都不认，只适合老机器和收藏。" => "Yamaha SMAF ringtones/game music (.mmf), the 2000s feature-phone standard.
+Contains 4-bit Yamaha ADPCM; fixed 8 kHz mono here.
+No modern phone supports it; for old devices and collectors.",
+        "SoX 自己的原生格式（.sox）：文件头 + 32-bit PCM。
+只在 SoX 工具链里流通，普通播放器基本不认。
+要跟 SoX 脚本/效果链换数据时用它，归档还是 FLAC。" => "SoX's native format (.sox): header + 32-bit PCM.
+Only used within the SoX toolchain; normal players rarely read it.
+Use it to exchange data with SoX scripts/effects; archive in FLAC.",
+        "IRCAM（巴黎声学/音乐研究所）音频工作站格式，16-bit PCM。
+老音频研究/合成软件里能见到，体积和 WAV 一样大。
+除非对方指定 .sf/.ircam，否则用 WAV 更省事。" => "IRCAM (Paris acoustics/music research institute) workstation format, 16-bit PCM.
+Found in old audio research/synthesis software; same size as WAV.
+Use WAV unless the other side demands .sf/.ircam.",
+        "Dolby Digital，1992 年的 5.1 影院/DVD 标准。
+本项目可编码，默认 448kbps / 48kHz；
+多声道码率不能和立体声 MP3 直接比。" => "Dolby Digital, the 1992 5.1 cinema/DVD standard.
+This app can encode it, default 448 kbps / 48 kHz;
+multichannel bitrate is not comparable to stereo MP3.",
+        "Dolby Digital Plus，AC-3 的升级版。
+本项目可编码，默认 640kbps / 48kHz；
+新设备优先，老设备只认 AC-3。" => "Dolby Digital Plus, the AC-3 successor.
+This app can encode it, default 640 kbps / 48 kHz;
+prefer it on new devices; old ones only accept AC-3.",
+        "2002 年的开源语音编码（BSD），专利免费。
+随包 speexenc 输出 8 kHz 单声道 .spx；
+专为人声设计，频率上限只有 4 kHz。" => "Open-source speech codec from 2002 (BSD), patent-free.
+The bundled speexenc writes 8 kHz mono .spx;
+designed for voice, so the frequency ceiling is 4 kHz.",
+        "早期手机录音的窄带语音编码（8kHz）。
+随包 ffmpeg 带 OpenCORE AMR-NB 编码器，可输出 12.2k；
+只适合人声/电话录音。" => "Narrowband speech codec from early phones (8 kHz).
+The bundled ffmpeg includes an OpenCORE AMR-NB encoder, output 12.2k;
+for voice/phone recordings only.",
+        "AMR 的宽带版本（16kHz，23.85kbps 档），VoLTE 之前的主力。
+编码器是 ffmpeg 的 libvo_amrwbenc —— 随包构建没编进去，
+换成带它的完整构建（gyan full 之类）这一行才会亮。" => "Wideband AMR (16 kHz, 23.85 kbps), the main codec before VoLTE.
+The encoder is ffmpeg's libvo_amrwbenc—not included in the bundled build;
+switch to a full build with it (e.g. gyan full) to enable this row.",
+        "DTS 环绕声，家用影院常见。
+用 ffmpeg 的 dca 编码器（实验性），默认 768k / 48k；
+兼容性不如 AC-3。" => "DTS surround, common in home cinema.
+Uses ffmpeg's dca encoder (experimental), default 768k / 48k;
+less compatible than AC-3.",
+        "杜比 AC-4（全景声常用），本项目没有解码/编码器。
+只有源本身是 AC-4 时才能原样封装进 MP4；
+其它源选了会明确报错。" => "Dolby AC-4 (common for Atmos), with no decoder/encoder here.
+It can only be passed through into MP4 when the source is already AC-4;
+other sources error out explicitly.",
+        "微软的无损 WMA。
+当前 ffmpeg 构建没有编码器，只读。" => "Microsoft's lossless WMA.
+The current ffmpeg build has no encoder; read-only.",
+        "Monkey's Audio，老无损格式。
+只读；没有可用编码器。" => "Monkey's Audio, an old lossless format.
+Read-only; no usable encoder.",
+        "Tom's lossless Audio Kompressor。
+只读；没有可用编码器。" => "Tom's lossless Audio Kompressor.
+Read-only; no usable encoder.",
+        "早期无损压缩，现场录音存档常见。
+只读；没有可用编码器。" => "Early lossless compression, common for live recordings.
+Read-only; no usable encoder.",
+        "MPEG-4 Audio Lossless Coding。
+只读；没有可用编码器。" => "MPEG-4 Audio Lossless Coding.
+Read-only; no usable encoder.",
+        "Scalable Lossless Coding，可分层无损。
+只读；没有可用编码器。" => "Scalable Lossless Coding, layered lossless.
+Read-only; no usable encoder.",
+        "Lossless Audio，老式无损。
+只读；没有可用编码器。" => "Lossless Audio, an old lossless format.
+Read-only; no usable encoder.",
+        "Lossless Predictive Audio Compression。
+只读；没有可用编码器。" => "Lossless Predictive Audio Compression.
+Read-only; no usable encoder.",
+        "RK Audio 无损压缩。
+只读；没有可用编码器。" => "RK Audio lossless compression.
+Read-only; no usable encoder.",
+        "Bonk 有损/无损混合编码。
+只读；没有可用编码器。" => "Bonk hybrid lossy/lossless codec.
+Read-only; no usable encoder.",
+        "DSD 的 DFF 容器（DSDIFF）。
+当前只能读/分析，不写 DSD。" => "DSD's DFF container (DSDIFF).
+Read/analyze only; no DSD writing.",
+        "DSD 的 DSF 容器（Sony）。
+当前只能读/分析，不写 DSD。" => "DSD's DSF container (Sony).
+Read/analyze only; no DSD writing.",
+        "DSD 的无损压缩（Direct Stream Transfer）。
+只读；没有编码器。" => "DSD lossless compression (Direct Stream Transfer).
+Read-only; no encoder.",
+        "Qualcomm PureVoice 手机录音容器。
+只读；没有编码器。" => "Qualcomm PureVoice phone recording container.
+Read-only; no encoder.",
+        "WMA 的低码率语音档。
+只读；没有编码器。" => "WMA's low-bitrate voice profile.
+Read-only; no encoder.",
+        "G.729 低码率电话语音。
+只读；没有编码器。" => "G.729 low-bitrate telephony speech.
+Read-only; no encoder.",
+        "DTS-HD 家族（含 MA/HRA）。
+只读；没有开源编码器。" => "The DTS-HD family (including MA/HRA).
+Read-only; no open-source encoder.",
+        "DTS-HD 的高码率有损档。
+只读；没有开源编码器。" => "DTS-HD High Resolution, the high-bitrate lossy profile.
+Read-only; no open-source encoder.",
+        "DTS 的对象音频格式。
+只读；没有开源编码器。" => "DTS's object-audio format.
+Read-only; no open-source encoder.",
+        "MPEG Surround 空间音频。
+只读；没有编码器。" => "MPEG Surround spatial audio.
+Read-only; no encoder.",
+        "MPEG-H 3D Audio 对象音频。
+只读；没有编码器。" => "MPEG-H 3D Audio object audio.
+Read-only; no encoder.",
+        "MPEG-H 3D Audio 的 LC3 档。
+只读；没有编码器。" => "The LC3 profile of MPEG-H 3D Audio.
+Read-only; no encoder.",
+        "MPEG-1 Layer I，早期 MPEG 音频。
+只读；没有编码器。" => "MPEG-1 Layer I, early MPEG audio.
+Read-only; no encoder.",
+        "MPEG-1 Layer II，就是常说的 MP2。
+现有 MP2 输出可编码；这个是参考别名。" => "MPEG-1 Layer II, commonly MP2.
+The existing MP2 output can encode; this is a reference alias.",
+        "HE-AAC + PS 立体声。
+只读；没有编码器。" => "HE-AAC + PS stereo.
+Read-only; no encoder.",
+        "AAC Low Complexity。
+现有 AAC 输出就是 LC；这个是参考条目。" => "AAC Low Complexity.
+The existing AAC output is LC; this is a reference entry.",
+        "AAC Enhanced Low Delay，通话/低延迟。
+只读；没有编码器。" => "AAC Enhanced Low Delay for calls/low latency.
+Read-only; no encoder.",
+        "AAC Low Delay，低延迟通信。
+只读；没有编码器。" => "AAC Low Delay for low-latency communication.
+Read-only; no encoder.",
+        "MPEG-D USAC / xHE-AAC 的核心。
+只读；没有编码器。" => "The core of MPEG-D USAC / xHE-AAC.
+Read-only; no encoder.",
+        "LC3plus，低延迟/高音质。
+只读；没有编码器。" => "LC3plus, low latency / high quality.
+Read-only; no encoder.",
+        "3GPP EVS 增强语音。
+只读；没有编码器。" => "3GPP EVS enhanced speech.
+Read-only; no encoder.",
+        "TwinVQ（VQF）老式音频编码。
+只读；没有编码器。" => "TwinVQ (VQF), an old audio codec.
+Read-only; no encoder.",
+        "MPEG-4 Harmonic and Individual Lines/Noise。
+只读；没有编码器。" => "MPEG-4 Harmonic and Individual Lines/Noise.
+Read-only; no encoder.",
+        "MPEG-4 Scalable to Lossless 的编码核心之一。
+只读；没有编码器。" => "One of the coding cores of MPEG-4 Scalable to Lossless.
+Read-only; no encoder.",
+        "广播 WAV 64-bit 容器。
+只读参考；当前不作为输出。" => "Broadcast WAV 64-bit container.
+Read-only reference; not an output.",
+        "AIFF-C 压缩/多字节序变体。
+只读参考；当前不作为输出。" => "AIFF-C compressed/multi-endian variant.
+Read-only reference; not an output.",
+        "ITU G.722.1，Polycom 的 32kbps 宽带语音。
+Asterisk 用的后缀就是 `.siren7`。只读；没有编码器。" => "ITU G.722.1, Polycom's 32 kbps wideband speech.
+Asterisk's extension is `.siren7`. Read-only; no encoder.",
+        "G.722.1 的 14kHz 扩展版，48kbps。
+只读；没有编码器。" => "The 14 kHz extension of G.722.1, 48 kbps.
+Read-only; no encoder.",
+        "2008 年的 ITU 全带宽语音编码（Polycom + 爱立信）。
+只读；没有编码器。" => "ITU full-band speech codec from 2008 (Polycom + Ericsson).
+Read-only; no encoder.",
+        "RealAudio 2.0（RA28.8），1996 年前后的网络广播用它。
+只读；没有编码器。" => "RealAudio 2.0 (RA28.8), used by internet radio around 1996.
+Read-only; no encoder.",
+        "广播行业的标准封装（Material Exchange Format）。
+只读参考；当前不作为输出。" => "Broadcast-standard container (Material Exchange Format).
+Read-only reference; not an output.",
+        "没装 ASIO 驱动（注册表 HKLM\\SOFTWARE\\ASIO 是空的）" => "No ASIO driver installed (HKLM\\SOFTWARE\\ASIO is empty)",
+        "没找到" => "Not found",
+        "采样率" => "Sample rate",
+        "杜比全景声" => "Dolby Atmos",
+        "菁彩声" => "Audio Vivid",
+        "找不到 wavpack.exe，WavPack 有损输出不可用（设置页有说明）" => "wavpack.exe not found; lossy WavPack output unavailable (see Settings)",
+        "找不到 ofr.exe，OptimFROG 输出不可用（losslessaudio.org 下载后放到程序目录）" => "ofr.exe not found; OptimFROG output unavailable (download it from losslessaudio.org into the program folder)",
+        "找不到 mpcenc.exe，Musepack 输出不可用" => "mpcenc.exe not found; Musepack output unavailable",
+        "找不到 psxavenc.exe，PS1 XA / PS2 VAG 输出不可用（extras 包里有）" => "psxavenc.exe not found; PS1 XA / PS2 VAG output unavailable (in the extras package)",
+        "找不到 qoaconv.exe，QOA 输出不可用（extras 包里有）" => "qoaconv.exe not found; QOA output unavailable (in the extras package)",
+        "找不到 VGAudioCli.exe，任天堂容器输出不可用（extras 包里有）" => "VGAudioCli.exe not found; Nintendo container output unavailable (in the extras package)",
+        "找不到 vadpcm.exe，N64 VADPCM 输出不可用（extras 包里有）" => "vadpcm.exe not found; N64 VADPCM output unavailable (in the extras package)",
+        "找不到 speexenc，Speex 输出不可用" => "speexenc not found; Speex output unavailable",
+        "AC-4 只能从 AC-4 源直通封装；普通音频没有 AC-4 编码器。" => "AC-4 can only be passed through from an AC-4 source; there is no AC-4 encoder for ordinary audio.",
+        "IEC 61937 只能直通压缩音频（AC-3 / E-AC-3 / DTS / MPEG），PCM 源没有可直通的比特流。" => "IEC 61937 only carries compressed audio (AC-3 / E-AC-3 / DTS / MPEG); PCM has no bitstream to pass through.",
+        "找不到 atracdenc。ATRAC 输出需要你自己装它（设置页有说明）。" => "atracdenc not found. ATRAC output requires installing it yourself (see Settings).",
+        "找不到 speexenc" => "speexenc not found",
+        "找不到 psxavenc.exe" => "psxavenc.exe not found",
+        "找不到 qoaconv.exe" => "qoaconv.exe not found",
+        "找不到 VGAudioCli.exe" => "VGAudioCli.exe not found",
+        "找不到 vadpcm.exe" => "vadpcm.exe not found",
+        "找不到 mpcenc.exe" => "mpcenc.exe not found",
+        "找不到 ofr.exe" => "ofr.exe not found",
+        "找不到 wavpack.exe" => "wavpack.exe not found",
+        "加密文件：本工具只识别，不解码也不播放。" => "Encrypted file: this tool only identifies it; no decoding or playback.",
+        "找不到 ffmpeg，无法试听" => "ffmpeg not found; cannot preview",
+        "这个文件解不出音频，没法试听" => "No audio could be decoded from this file; cannot preview",
+        "转换完成" => "Conversion complete",
+        "转换失败" => "Conversion failed",
+        "本批转换结束" => "Batch finished",
+        "分轨线程结束" => "Split thread finished",
+        "找不到 ffmpeg / ffprobe" => "ffmpeg / ffprobe not found",
+        "[默认] " => "[Default] ",
+        "输入" => "Input",
+        "蓝牙 " => "Bluetooth ",
+        "找不到 ffprobe" => "ffprobe not found",
+        "找不到 ffmpeg" => "ffmpeg not found",
+        "读不到音频信息" => "Cannot read audio info",
+        "声箱ToneBox Vulkan" => "ToneBox Vulkan",
+        "后缀" => "Extension",
+        "只改后缀和封装，编码参数不变" => "Changes only extension/container; codec settings unchanged",
+        "重命名" => "Rename",
+        "音频" => "Audio",
+        "指定目录" => "Custom folder",
+        "自动" => "Auto",
+        "写入标签" => "Write tags",
+        "测不出响度（样本太短或解码失败）" => "Cannot measure loudness (too short or decode failed)",
+        "删除源文件" => "Delete source",
+        "standard 约 180kbps（默认），extreme / insane 约 210 / 240kbps。" => "standard ≈ 180 kbps (default); extreme / insane ≈ 210 / 240 kbps.",
+        "默认档" => "Default",
+        "低质量档，适合语音/试听，高频会明显变糊" => "Low quality for speech/preview; highs get dull",
+        "中等档，日常听够用" => "Medium; fine for everyday listening",
+        "高质量档，接近透明" => "High; close to transparent",
+        "最高档，文件最大，和 8~9 档差别很小" => "Highest; largest files, barely different from 8–9",
+        "ffmpeg 子进程" => "ffmpeg subprocess",
+        "未找到 —— 所有转换都不可用" => "Not found — all conversions unavailable",
+        "版本未知" => "Version unknown",
+        "未找到 —— 读不出采样率/位深" => "Not found — cannot read sample rate/bit depth",
+        "装好后放到程序目录或 PATH，再点下面的「重新检测」" => "Place it in the program folder or PATH, then click Re-detect below",
+        "随包提供，通常在 vendor\\speex 或程序的 speex\\ 目录" => "Bundled; usually in vendor\\speex or speex\\ next to the program",
+        "ffmpeg 的 wavpack 编码器不支持 hybrid；装 wavpack.exe 才有有损" => "ffmpeg's wavpack encoder has no hybrid mode; install wavpack.exe for lossy",
+        "官方许可要求分发 CLI 需授权，所以不随包；到 losslessaudio.org 下载后放到程序目录" => "Its license requires permission to redistribute the CLI, so it is not bundled; download it from losslessaudio.org into the program folder",
+        "随包提供，通常在 musepack 目录" => "Bundled; usually in the musepack folder",
+        "放到程序目录或 psxavenc 子目录" => "Place it in the program folder or psxavenc subfolder",
+        "放到程序目录或 qoa 子目录" => "Place it in the program folder or qoa subfolder",
+        "放到程序目录或 vgaudio 子目录" => "Place it in the program folder or vgaudio subfolder",
+        "放到程序目录或 vadpcm 子目录" => "Place it in the program folder or vadpcm subfolder",
+        "atracdenc 是社区逆向实现的 ATRAC 编码器，LGPL-2.1+。它不随本程序分发：装不装、装哪个版本由你决定，程序只在你装了的时候调用它。" => "atracdenc is a community ATRAC encoder (LGPL-2.1+). It is not bundled: whether and which version to install is up to you; the app only calls it when present.",
+        "注册后 ToneBox 会出现在右键「打开方式」里，双击文件即可打开并试听。Windows 10/11 不允许程序静默设为默认，需要你到「默认应用」里自己确认。" => "After registering, ToneBox appears under \"Open with\"; double-click a file to open and preview. Windows 10/11 requires you to confirm the default in Settings.",
+        "注册到打开方式" => "Register in \"Open with\"",
+        "已注册：右键「打开方式」里能看到 ToneBox。" => "Registered: ToneBox now appears under \"Open with\".",
+        "移除注册" => "Remove registration",
+        "已移除注册。" => "Registration removed.",
+        "打开默认应用设置" => "Open default apps",
+        "选一个 .cue：按 TRACK / INDEX 把整轨切成单曲，格式用当前选中的输出格式，文件输出到 cue 同目录。" => "Pick a .cue: TRACK/INDEX entries are split into single tracks using the current output format, written next to the cue.",
+        "正在分轨…" => "Splitting…",
+        "免费、开源、不卖授权。觉得有用就扫下面任意一个。" => "Free, open source, no licenses sold. Scan either code below if it helps you.",
+        "微信" => "WeChat",
+        "支付宝" => "Alipay",
+        "清空" => "Clear",
+        "完成" => "Done",
+        "失败" => "Failed",
+        "定位 ffmpeg / ffprobe" => "Locating ffmpeg / ffprobe",
+        "读取 ffmpeg 版本" => "Reading ffmpeg version",
+        "读取编码器表" => "Reading encoder list",
+        "读取解码器表" => "Reading decoder list",
+        "检查开源解码库" => "Checking open-source decoders",
+        "检查无损编码器" => "Checking lossless encoders",
+        "检查有损编码器" => "Checking lossy encoders",
+        "检查视频编码器" => "Checking video encoders",
+        "检查音频输出设备" => "Checking audio output devices",
+        "检查 ATRAC 编码器" => "Checking ATRAC encoder",
+        "检查 Speex 编码器" => "Checking Speex encoder",
+        "检查 WavPack 编码器" => "Checking WavPack encoder",
+        "检查 OptimFROG 编码器" => "Checking OptimFROG encoder",
+        "检查 Musepack 编码器" => "Checking Musepack encoder",
+        "读取配置与音乐库" => "Reading settings and library",
+        "输出已生成，但自检没通过" => "File written, but self-check failed",
         _ => key,
     }
 }

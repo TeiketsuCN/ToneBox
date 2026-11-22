@@ -136,7 +136,7 @@ impl Boot {
                 } else {
                     Step::Ok
                 },
-                format!("{} 个", encoders.len()),
+                fmt_count(encoders.len()),
             );
 
             // 3 解码器表
@@ -152,7 +152,7 @@ impl Boot {
                 } else {
                     Step::Ok
                 },
-                format!("{} 个", decoders.len()),
+                fmt_count(decoders.len()),
             );
 
             // 4 开源解码库：ffmpeg 里名字带 lib 前缀的都是外挂开源库
@@ -225,7 +225,7 @@ impl Boot {
                 if have.is_empty() {
                     crate::tr!("没有 MP3 / Opus / Vorbis 编码器").to_string()
                 } else {
-                    format!("{} 个可用", have.len())
+                    fmt_avail(have.len())
                 },
             );
 
@@ -247,7 +247,7 @@ impl Boot {
                 if vhave.is_empty() {
                     crate::tr!("这个构建没有外挂视频编码器").to_string()
                 } else {
-                    format!("{} / 共 {} 个", vhave.join(" / "), vhave.len())
+                    fmt_have(&vhave.join(" / "), vhave.len())
                 },
             );
 
@@ -255,7 +255,7 @@ impl Boot {
             send(8, Step::Running, String::new());
             match fc_player::devices::list() {
                 Ok(list) if !list.is_empty() => {
-                    send(8, Step::Ok, format!("{} 个设备", list.len()))
+                    send(8, Step::Ok, fmt_devices(list.len()))
                 }
                 _ => send(8, Step::Skip, crate::tr!("枚举不到").to_string()),
             }
@@ -304,7 +304,7 @@ impl Boot {
                 if cfg.library_cache.is_empty() {
                     crate::tr!("配置就绪，音乐库还没扫").to_string()
                 } else {
-                    format!("音乐库 {} 首", cfg.library_cache.len())
+                    fmt_lib(cfg.library_cache.len())
                 },
             );
 
@@ -316,7 +316,7 @@ impl Boot {
             items: LABELS
                 .iter()
                 .map(|l| Item {
-                    label: l,
+                    label: crate::i18n::tr(*l),
                     state: Step::Todo,
                     detail: String::new(),
                 })
@@ -441,14 +441,18 @@ impl Boot {
         p.text(
             egui::pos2(nx, logo_rect.center().y - 6.0),
             Align2::LEFT_CENTER,
-            APP_NAME,
+            crate::i18n::tr("声箱ToneBox"),
             FontId::proportional(15.0),
             TEXT,
         );
         p.text(
             egui::pos2(nx, logo_rect.center().y + 9.0),
             Align2::LEFT_CENTER,
-            format!("v{VERSION} · 正在检查运行环境"),
+            if crate::i18n::is_en() {
+                format!("v{VERSION} · checking environment")
+            } else {
+                format!("v{VERSION} · 正在检查运行环境")
+            },
             FontId::proportional(9.5),
             tint(TEXT, 120),
         );
@@ -551,4 +555,22 @@ fn load_shot(ctx: &egui::Context) -> egui::TextureHandle {
     let size = [img.width() as usize, img.height() as usize];
     let ci = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
     ctx.load_texture("boot-shot", ci, egui::TextureOptions::LINEAR)
+}
+fn fmt_count(n: usize) -> String {
+    if crate::i18n::is_en() { format!("{n} files") } else { format!("{n} 个") }
+}
+fn fmt_avail(n: usize) -> String {
+    if crate::i18n::is_en() { format!("{n} available") } else { format!("{n} 个可用") }
+}
+fn fmt_devices(n: usize) -> String {
+    if crate::i18n::is_en() { format!("{n} devices") } else { format!("{n} 个设备") }
+}
+fn fmt_lib(n: usize) -> String {
+    if crate::i18n::is_en() { format!("Library: {n} tracks") } else { format!("音乐库 {} 首", n) }
+}
+fn fmt_libs(list: &str, n: usize) -> String {
+    if crate::i18n::is_en() { format!("{list} … {n} total") } else { format!("{list} … 共 {} 个", n) }
+}
+fn fmt_have(list: &str, n: usize) -> String {
+    if crate::i18n::is_en() { format!("{list} / {n} total") } else { format!("{list} / 共 {} 个", n) }
 }
