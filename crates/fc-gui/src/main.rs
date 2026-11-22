@@ -78,6 +78,7 @@ pub(crate) enum Page {
 pub(crate) enum LibTab {
     Songs,
     Playlists,
+    Lyrics,
     Albums,
     Genres,
     Artists,
@@ -98,6 +99,7 @@ pub(crate) struct LibEntry {
     sample_rate: u32,
     bitrate_kbps: u64,
     lossy: bool,
+    has_lyrics: bool,
 }
 
 pub(crate) enum LibMsg {
@@ -694,6 +696,7 @@ impl App {
                 bitrate_kbps: c.bitrate_kbps,
                 // 老缓存没有 lossy 字段：按编码名兜底，别把 MP3 当成无损
                 lossy: c.lossy || label_is_lossy(&c.codec),
+                has_lyrics: PathBuf::from(&c.path).with_extension("lrc").exists(),
             })
             .collect();
         let cached_status = if cached_lib.is_empty() {

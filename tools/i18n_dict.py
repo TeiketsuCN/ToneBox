@@ -756,6 +756,7 @@ D.update({
 D.update({
     "目标已存在": "If output exists",
     "歌单": "Playlists",
+    "歌词": "Lyrics",
     "加入歌单": "Add to playlist",
     "还没有歌单": "No playlists yet",
     "+ 新建歌单": "+ New playlist",

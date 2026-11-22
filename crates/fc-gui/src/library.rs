@@ -29,6 +29,7 @@ impl App {
         let title = match self.lib_tab {
             LibTab::Songs => crate::tr!("歌曲"),
             LibTab::Playlists => crate::tr!("歌单"),
+            LibTab::Lyrics => crate::tr!("歌词"),
             LibTab::Albums => crate::tr!("专辑"),
             LibTab::Genres => crate::tr!("风格"),
             LibTab::Artists => crate::tr!("艺术家"),
@@ -235,8 +236,11 @@ impl App {
                     return;
                 }
                 match self.lib_tab {
-                    LibTab::Songs => {
+                    LibTab::Songs | LibTab::Lyrics => {
                         let mut rows = ids.clone();
+                        if self.lib_tab == LibTab::Lyrics {
+                            rows.retain(|&i| self.lib_entries[i].has_lyrics);
+                        }
                         rows.sort_by(|&a, &b| {
                             self.lib_entries[a]
                                 .title
@@ -258,8 +262,10 @@ impl App {
                             {
                                 requests.push(e.path.clone());
                             }
+                            let path = self.lib_entries[i].path.clone();
+                            let has_lyrics = self.lib_entries[i].has_lyrics;
                             let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
-                            let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
+                            let row = lib_row(ui, &self.lib_entries[i], pl, sel, tex).on_hover_text(format!(
                                 "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
                                 e.title,
                                 if e.artist.is_empty() { crate::tr!("未知艺术家") } else { &e.artist },
@@ -269,7 +275,45 @@ impl App {
                                 e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
                                 e.path.display()
                             ));
-                            if row.clicked() {
+                            if has_lyrics {
+                                ui.painter().text(
+                                    row.rect.right_center() - egui::vec2(10.0, 0.0),
+                                    egui::Align2::RIGHT_CENTER,
+                                    "LRC",
+                                    egui::FontId::proportional(8.0),
+                                    accent(),
+                                );
+                            }
+                            let row = row.context_menu(|ui| {
+                                if ui.button(crate::tr2!("跳转到编解码", "Open in encoding")).clicked() {
+                                    self.add_files(vec![path.clone()]);
+                                    self.page = crate::Page::Convert;
+                                    ui.close_menu();
+                                }
+                                if ui.button(crate::tr2!("从列表删除", "Remove from list")).clicked() {
+                                    self.lib_entries.retain(|x| x.path != path);
+                                    if self.lib_selected.as_deref() == Some(path.as_path()) {
+                                        self.lib_selected = None;
+                                    }
+                                    ui.close_menu();
+                                }
+                                if ui.button(crate::tr2!("编辑 / 创建歌词", "Edit / create lyrics")).clicked() {
+                                    let lrc = path.with_extension("lrc");
+                                    if !lrc.exists() {
+                                        let _ = std::fs::write(&lrc, "[00:00.00]\n");
+                                    }
+                                    #[cfg(windows)]
+                                    {
+                                        let _ = std::process::Command::new("notepad.exe").arg(&lrc).spawn();
+                                    }
+                                    if let Some(en) = self.lib_entries.iter_mut().find(|x| x.path == path) {
+                                        en.has_lyrics = lrc.exists();
+                                    }
+                                    ui.close_menu();
+                                }
+                            });
+                            let row_clicked = row.map(|r| r.response.clicked()).unwrap_or(false);
+                            if row_clicked {
                                 clicked = Some(i);
                             }
                         }
@@ -385,8 +429,10 @@ impl App {
                             {
                                 requests.push(e.path.clone());
                             }
+                            let path = self.lib_entries[i].path.clone();
+                            let has_lyrics = self.lib_entries[i].has_lyrics;
                             let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
-                            let row = lib_row(ui, e, pl, sel, tex).on_hover_text(format!(
+                            let row = lib_row(ui, &self.lib_entries[i], pl, sel, tex).on_hover_text(format!(
                                 "{}\n{} · {}\n{} kbps · {} Hz{}\n{}",
                                 e.title,
                                 if e.artist.is_empty() { crate::tr!("未知艺术家") } else { &e.artist },
@@ -396,7 +442,45 @@ impl App {
                                 e.bits.map(|b| format!(" · {b} bit")).unwrap_or_default(),
                                 e.path.display()
                             ));
-                            if row.clicked() {
+                            if has_lyrics {
+                                ui.painter().text(
+                                    row.rect.right_center() - egui::vec2(10.0, 0.0),
+                                    egui::Align2::RIGHT_CENTER,
+                                    "LRC",
+                                    egui::FontId::proportional(8.0),
+                                    accent(),
+                                );
+                            }
+                            let row = row.context_menu(|ui| {
+                                if ui.button(crate::tr2!("跳转到编解码", "Open in encoding")).clicked() {
+                                    self.add_files(vec![path.clone()]);
+                                    self.page = crate::Page::Convert;
+                                    ui.close_menu();
+                                }
+                                if ui.button(crate::tr2!("从列表删除", "Remove from list")).clicked() {
+                                    self.lib_entries.retain(|x| x.path != path);
+                                    if self.lib_selected.as_deref() == Some(path.as_path()) {
+                                        self.lib_selected = None;
+                                    }
+                                    ui.close_menu();
+                                }
+                                if ui.button(crate::tr2!("编辑 / 创建歌词", "Edit / create lyrics")).clicked() {
+                                    let lrc = path.with_extension("lrc");
+                                    if !lrc.exists() {
+                                        let _ = std::fs::write(&lrc, "[00:00.00]\n");
+                                    }
+                                    #[cfg(windows)]
+                                    {
+                                        let _ = std::process::Command::new("notepad.exe").arg(&lrc).spawn();
+                                    }
+                                    if let Some(en) = self.lib_entries.iter_mut().find(|x| x.path == path) {
+                                        en.has_lyrics = lrc.exists();
+                                    }
+                                    ui.close_menu();
+                                }
+                            });
+                            let row_clicked = row.map(|r| r.response.clicked()).unwrap_or(false);
+                            if row_clicked {
                                 clicked = Some(i);
                             }
                         }
@@ -655,6 +739,7 @@ impl App {
                     sample_rate: info.sample_rate,
                     bitrate_kbps: info.bitrate_kbps,
                     lossy: info.is_lossy(),
+                    has_lyrics: f.with_extension("lrc").exists(),
                 };
                 let _ = tx.send(LibMsg::Entry(entry));
             }

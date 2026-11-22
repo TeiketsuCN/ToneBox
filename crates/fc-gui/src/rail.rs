@@ -432,11 +432,13 @@ impl App {
         let genres = uniq(&self.lib_entries, |e| &e.genre);
         let artists = uniq(&self.lib_entries, |e| &e.artist);
         let playlists = self.cfg.playlists.len();
-        let rows: [(LibTab, &str, usize); 6] = [
+        let lyrics = self.lib_entries.iter().filter(|e| e.has_lyrics).count();
+        let rows: [(LibTab, &str, usize); 7] = [
             // 「库」放最前：加音乐/加文件夹都在这里，别让人找
             (LibTab::Folders, crate::tr!("库"), self.cfg.library_dirs.len() + self.cfg.library_files.len()),
             (LibTab::Songs, crate::tr!("歌曲"), songs),
             (LibTab::Playlists, crate::tr!("歌单"), playlists),
+            (LibTab::Lyrics, crate::tr!("歌词"), lyrics),
             (LibTab::Albums, crate::tr!("专辑"), albums),
             (LibTab::Genres, crate::tr!("风格"), genres),
             (LibTab::Artists, crate::tr!("艺术家"), artists),
