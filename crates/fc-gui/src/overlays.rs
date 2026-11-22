@@ -1491,6 +1491,7 @@ impl App {
             .open(&mut open)
             .default_pos(egui::pos2(win_x, win_y))
             .default_size([win_w, win_h])
+            .min_size([(win_w * 0.6).max(320.0), (win_h * 0.6).max(200.0)])
             .max_width(screen.width() - 48.0)
             .max_height(screen.height() - 96.0)
             .constrain(true)
@@ -1520,11 +1521,19 @@ impl App {
                     );
                 });
                 ui.separator();
+                let console_body_h = {
+                    let avail = ui.available_height();
+                    if avail.is_finite() {
+                        (avail - 44.0).clamp(80.0, screen.height() - 220.0)
+                    } else {
+                        (win_h - 118.0).max(90.0)
+                    }
+                };
                 egui::ScrollArea::vertical()
                     .id_salt("console_lines")
                     .stick_to_bottom(true)
                     .auto_shrink([false, false])
-                    .max_height(body_h)
+                    .max_height(console_body_h)
                     .show(ui, |ui| {
                         if self.console.is_empty() {
                             ui.label(
@@ -1553,6 +1562,8 @@ impl App {
                     );
                     if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         submitted = Some(std::mem::take(&mut self.console_input));
+                        // 回车后把焦点还回输入框，别让用户再点一次
+                        ui.memory_mut(|m| m.request_focus(r.id));
                     }
                 });
             });
