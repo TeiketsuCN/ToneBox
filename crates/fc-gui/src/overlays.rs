@@ -362,14 +362,7 @@ impl App {
                             return;
                         }
 
-                        let jump = match self.settings_tab {
-                            SettingsTab::Display => 0.0,
-                            SettingsTab::Behavior => 780.0,
-                            SettingsTab::Tools => 1550.0,
-                            SettingsTab::About => 0.0,
-                        };
                         egui::ScrollArea::vertical()
-                            .vertical_scroll_offset(jump)
                             .id_salt("settings_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
@@ -384,7 +377,6 @@ impl App {
                                         |ui| {
                                             ui.set_max_width(col_w);
                                 // ── 外观 ──
-                                if self.settings_tab == SettingsTab::Display {
                                 section(ui, crate::tr!("外观"));
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new(crate::tr!("背景")).size(10.5).color(MUTED));
@@ -553,8 +545,6 @@ impl App {
                                 ui.add_space(18.0);
 
                                 // ── 行为 ──
-                                }
-                                if self.settings_tab == SettingsTab::Behavior {
                                 section(ui, crate::tr!("行为"));
                                 let mut auto = self.cfg.auto_analyze;
                                 // 复选框底色透明：只留勾和文字，别在深色面板上再压一块方块
@@ -590,14 +580,11 @@ impl App {
                                 );
 
                                 ui.add_space(18.0);
-                                }
-                                if self.settings_tab == SettingsTab::Behavior {
                                 section(ui, crate::tr!("配置"));
                                 self.profile_panel(ui);
 
                                 ui.add_space(18.0);
 
-                                }
                                         },
                                     );
                                     ui.add_space(28.0);
@@ -607,7 +594,6 @@ impl App {
                                         |ui| {
                                             ui.set_max_width(col_w);
                                 // ── 关于 ──
-                                if false {
                                 section(ui, crate::tr!("关于"));
                                 egui::Grid::new("about")
                                     .num_columns(2)
@@ -654,8 +640,6 @@ impl App {
                                 });
 
                                 ui.add_space(10.0);
-                                }
-                                if self.settings_tab == SettingsTab::Tools {
                                 section(ui, crate::tr!("依赖 / 外部工具"));
 
                                 // 一行：圆点 + 名字 + 状态；下面缩进一行路径
@@ -915,8 +899,6 @@ impl App {
                                 );
 
                                 ui.add_space(16.0);
-                                }
-                                if self.settings_tab == SettingsTab::Behavior {
                                 section(ui, crate::tr!("文件关联"));
                                 para(
                                     ui,
@@ -953,8 +935,6 @@ impl App {
                                 }
 
                                 ui.add_space(16.0);
-                                }
-                                if self.settings_tab == SettingsTab::Display {
                                 section(ui, crate::tr!("语言 / Language"));
                                 ui.horizontal(|ui| {
                                     if ui
@@ -990,8 +970,6 @@ impl App {
                                 );
 
                                 ui.add_space(16.0);
-                                }
-                                if self.settings_tab == SettingsTab::Behavior {
                                 section(ui, crate::tr!("CUE 分轨"));
                                 para(
                                     ui,
@@ -1037,7 +1015,6 @@ impl App {
                                 }
 
                                 ui.add_space(18.0);
-                                }
                                 section(ui, crate::tr!("支持开发"));
                                 para(
                                     ui,

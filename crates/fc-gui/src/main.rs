@@ -774,7 +774,7 @@ impl App {
             media_tx: mtx,
             media_rx: mrx,
             cfg,
-            settings_open: false,
+            settings_open: std::env::var("TONEBOX_OPEN_SETTINGS").is_ok(),
             settings_t: 0.0,
             meta_open: true,
             notices: Vec::new(),
