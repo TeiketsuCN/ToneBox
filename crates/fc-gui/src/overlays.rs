@@ -1482,6 +1482,7 @@ impl App {
         let win_w = (screen.width() * 0.46).clamp(420.0, 720.0).min(screen.width() - 48.0);
         let win_h = (screen.height() * 0.45).clamp(260.0, 420.0).min(screen.height() - 120.0);
         let win_x = (screen.right() - win_w - 24.0).max(screen.left() + 24.0);
+        let body_h = (win_h - 118.0).max(90.0);
         let win_y = (screen.top() + TITLEBAR_H + 24.0)
             .min(screen.bottom() - win_h - 24.0)
             .max(screen.top() + TITLEBAR_H + 12.0);
@@ -1523,7 +1524,7 @@ impl App {
                     .id_salt("console_lines")
                     .stick_to_bottom(true)
                     .auto_shrink([false, false])
-                    .max_height(ui.available_height() - 34.0)
+                    .max_height(body_h)
                     .show(ui, |ui| {
                         if self.console.is_empty() {
                             ui.label(
@@ -1545,6 +1546,7 @@ impl App {
                     ui.label(RichText::new(">").monospace().color(accent()));
                     let r = ui.add(
                         egui::TextEdit::singleline(&mut self.console_input)
+                            .frame(false)
                             .font(egui::TextStyle::Monospace)
                             .desired_width(f32::INFINITY)
                             .hint_text(crate::tr2!("输入命令，回车执行", "Type a command, press Enter")),
