@@ -3,7 +3,7 @@
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.3.1**（另有 4 个新格式已实现、待发 1.4，见文末）
+- 文档版本：对应应用 **1.4.0**（VOC / AAC-LATM / MXF / Musepack 已随 1.4 发布）
 - 整理时间：2026-11
 - 仓库：<https://github.com/TeiketsuCN/ToneBox>
 
@@ -17,7 +17,7 @@
 | 技术栈 | Rust + egui/eframe 0.29（glow 后端）、winit、ffmpeg 子进程 |
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
-| 体积 | 主包 27.9 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
+| 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
 | 当前能力 | **73 个可输出格式**、47 个只读参考格式（合计 120 条）、14 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
@@ -232,6 +232,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | 1.2.0-beta.1 | 2026-11 | 格式扩容、侧栏七组 | 主包 |
 | **1.3.0** | 2026-11 | 视频容器 8→13、GSM/AMR-WB/iLBC/LC3/Codec2、自建 ffmpeg 8.0 | 27.8 MB |
 | **1.3.1** | 2026-11 | OptimFROG、CLI 外部编码器修复、extras 工具包 | 27.9 MB + 0.15 MB |
+| **1.4.0** | 2026-11 | VOC / AAC-LATM / MXF / Musepack（69→73）、musepack 随包 | 28.0 MB + 0.15 MB |
 
 ---
 
@@ -245,9 +246,9 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ---
 
-## 10. 当前工作区状态（未发布）
+## 10. 1.4 新增内容（已发布）
 
-已完成并实测、尚未打包的部分（预计 1.4）：
+1.4.0 新增并实测、随包发布的部分：
 
 | 新增 | 类型 | 实测结果 |
 |---|---|---|

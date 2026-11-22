@@ -2,7 +2,7 @@
 
 > 一个讲道理的音频格式转换器：先告诉你"这么转会损失什么"，再让你决定。
 
-![版本](https://img.shields.io/badge/版本-1.3.1-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.4.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
@@ -15,24 +15,24 @@
 
 | 版本 | 安装包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.3.1** | [ToneBox-1.3.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.1/ToneBox-1.3.1-win64.zip) | 27.9 MB | `1F63CD6E0DFDC9EEDAF76588FE8431D373D56CD204C275517D3F7671FDF5F947` |
-| 1.3.1 可选工具 | [ToneBox-1.3.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.3.1/ToneBox-1.3.1-extras-win64.zip) | 0.15 MB | `91AAE1390357E4B75AA83768970967DBDC9156C363BD277EA51C75A672A21636` |
+| **1.4.0** | [ToneBox-1.4.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.4.0/ToneBox-1.4.0-win64.zip) | 28.0 MB | `78D7FCC329CDB2DFDE6ACCBEE0C592CEDF5B64AFD9789D451CAC6B337FCA3D17` |
+| 1.4.0 可选工具 | [ToneBox-1.4.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.4.0/ToneBox-1.4.0-extras-win64.zip) | 0.15 MB | `FE31DD6C71B6BABF3EBCC391FBEE8AD4DEDCC56B291E7D17890A74A54AF0B15C` |
 
 - Windows 10 / 11 x64，解压即用，**不需要安装**
 - 解压后双击 `format-converter.exe`
-- 不要单独移动或删除 `ffmpeg\`、`speex\`、`wavpack\` 三个目录
+- 不要单独移动或删除 `ffmpeg\`、`speex\`、`wavpack\`、`musepack\` 四个目录
 
 ### 可选外部工具包（单独下载）
 
-主包里**不含**两个有分发限制的编码器，需要的另下 `ToneBox-1.3.1-extras-win64.zip`：
+主包里不含 atracdenc 和 OptimFROG 两个可选编码器（前者是可选组件，后者有再分发限制），需要时另下 `ToneBox-1.4.0-extras-win64.zip`：
 
 | 工具 | 包内形式 | 用途 |
 |---|---|---|
 | **atracdenc** | 直接带 `atracdenc\atracdenc.exe`（LGPL-2.1） | ATRAC1 / ATRAC3 / ATRAC3+ 输出 |
-| **OptimFROG** | 带 `install-ofr.cmd` 一键脚本 | OptimFROG 输出 |
+| **OptimFROG** | 带 `install-ofr.cmd` 一键下载脚本 | OptimFROG 输出 |
 
 用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），ATRAC 立刻可用；
-OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并用官方 SHA-1 校验（不涉及再分发）。
+OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校验官方 SHA-1（不涉及再分发）。
 - 卸载＝删掉这个文件夹：不写注册表、不装服务
 
 > 这是测试性质的软件。转换前请备份原文件；设备和文件损坏请自己负责。
@@ -52,7 +52,7 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并用�
 
 ## 支持的格式
 
-当前**可输出格式 69 个**，另有约 50 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 73 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
@@ -60,8 +60,8 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并用�
 | 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损 |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
-| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF |
-| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、**MPEG-PS、VOB、OGV、WMV、3GP** |
+| 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF、**VOC**、**AAC-LATM**（LOAS） |
+| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、**MXF** |
 | 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需自行安装 atracdenc） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
@@ -77,6 +77,7 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并用�
 | `ffmpeg` / `ffprobe` | ✅ 随包 | 解码、编码、探测（LGPL v3 自建，带 libgsm / vo-amrwbenc / libilbc / liblc3 / codec2） |
 | `speexenc` | ✅ 随包 | Speex 输出（BSD） |
 | `wavpack` | ✅ 随包 | WavPack **有损**输出（hybrid 模式，ffmpeg 自带的编码器只做无损） |
+| `mpcenc` | ✅ 随包 | Musepack 输出（LGPL-2.1） |
 | `atracdenc` | 📦 在 extras 包里 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL-2.1） |
 | `ofr` | 📦 extras 里一键下载 | OptimFROG 输出（官方许可限制再分发，脚本代下载） |
 
@@ -159,6 +160,11 @@ docs/           设计笔记、格式总览、法律边界等
 ---
 
 ## 更新日志
+
+### 1.4.0（2026-11）
+- 可输出格式 **69 → 73**：新增 **VOC**（Creative Voice 音频容器）、**AAC-LATM / LOAS**（广播封装）、**MXF**（视频容器，MPEG-2 + PCM 48kHz）、**Musepack**（mpcenc，5 档质量）
+- 随包新增 Musepack 编码器 `musepack\mpcenc.exe`（LGPL-2.1），Musepack 开箱可用
+- 格式百科同步这四条，`--formats` 现在列出 73 项
 
 ### 1.3.1（2026-11）
 - 新增 **OptimFROG** 输出（走官方 ofr.exe，压缩预设 0–10 可调）

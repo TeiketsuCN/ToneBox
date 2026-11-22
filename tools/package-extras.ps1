@@ -12,7 +12,7 @@
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
-#   powershell ... -Ver 1.3.1
+#   powershell ... -Ver 1.4.0
 
 param(
     [string]$Out = "",
