@@ -6,7 +6,7 @@
 
 [English (short)](README.en.md) · [简体中文](README.md)
 
-![版本](https://img.shields.io/badge/版本-1.6.1-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.7.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL--2.1%20(随包)-orange)
@@ -52,8 +52,8 @@
 
 | 版本 | 包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.6.1** | [ToneBox-1.6.1-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.1/ToneBox-1.6.1-win64.zip) | 28.2 MB | `DFC03D29089F8F20BDA6EE4438A7FD8DC1175BFAB3ADD659C09F7DA2884A2FD2` |
-| 1.6.1 可选工具 | [ToneBox-1.6.1-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.1/ToneBox-1.6.1-extras-win64.zip) | 4.8 MB | `ADCEB7528927418B668A30BF6387003A6765D316FE925870C6CACA088D3AB1FC` |
+| **1.7.0** | [ToneBox-1.7.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.0/ToneBox-1.7.0-win64.zip) | 28.3 MB | `6D5A5FA493589DC9851BB157A1290C8FD556F0E6425F53D33DA44BF09E596214` |
+| 1.7.0 可选工具 | [ToneBox-1.7.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.7.0/ToneBox-1.7.0-extras-win64.zip) | 13.1 MB | `D9C7CCDF75C1F45117981418A2B73011152362ED46FBF6F32FA734B26694B41B` |
 
 - **Windows 10 / 11 x64**，解压即用，不需要安装
 - 解压后双击 `format-converter.exe`；不要单独移动 `ffmpeg\`、`speex\`、`wavpack\`、`musepack\` 四个目录
@@ -66,7 +66,7 @@
 
 ### 可选外部工具包（单独下载）
 
-主包不带分发受限或体积较大的工具，需要时另下 `ToneBox-1.6.1-extras-win64.zip`：
+主包不带分发受限或体积较大的工具，需要时另下 `ToneBox-1.7.0-extras-win64.zip`：
 
 | 工具 | 许可 | 用途 |
 |---|---|---|
@@ -188,7 +188,7 @@ format-converter.exe <文件>                     打开并直接试听（双击
 - **校验 SHA256**（PowerShell）：
 
   ```powershell
-  Get-FileHash .\ToneBox-1.6.1-win64.zip -Algorithm SHA256
+  Get-FileHash .\ToneBox-1.7.0-win64.zip -Algorithm SHA256
   ```
 
   和上面的值逐字比对。
@@ -269,7 +269,7 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 
 ## 更新日志
 
-### 1.7（开发中，未发版）
+### 1.7.0（2026-11）
 - 可输出格式 **107 → 112**：Argonaut ASF、AMV、SWF、GIF、APNG；MOV/MKV/MXF/WebM/AVI 新增 ProRes / FFV1 / DNxHR / VP8 / MJPEG 编码
 - **双击文件直接播放**：带文件路径启动会入队并自动试听
 - **注册到「打开方式」**：`--register` / 设置页按钮；不静默抢默认（Windows 要求用户确认）

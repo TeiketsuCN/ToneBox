@@ -1018,7 +1018,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fc-analyze"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "fc-core",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "fc-core"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -1037,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "fc-gui"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "eframe",
@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "fc-player"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "cpal",

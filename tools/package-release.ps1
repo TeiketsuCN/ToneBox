@@ -56,6 +56,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $stage 'ffmpeg') | Out-Null
 
 Write-Host "== 2/4 copy exe + ffmpeg ==" -ForegroundColor Cyan
 Copy-Item $exe (Join-Path $stage 'format-converter.exe') -Force
+# 英文启动器（免命令行）
+$enCmd = "@echo off`r`nstart """" ""%~dp0format-converter.exe"" --lang en`r`n"
+Set-Content -Path (Join-Path $stage 'ToneBox English.cmd') -Value $enCmd -Encoding ASCII
 Copy-Item (Join-Path $ffmpeg '*') (Join-Path $stage 'ffmpeg') -Recurse -Force
 
 # ATRAC 编码器（atracdenc）是可选组件，只随 extras 包发出，不进主包

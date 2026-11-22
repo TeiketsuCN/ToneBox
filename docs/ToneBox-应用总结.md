@@ -3,7 +3,7 @@
 > 一句话：一个"先讲清楚代价、再让你转"的 Windows 音频格式转换器。
 > 转换只是入口，它真正干的事是**把格式知识摊开给你看**。
 
-- 文档版本：对应应用 **1.6.1**（107 个可输出；新增 N64 VADPCM）
+- 文档版本：对应应用 **1.7.0**（112 个可输出；English UI + 新格式/输入）
 - 整理时间：2026-11
 - 仓库：<https://github.com/TeiketsuCN/ToneBox>
 
@@ -255,6 +255,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | **1.4.0** | 2026-11 | VOC / AAC-LATM / MXF / Musepack（69→73）、musepack 随包 | 28.0 MB + 0.15 MB |
 | **1.5.0** | 2026-11 | 73→95：主机音乐输入、老游戏语音、PS1/PS2、任天堂容器、8 个视频容器 | 28.2 MB + 4.74 MB |
 | **1.6.0** | 2026-11 | 95→106：VCD/SVCD/PSP/iPod、裸流与 AVIF、KVAG | 28.2 MB + 4.74 MB |
+| **1.7.0** | 2026-11 | 107→112：ASF/AMV/SWF/GIF/APNG、ProRes/DNxHR/FFV1/VP8/MJPEG、vgmstream/openmpt、CUE、English UI | 28.3 MB + 13.1 MB |
 | **1.6.1** | 2026-11 | 106→107：N64 VADPCM（vadpcm，MPL-2.0） | 28.2 MB + 4.8 MB |
 
 ---
@@ -314,7 +315,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 可输出格式 **95 → 106**。
 
-### 10.3b 1.7（开发中）
+### 10.3b 1.7.0（已发布）
 | i18n | 中英切换（设置页 / `--lang en`）；696 条界面词典、34 条百科长文、体检/质量提示双语 |
 |---|---|
 | 新增 | 说明 |
