@@ -41,7 +41,7 @@ $stage = Join-Path $src "dist\ToneBox-$Ver-extras"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Write-Host "== 1/3 ATRAC 编码器 ==" -ForegroundColor Cyan
+Write-Host "== 1/6 ATRAC 编码器 ==" -ForegroundColor Cyan
 $atracSrc = Join-Path $src 'vendor\atracdenc'
 $atracExe = Join-Path $atracSrc 'atracdenc.exe'
 if (-not (Test-Path $atracExe)) {
@@ -64,7 +64,7 @@ atracdenc —— ATRAC1 / ATRAC3 / ATRAC3+ 编码器
 "@
 Set-Content -Path (Join-Path $atracDst 'SOURCE-说明.txt') -Value $srcNote -Encoding UTF8
 
-Write-Host "== 2/4 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
+Write-Host "== 2/6 psxavenc（PS1 XA / PS2 VAG）==" -ForegroundColor Cyan
 $psxSrc = Join-Path $src 'vendor\psxavenc'
 $psxExe = Join-Path $psxSrc 'psxavenc.exe'
 if (-not (Test-Path $psxExe)) {
@@ -84,7 +84,47 @@ psxavenc —— PS1 XA-ADPCM / PS2 VAG 编码器
 "@
 Set-Content -Path (Join-Path $psxDst 'SOURCE-说明.txt') -Value $psxNote -Encoding UTF8
 
-Write-Host "== 3/4 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
+Write-Host "== 3/6 VGAudioCli（任天堂容器）==" -ForegroundColor Cyan
+$vgSrc = Join-Path $src 'vendor\vgaudio'
+$vgExe = Join-Path $vgSrc 'VGAudioCli.exe'
+if (-not (Test-Path $vgExe)) {
+    $alt = Join-Path $src 'target\release\vgaudio\VGAudioCli.exe'
+    if (Test-Path $alt) { $vgSrc = Split-Path $alt -Parent } else { throw "找不到 VGAudioCli.exe" }
+}
+$vgDst = Join-Path $stage 'vgaudio'
+New-Item -ItemType Directory -Force -Path $vgDst | Out-Null
+Copy-Item (Join-Path $vgSrc 'VGAudioCli.exe') $vgDst -Force
+$vgLic = Join-Path $vgSrc 'LICENSE-vgaudio.txt'
+if (Test-Path $vgLic) { Copy-Item $vgLic $vgDst -Force }
+$vgNote = @"
+VGAudioCli —— BRSTM / BCSTM / BFSTM / DSP / IDSP 编码器
+项目主页：https://github.com/Thealexbarney/VGAudio
+许可：MIT（见同目录 LICENSE-vgaudio.txt）
+说明：需要 .NET Framework 4.5+（Windows 10/11 自带）；程序自动调用。
+"@
+Set-Content -Path (Join-Path $vgDst 'SOURCE-说明.txt') -Value $vgNote -Encoding UTF8
+
+Write-Host "== 4/6 qoaconv（QOA）==" -ForegroundColor Cyan
+$qoaSrc = Join-Path $src 'vendor\qoa'
+$qoaExe = Join-Path $qoaSrc 'qoaconv.exe'
+if (-not (Test-Path $qoaExe)) {
+    $alt = Join-Path $src 'target\release\qoa\qoaconv.exe'
+    if (Test-Path $alt) { $qoaSrc = Split-Path $alt -Parent } else { throw "找不到 qoaconv.exe" }
+}
+$qoaDst = Join-Path $stage 'qoa'
+New-Item -ItemType Directory -Force -Path $qoaDst | Out-Null
+Copy-Item (Join-Path $qoaSrc 'qoaconv.exe') $qoaDst -Force
+$qoaLic = Join-Path $qoaSrc 'LICENSE-qoa.txt'
+if (Test-Path $qoaLic) { Copy-Item $qoaLic $qoaDst -Force }
+$qoaNote = @"
+qoaconv —— Quite OK Audio（QOA）编码/解码器
+项目主页：https://github.com/phoboslab/qoa
+许可：MIT（见同目录 LICENSE-qoa.txt）
+说明：程序自动调用。QOA 是 4-bit LMS 有损编码，解码极快。
+"@
+Set-Content -Path (Join-Path $qoaDst 'SOURCE-说明.txt') -Value $qoaNote -Encoding UTF8
+
+Write-Host "== 5/6 OptimFROG 下载脚本 ==" -ForegroundColor Cyan
 $ofrPs1 = @'
 # 下载 OptimFROG 的 ofr.exe 到本目录下的 optimfrog\（不涉及再分发）
 # 由 install-ofr.cmd 调用；需要联网。
@@ -154,7 +194,7 @@ $readme = @"
 ToneBox 可选外部工具包
 ======================
 
-这个包里是三样**不随主程序一起发**的编码器。
+这个包里是五样**不随主程序一起发**的编码器。
 把整个压缩包解压到 ToneBox 目录（format-converter.exe 所在的那层），然后：
 
 1) ATRAC（atracdenc）
@@ -164,23 +204,32 @@ ToneBox 可选外部工具包
 2) PS1 XA / PS2 VAG（psxavenc）
    已包含在 psxavenc\ 里，解压完就能用。
 
-3) OptimFROG（ofr.exe）
+3) 任天堂容器（VGAudioCli）
+   已包含在 vgaudio\ 里，能在 BRSTM / BCSTM / BFSTM / DSP / IDSP 之间转。
+   需要 .NET Framework 4.5+（Windows 10/11 自带）。
+
+4) QOA（qoaconv）
+   已包含在 qoa\ 里，解压完就能用。
+
+5) OptimFROG（ofr.exe）
    双击 install-ofr.cmd，脚本会从官网下载并校验，放到 optimfrog\。
    需要联网。
 
 装完后回到程序：设置 → 依赖 / 外部工具 → 重新检测，
-就能看到 atracdenc / psxavenc / ofr 亮起来。
+就能看到 atracdenc / psxavenc / vgaudio / qoaconv / ofr 亮起来。
 
-这三个工具都是可选的：
+这五个工具都是可选的：
 - 没有 atracdenc：ATRAC1 / ATRAC3 / ATRAC3+ 不能输出（其它格式不受影响）
 - 没有 psxavenc：PS1 XA / PS2 VAG 不能输出（其它格式不受影响）
+- 没有 VGAudioCli：BRSTM / BCSTM / BFSTM / DSP / IDSP 不能输出
+- 没有 qoaconv：QOA 不能输出
 - 没有 ofr.exe：OptimFROG 不能输出（其它格式不受影响）
 
 许可说明见各子目录里的文本。
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
-Write-Host "== 4/4 zip ==" -ForegroundColor Cyan
+Write-Host "== 6/6 zip ==" -ForegroundColor Cyan
 $dist = Split-Path -Parent $Out
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Force -Path $dist | Out-Null }
 if (Test-Path $Out) { Remove-Item $Out -Force }

@@ -102,6 +102,26 @@ ToneBox 自身代码以 MIT 许可发布。随包/依赖的第三方组件如下
 - 分发：Zlib 允许随包，放在 `ToneBox-x.y.z-extras-win64.zip` 的 `psxavenc\` 里
 - 版本：v0.3.1（官方 Windows release）
 - 许可证全文：`vendor/psxavenc/LICENSE-psxavenc.txt`
+
+## VGAudio / VGAudioCli（任天堂容器，可选，在 extras 包）
+
+- 项目：VGAudio
+- 主页：<https://github.com/Thealexbarney/VGAudio>
+- 许可：MIT
+- 用途：`VGAudioCli.exe` 输出 BRSTM / BCSTM / BFSTM / DSP / IDSP
+- 运行要求：.NET Framework 4.5+（Windows 10/11 自带）
+- 版本：v2.2.1（官方 release 的 net451 standalone）
+- 许可证全文：`vendor/vgaudio/LICENSE-vgaudio.txt`
+
+## QOA / qoaconv（可选，在 extras 包）
+
+- 项目：Quite OK Audio（QOA）
+- 作者：Dominic Szablewski（phoboslab）
+- 主页：<https://github.com/phoboslab/qoa>
+- 许可：MIT
+- 用途：`qoaconv.exe` 输出 `.qoa`（4-bit LMS 有损，约 3.5 bit/样本）
+- 来源：用 MSYS2 gcc 从官方 `qoa.h` + `qoaconv.c` 编译（源码在 `vendor/qoa/`）
+- 许可证全文：`vendor/qoa/LICENSE-qoa.txt`
 ## OptimFROG（ofr.exe，可选，不随包）
 
 - 项目：OptimFROG / Lossless Audio

@@ -24,15 +24,19 @@
 
 ### 可选外部工具包（单独下载）
 
-主包里不含 atracdenc 和 OptimFROG 两个可选编码器（前者是可选组件，后者有再分发限制），需要时另下 `ToneBox-1.4.0-extras-win64.zip`：
+主包里不含 atracdenc / psxavenc / VGAudioCli / qoaconv / OptimFROG 这几个可选编码器，
+需要时另下 `ToneBox-1.5.0-extras-win64.zip`：
 
 | 工具 | 包内形式 | 用途 |
 |---|---|---|
 | **atracdenc** | 直接带 `atracdenc\atracdenc.exe`（LGPL-2.1） | ATRAC1 / ATRAC3 / ATRAC3+ 输出 |
+| **psxavenc** | 直接带 `psxavenc\psxavenc.exe`（Zlib） | PS1 XA-ADPCM / PS2 VAG 输出 |
+| **VGAudioCli** | 直接带 `vgaudio\VGAudioCli.exe`（MIT） | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出 |
+| **qoaconv** | 直接带 `qoa\qoaconv.exe`（MIT） | QOA 输出 |
 | **OptimFROG** | 带 `install-ofr.cmd` 一键下载脚本 | OptimFROG 输出 |
 
-用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），ATRAC 立刻可用；
-OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校验官方 SHA-1（不涉及再分发）。
+用法：把 extras 包**解压到 ToneBox 目录**（和 `format-converter.exe` 同级），
+前四个立刻可用；OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校验官方 SHA-1（不涉及再分发）。
 - 卸载＝删掉这个文件夹：不写注册表、不装服务
 
 > 这是测试性质的软件。转换前请备份原文件；设备和文件损坏请自己负责。
@@ -52,17 +56,17 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校�
 
 ## 支持的格式
 
-当前**可输出格式 85 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 91 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
 | 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、RF64、BWF、**OptimFROG**（需自装 ofr.exe） |
-| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、**ALP、APM、Westwood AUD**（老游戏语音） |
+| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、ALP、APM、Westwood AUD（老游戏语音）、**QOA** |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
 | 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937（S/PDIF 直通）、RF64、BWF、VOC、AAC-LATM（LOAS）、**SMAF（MMF）、SoX、IRCAM** |
 | 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、**DV、GXF、NUT、MXF OPAtom** |
-| 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需自行安装 atracdenc）；**PS1 XA-ADPCM、PS2 VAG**（需自行安装 psxavenc） |
+| 设备专用 | ATRAC1、ATRAC3、ATRAC3+（需 atracdenc）；PS1 XA-ADPCM、PS2 VAG（需 psxavenc）；**BRSTM、BCSTM、BFSTM、DSP、IDSP**（需 VGAudioCli） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转 H.264 / H.265 / VP9 / AV1 / MPEG-2 / MPEG-4 / Theora / WMV2，音轨逐条决定复制还是重编码。
 
@@ -84,6 +88,8 @@ OptimFROG 需要双击一次 `install-ofr.cmd`，脚本会从官网下载并校�
 | `mpcenc` | ✅ 随包 | Musepack 输出（LGPL-2.1） |
 | `atracdenc` | 📦 在 extras 包里 | ATRAC1 / ATRAC3 / ATRAC3+ 输出（LGPL-2.1） |
 | `psxavenc` | 📦 在 extras 包里 | PS1 XA-ADPCM / PS2 VAG 输出（Zlib） |
+| `VGAudioCli` | 📦 在 extras 包里 | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出（MIT） |
+| `qoaconv` | 📦 在 extras 包里 | QOA 输出（MIT） |
 | `ofr` | 📦 extras 里一键下载 | OptimFROG 输出（官方许可限制再分发，脚本代下载） |
 
 程序会自动在「程序目录 → 程序目录子目录 → PATH」里找这些工具。装了新的工具后，到**设置 → 依赖 / 外部工具 → 重新检测**即可，不用重启。
@@ -167,11 +173,12 @@ docs/           设计笔记、格式总览、法律边界等
 ## 更新日志
 
 ### 1.5（开发中）
-- 可输出格式 **73 → 85**
+- 可输出格式 **73 → 91**
   - 老游戏语音：**Westwood AUD**、**APM**（Ubisoft Rayman 2）、**ALP ADPCM**、**SMAF（MMF）**
   - 容器：**SoX**、**IRCAM**
   - 视频容器：**DV**、**GXF**、**NUT**、**MXF OPAtom**
-  - 设备专用：**PS1 XA-ADPCM**、**PS2 VAG**（走 extras 里的 psxavenc）
+  - 设备专用：**PS1 XA-ADPCM**、**PS2 VAG**（extras 里的 psxavenc）；**BRSTM / BCSTM / BFSTM / DSP / IDSP**（extras 里的 VGAudioCli）
+  - 有损：**QOA**（extras 里的 qoaconv）
 - **主机芯片音乐可以当输入**：随包 ffmpeg 重建时加进 libgme，NSF / SPC / GBS / VGM / PSF 等能直接拖进来转成 FLAC/MP3（默认渲染前 3 分钟）
 - 固定规格容器会强制参数：DV 锁 720×576/25fps/48k 立体声，GXF 锁 PAL/NTSC + 48k 单声道
 

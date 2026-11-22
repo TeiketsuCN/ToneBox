@@ -258,4 +258,17 @@ pub static LOSSY: &[FormatSpec] = &[
         args: &["-c:a", "copy", "-f", "mp4"],
         size_ratio: 0.04,
     },
+    FormatSpec {
+        id: "qoa",
+        name: "QOA",
+        ext: "qoa",
+        kind: Kind::Lossy,
+        group: Group::Lossy,
+        patent: Patent::Free,
+        can_encode: true,
+        primary: false,
+        blurb: "Quite OK Audio（QOA）：4-bit LMS 有损编码，约 3.5 bit/样本。\n解码极快、实现只有几百行，适合独立游戏和嵌入式；\n不是高保真格式，认它的播放器还很少。",
+        args: &[],
+        size_ratio: 0.25,
+    },
 ];

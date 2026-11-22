@@ -598,3 +598,163 @@ pub fn psx_convert(
     on_progress(1.0);
     Ok(size)
 }
+
+/// 找 QOA 参考转换器（qoaconv.exe，MIT，50 KB 左右）。
+pub fn find_qoaconv() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "qoaconv.exe" } else { "qoaconv" };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("qoa").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 qoaconv 编 QOA：ffmpeg 解成 16-bit WAV，再交给它。
+pub fn qoa_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_qoa_{tag}.wav"));
+    let tmp_out = std::env::temp_dir().join(format!("fc_qoa_{tag}.qoa"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（QOA 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.5);
+
+    let mut enc = Command::new(exe);
+    enc.arg(&tmp_wav)
+        .arg(&tmp_out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 qoaconv 失败")?;
+    if !st.success() || !tmp_out.is_file() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_out);
+        return Err(anyhow!("qoaconv 编码失败"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_out, output).context("复制 QOA 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_out);
+    on_progress(1.0);
+    Ok(size)
+}
+
+/// 找任天堂系编码器 VGAudioCli（MIT，单文件 exe）。
+pub fn find_vgaudio() -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "VGAudioCli.exe"
+    } else {
+        "VGAudioCli"
+    };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("vgaudio").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 VGAudioCli 编 BRSTM / BCSTM / BFSTM / DSP / IDSP。
+///
+/// 输出格式由**文件后缀**决定（这是 VGAudioCli 的约定），所以临时文件
+/// 必须沿用目标后缀。
+pub fn vgaudio_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let ext = output
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("brstm")
+        .to_ascii_lowercase();
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_vg_{tag}.wav"));
+    let tmp_out = std::env::temp_dir().join(format!("fc_vg_{tag}.{ext}"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", "-ar", "44100", "-ac", "2"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（VGAudio 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg("-i")
+        .arg(&tmp_wav)
+        .arg(&tmp_out)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let out = enc.output().context("启动 VGAudioCli 失败（需要 .NET Framework 4.5+）")?;
+    if !out.status.success() || !tmp_out.is_file() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_out);
+        let err = String::from_utf8_lossy(&out.stderr);
+        let mut tail: Vec<&str> = err.lines().rev().take(4).collect();
+        tail.reverse();
+        return Err(anyhow!(
+            "VGAudioCli 编码失败（退出码 {:?}）：\n{}",
+            out.status.code(),
+            tail.join("\n")
+        ));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_out, output).context("复制 VGAudio 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_out);
+    on_progress(1.0);
+    Ok(size)
+}

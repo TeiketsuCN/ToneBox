@@ -1604,6 +1604,10 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "musepack" => Some("mpcenc"),
         // PS1 XA / PS2 VAG：ffmpeg 只有解码器，编码走 psxavenc
         "xa" | "vag" => Some("psxavenc"),
+        // QOA：参考实现 qoaconv
+        "qoa" => Some("qoaconv"),
+        // 任天堂系（BRSTM/BCSTM/BFSTM/DSP/IDSP）：走 VGAudioCli
+        "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp" => Some("vgaudio"),
         _ => None,
     }
 }
@@ -2625,6 +2629,25 @@ mod tests {
             audio_plan("webm", "mp3"),
             AudioPlan::Encode { codec: "libopus", .. }
         ));
+    }
+
+    #[test]
+    fn nintendo_and_qoa_use_external_tools() {
+        for (id, tool) in [
+            ("qoa", "qoaconv"),
+            ("brstm", "vgaudio"),
+            ("bcstm", "vgaudio"),
+            ("bfstm", "vgaudio"),
+            ("dsp", "vgaudio"),
+            ("idsp", "vgaudio"),
+        ] {
+            let s = spec(id);
+            assert!(s.can_encode, "{id} 应该能当输出");
+            assert_eq!(external_encoder(id), Some(tool), "{id} 外部编码器不对");
+            assert!(s.args.is_empty(), "{id} 走外部工具，不该有 ffmpeg 参数");
+        }
+        assert_eq!(spec("qoa").group, Group::Lossy);
+        assert_eq!(spec("brstm").group, Group::Device);
     }
 
     #[test]

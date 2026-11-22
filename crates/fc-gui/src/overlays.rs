@@ -768,6 +768,36 @@ impl App {
                                         .unwrap_or_else(|| "放到程序目录或 psxavenc 子目录".to_string());
                                     dep(ui, "psxavenc", ok, status, &path);
                                 }
+                                // qoaconv：可选，QOA 用
+                                {
+                                    let ok = self.qoaconv.is_some();
+                                    let status = if ok {
+                                        "已找到 · QOA 可输出"
+                                    } else {
+                                        "未找到（可选）· QOA 不可输出"
+                                    };
+                                    let path = self
+                                        .qoaconv
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "放到程序目录或 qoa 子目录".to_string());
+                                    dep(ui, "qoaconv", ok, status, &path);
+                                }
+                                // VGAudioCli：可选，任天堂系容器用
+                                {
+                                    let ok = self.vgaudio.is_some();
+                                    let status = if ok {
+                                        "已找到 · BRSTM/BCSTM/BFSTM/DSP/IDSP 可输出"
+                                    } else {
+                                        "未找到（可选）· 任天堂容器不可输出"
+                                    };
+                                    let path = self
+                                        .vgaudio
+                                        .as_ref()
+                                        .map(|p| p.display().to_string())
+                                        .unwrap_or_else(|| "放到程序目录或 vgaudio 子目录".to_string());
+                                    dep(ui, "vgaudio", ok, status, &path);
+                                }
 
                                 ui.add_space(8.0);
                                 ui.horizontal(|ui| {
@@ -789,6 +819,8 @@ impl App {
                                         self.ofr = fc_core::find_ofr();
                                         self.mpcenc = fc_core::find_mpcenc();
                                         self.psxavenc = fc_core::find_psxavenc();
+                                        self.qoaconv = fc_core::find_qoaconv();
+                                        self.vgaudio = fc_core::find_vgaudio();
                                         changed = true;
                                     }
                                     ui.label(

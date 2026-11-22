@@ -18,7 +18,7 @@
 | 代码结构 | cargo workspace，4 个 crate：`fc-core` / `fc-analyze` / `fc-player` / `fc-gui` |
 | 许可 | 程序本体 MIT；随包 ffmpeg 为 LGPL-2.1-or-later（不含 GPL 组件） |
 | 体积 | 主包 28.0 MB（含 ffmpeg 59.6 MB 解压后）；可选工具包 0.15 MB |
-| 当前能力 | **85 个可输出格式**、47 个只读参考格式（合计 132 条）、18 个视频容器 |
+| 当前能力 | **91 个可输出格式**、47 个只读参考格式（合计 138 条）、18 个视频容器 |
 
 它**不是**：不是批量压缩器、不联网、不解 DRM、不做流媒体下载、不改你的源文件（除非你明确勾选删除）。
 
@@ -49,7 +49,7 @@
 - 多文件拖拽进队列，统一目标格式；单个文件可在队列里单独覆盖
 - 三种执行路径：
   1. **ffmpeg 一把梭**（绝大多数格式）
-  2. **外部编码器**（ATRAC / Speex / WavPack 有损 / OptimFROG / Musepack / PS1 XA / PS2 VAG）
+  2. **外部编码器**（ATRAC / Speex / WavPack 有损 / OptimFROG / Musepack / PS1 XA / PS2 VAG / QOA / 任天堂容器）
   3. **纯容器直通**（AC-4、IEC 61937 只能复制，源不对会明确报错）
 - **主机芯片音乐当输入**：NSF / SPC / GBS / VGM / PSF 等经随包 ffmpeg 的 libgme 渲染成 PCM
   （默认 180 秒），再走正常转换流程
@@ -59,7 +59,7 @@
 
 ### 3.2 格式百科
 
-点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 132 个条目（85 可输出 + 47 只读）。
+点侧栏任何格式，下面展开它的说明：专利状态、典型码率、适合谁、有什么坑。覆盖全部 138 个条目（91 可输出 + 47 只读）。
 
 ### 3.3 音乐库
 
@@ -100,18 +100,18 @@ format-converter.exe --health <file>            内容体检
 
 ## 4. 格式能力
 
-### 4.1 可输出（85 个，按组）
+### 4.1 可输出（91 个，按组）
 
 | 组 | 数量 | 格式 |
 |---|---|---|
 | **无损** | 13 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、OptimFROG* |
-| **有损** | 15 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM、**Westwood AUD**、**APM** |
+| **有损** | 16 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack*、aptX、aptX HD、SBC、ADX、WavPack 有损*、DFPWM、Westwood AUD、APM、**QOA** |
 | **语音/电话** | 20 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10†、AMR-NB、AMR-WB†、iLBC†、LC3†、Codec2†、Speex*、ADPCM 系列（MS/IMA/Yamaha/QuickTime）、Nellymoser、RealAudio 1.0、**ALP ADPCM** |
 | **空间音频** | 5 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | **音频容器** | 9 | WAV/AU/SND、RF64、BWF、IEC 61937、VOC、AAC-LATM、**SMAF（MMF）**、**SoX**、**IRCAM** |
 | **视频容器** | 18 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、**DV**、**GXF**、**NUT**、**MXF OPAtom** |
-| **设备专用** | 5 | ATRAC1、ATRAC3、ATRAC3+*、**PS1 XA-ADPCM***、**PS2 VAG*** |
-| **合计** | **85** | |
+| **设备专用** | 10 | ATRAC1、ATRAC3、ATRAC3+*、PS1 XA-ADPCM*、PS2 VAG*、**BRSTM、BCSTM、BFSTM、DSP、IDSP**（VGAudioCli） |
+| **合计** | **91** | |
 
 `*` = 需要外部工具（见第 5 节）；`†` = 需要 ffmpeg 构建里带对应库（随包 LGPL 构建不包含，完整构建如 gyan 有）
 
@@ -135,6 +135,8 @@ APE、TAK、OptimFROG 旧条目、Shorten、WMA Lossless/Pro/Voice、DSD（DSF/D
 | mpcenc | ✅ 主包 | LGPL-2.1 | Musepack 输出 |
 | wavpack.exe | ✅ 主包 | BSD-3-Clause | WavPack **有损**（hybrid）输出 |
 | psxavenc | 📦 extras 包 | Zlib | PS1 XA / PS2 VAG 输出 |
+| VGAudioCli | 📦 extras 包 | MIT | BRSTM / BCSTM / BFSTM / DSP / IDSP 输出 |
+| qoaconv | 📦 extras 包 | MIT | QOA 输出 |
 | atracdenc | 📦 extras 包 | LGPL-2.1 | ATRAC1/3/3+ 输出 |
 | ofr.exe（OptimFROG） | ⬇️ extras 内一键下载 | 闭源免费（再分发需授权） | OptimFROG 输出 |
 
@@ -228,7 +230,7 @@ powershell -File tools\fetch-optimfrog.ps1     # 可选
 
 # 编译与测试
 cargo build --release -p fc-gui
-cargo test -p fc-core --lib                    # 74 项
+cargo test -p fc-core --lib                    # 75 项
 
 # 打包
 powershell -File tools\package-release.ps1     # 主包
@@ -252,7 +254,7 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 
 ## 9. 质量保证
 
-- **74 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
+- **75 项单元测试**（格式表完整性、参数映射、警告逻辑、视频容器矩阵、后缀表）
 - **真实编码验证**：每加一个格式都用随包 ffmpeg/外部工具实际压一段音频，比对
   `ffprobe` 输出的编码、采样率、声道；视频容器还会验证画面/音轨编码
 - **发布会验三次哈希**：本地文件、GitHub 返回的 digest、重新下载后的文件
@@ -285,12 +287,13 @@ powershell -File tools\package-extras.ps1      # 可选工具包
 | **SMAF（MMF）** | 铃声容器（Yamaha ADPCM，8k 单声道） | 12 KB |
 | **SoX** | 音频容器（PCM 32-bit） | 1.06 MB |
 | **IRCAM** | 音频容器（PCM 16-bit） | 530 KB |
-
 | **DV / GXF / NUT / MXF OPAtom** | 视频容器 | DV 720×576 / GXF 单声道 / NUT 直通 / MXF OPAtom |
 | **PS1 XA-ADPCM / PS2 VAG** | 设备专用（外部 psxavenc） | XA 133 KB / VAG 76 KB（3 秒正弦） |
+| **QOA** | 有损（外部 qoaconv） | 106 KB（3 秒立体声） |
+| **BRSTM / BCSTM / BFSTM / DSP / IDSP** | 设备专用（外部 VGAudioCli） | 各约 151 KB（3 秒） |
 | **主机芯片音乐输入** | 输入（libgme） | NSF 渲染 3 分钟 → 10.7 MB FLAC |
 
-可输出格式 **73 → 85**。NSF/SPC/VGM/PSF 等芯片音乐现在能当输入（默认渲染 3 分钟），但仍不能作为输出。
+可输出格式 **73 → 91**。NSF/SPC/VGM/PSF 等芯片音乐现在能当输入（默认渲染 3 分钟），但仍不能作为输出。
 
 ---
 

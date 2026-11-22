@@ -305,6 +305,20 @@ pub(crate) enum Job {
         dur: f64,
         kind: &'static str,
     },
+    /// 外部 qoaconv：QOA 有损
+    Qoa {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+    },
+    /// 外部 VGAudioCli：BRSTM / BCSTM / BFSTM / DSP / IDSP
+    Vgaudio {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+    },
 }
 
 /// 一条完成/失败通知（标题栏铃铛里的那条）
@@ -458,6 +472,10 @@ pub(crate) struct App {
     mpcenc: Option<PathBuf>,
     /// PS1/PS2 编码器 psxavenc（Zlib，可选外部工具）
     psxavenc: Option<PathBuf>,
+    /// QOA 参考转换器 qoaconv（MIT）
+    qoaconv: Option<PathBuf>,
+    /// 任天堂系编码器 VGAudioCli（MIT）
+    vgaudio: Option<PathBuf>,
     /// ffmpeg 版本串，设置页显示用（启动时问一次就缓存）
     ffmpeg_ver: Option<String>,
     /// 格式百科
@@ -541,6 +559,8 @@ impl App {
             "ofr" => self.ofr.is_some(),
             "mpcenc" => self.mpcenc.is_some(),
             "psxavenc" => self.psxavenc.is_some(),
+            "qoaconv" => self.qoaconv.is_some(),
+            "vgaudio" => self.vgaudio.is_some(),
             // atracdenc 是默认那个（external::NAME）
             _ => self.atracdenc.is_some(),
         }
@@ -711,6 +731,8 @@ impl App {
             ofr: fc_core::find_ofr(),
             mpcenc: fc_core::find_mpcenc(),
             psxavenc: fc_core::find_psxavenc(),
+            qoaconv: fc_core::find_qoaconv(),
+            vgaudio: fc_core::find_vgaudio(),
             ffmpeg_ver: None,
             wiki_open: false,
             wiki_sel: "flac",
@@ -866,6 +888,8 @@ impl App {
         let ofr = self.ofr.clone();
         let mpcenc = self.mpcenc.clone();
         let psxavenc = self.psxavenc.clone();
+        let qoaconv = self.qoaconv.clone();
+        let vgaudio = self.vgaudio.clone();
         let atrac3_kbps = self.cfg.opts.atrac3_bitrate;
         let mut jobs: Vec<Job> = Vec::new();
         let mut used_out: Vec<PathBuf> = Vec::new();
@@ -976,6 +1000,41 @@ impl App {
                     out,
                     dur,
                     kind: if spec.id == "xa" { "xa" } else { "vag" },
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // QOA 走参考实现 qoaconv（MIT，~50 KB）
+            if spec.id == "qoa" {
+                if self.qoaconv.is_none() {
+                    self.tasks[i].state =
+                        State::Failed("找不到 qoaconv.exe，QOA 输出不可用（extras 包里有）".to_string());
+                    continue;
+                }
+                jobs.push(Job::Qoa {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // 任天堂系（BRSTM/BCSTM/BFSTM/DSP/IDSP）走 VGAudioCli（MIT）
+            if matches!(spec.id, "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp") {
+                if self.vgaudio.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        "找不到 VGAudioCli.exe，任天堂容器输出不可用（extras 包里有）".to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Vgaudio {
+                    idx: i,
+                    input: self.tasks[i].path.clone(),
+                    out,
+                    dur,
                 });
                 self.tasks[i].state = State::Running(0.0);
                 continue;
@@ -1115,6 +1174,8 @@ impl App {
                     Job::Ofr { idx, out, .. } => (*idx, out.clone()),
                     Job::Mpc { idx, out, .. } => (*idx, out.clone()),
                     Job::Psx { idx, out, .. } => (*idx, out.clone()),
+                    Job::Qoa { idx, out, .. } => (*idx, out.clone()),
+                    Job::Vgaudio { idx, out, .. } => (*idx, out.clone()),
                 };
                 let res = match job {
                     Job::Ffmpeg {
@@ -1229,6 +1290,52 @@ impl App {
                                 }),
                             ),
                             None => Err(anyhow::anyhow!("找不到 psxavenc.exe")),
+                        }
+                    }
+                    Job::Qoa {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match qoaconv.as_ref() {
+                            Some(exe) => fc_core::external::qoa_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 qoaconv.exe")),
+                        }
+                    }
+                    Job::Vgaudio {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match vgaudio.as_ref() {
+                            Some(exe) => fc_core::external::vgaudio_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!("找不到 VGAudioCli.exe")),
                         }
                     }
                     Job::Mpc {
@@ -2296,6 +2403,8 @@ fn main() -> eframe::Result<()> {
         show("ofr", fc_core::find_ofr());
         show("mpcenc", fc_core::find_mpcenc());
         show("psxavenc", fc_core::find_psxavenc());
+        show("qoaconv", fc_core::find_qoaconv());
+        show("vgaudio", fc_core::find_vgaudio());
         return Ok(());
     }
 
@@ -2480,6 +2589,48 @@ fn main() -> eframe::Result<()> {
                 },
                 None => {
                     eprintln!("找不到 psxavenc.exe（PS1 XA / PS2 VAG 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "qoa" {
+            match fc_core::find_qoaconv() {
+                Some(exe) => match fc_core::external::qoa_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 qoaconv.exe（QOA 输出需要它）");
+                    std::process::exit(1);
+                }
+            }
+        } else if matches!(target.id, "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp") {
+            match fc_core::find_vgaudio() {
+                Some(exe) => match fc_core::external::vgaudio_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        eprintln!("转换失败: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!("找不到 VGAudioCli.exe（BRSTM/BCSTM/BFSTM/DSP/IDSP 输出需要它）");
                     std::process::exit(1);
                 }
             }
