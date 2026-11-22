@@ -362,7 +362,14 @@ impl App {
                             return;
                         }
 
+                        let jump = match self.settings_tab {
+                            SettingsTab::Display => 0.0,
+                            SettingsTab::Behavior => 780.0,
+                            SettingsTab::Tools => 1550.0,
+                            SettingsTab::About => 0.0,
+                        };
                         egui::ScrollArea::vertical()
+                            .vertical_scroll_offset(jump)
                             .id_salt("settings_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
