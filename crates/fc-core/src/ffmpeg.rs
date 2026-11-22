@@ -563,6 +563,10 @@ pub fn convert_with_inputs(
     mut on_progress: ProgressFn,
 ) -> Result<u64> {
     let (inputs, rest) = prepare_inputs(input, args, extra_inputs);
+    // 先写同目录的 .part.<ext>，成功后再改名：失败/中断不会留下半成品，
+    // 也不会覆盖掉已存在的目标文件（除非调用方本来就要覆盖）。
+    let tmp = part_path(output);
+    let _ = std::fs::remove_file(&tmp);
 
     let mut cmd = Command::new(&tools.ffmpeg);
     cmd.args(["-y", "-hide_banner", "-nostdin"]);
@@ -575,7 +579,7 @@ pub fn convert_with_inputs(
         cmd.args(["-map", "0:a:0"]);
     }
     cmd.args(&rest)
-        .arg(output)
+        .arg(&tmp)
         .args(["-progress", "pipe:1", "-nostats"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -612,11 +616,36 @@ pub fn convert_with_inputs(
     let status = child.wait().context("等待 ffmpeg 结束失败")?;
     let err = err_thread.join().unwrap_or_default();
     if !status.success() {
+        let _ = std::fs::remove_file(&tmp);
         let tail: String = err.lines().rev().take(4).collect::<Vec<_>>().join("\n");
         return Err(anyhow!("ffmpeg 转换失败：\n{tail}"));
     }
+    // 覆盖模式：Windows 上 rename 不会自动覆盖已有文件
+    if output.exists() {
+        std::fs::remove_file(output).with_context(|| format!("无法替换 {}", output.display()))?;
+    }
+    std::fs::rename(&tmp, output)
+        .with_context(|| format!("无法把临时文件改名为 {}", output.display()))?;
     on_progress(1.0);
     Ok(std::fs::metadata(output).map(|m| m.len()).unwrap_or(0))
+}
+
+/// `song.flac` → `song.part.flac`（同目录，保留扩展名让 ffmpeg 仍能选对 muxer）。
+pub fn part_path(output: &Path) -> PathBuf {
+    let stem = output
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".to_string());
+    let ext = output
+        .extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let name = if ext.is_empty() {
+        format!("{stem}.part")
+    } else {
+        format!("{stem}.part.{ext}")
+    };
+    output.with_file_name(name)
 }
 
 /// 把 input、args 里的 `-i`、extra_inputs 合成输入列表，并返回去掉 `-i` 的其余参数。
