@@ -4,7 +4,7 @@
 >
 > 转换只是入口，它真正干的事是把格式知识摊开给你看。
 
-![版本](https://img.shields.io/badge/版本-1.5.0-2ea44f)
+![版本](https://img.shields.io/badge/版本-1.6.0-2ea44f)
 ![平台](https://img.shields.io/badge/平台-Windows%2010%2F11%20x64-0078d4)
 ![许可](https://img.shields.io/badge/许可-MIT-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-8.0%20LGPL%20(随包)-orange)
@@ -15,8 +15,8 @@
 
 ## 一分钟了解
 
-- **95 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
-- 22 个视频容器；支持保留第一条画面 + 全部音轨，音频逐条决定复制还是重编
+- **106 个可输出格式**、47 个只读参考格式（能识别、能解释，但不提供编码器）
+- 32 个视频容器；支持保留第一条画面 + 全部音轨，音频逐条决定复制还是重编
 - 主机芯片音乐（NSF / SPC / GBS / VGM / PSF…）**能当输入**，渲染后转成普通音频
 - 全本地处理：不解 DRM、不联网、不上传文件、不做流媒体下载
 - 解压即用，不写注册表、不装服务；删掉文件夹就是卸载
@@ -27,8 +27,8 @@
 
 | 版本 | 安装包 | 大小 | SHA256 |
 |---|---|---|---|
-| **1.5.0** | [ToneBox-1.5.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.5.0/ToneBox-1.5.0-win64.zip) | 28.2 MB | `B294BED39AE7ACB3E1FE96BA7DB61BC6C973A018939621EF95A30C1B2524B449` |
-| 1.5.0 可选工具 | [ToneBox-1.5.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.5.0/ToneBox-1.5.0-extras-win64.zip) | 4.74 MB | `3A543C67999CC353A42A52735D024B7FC1FC69E84E46A07897D8E8BA7E73F67A` |
+| **1.6.0** | [ToneBox-1.6.0-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.0/ToneBox-1.6.0-win64.zip) | 28.2 MB | `977247D28E0D7648D73B8E9082D94342C7D4F047E7359DA1EF7DC1BC46ECB182` |
+| 1.6.0 可选工具 | [ToneBox-1.6.0-extras-win64.zip](https://github.com/TeiketsuCN/ToneBox/releases/download/v1.6.0/ToneBox-1.6.0-extras-win64.zip) | 4.74 MB | `71E4AB7922F55B8DC7D7EBFC4A14DBB93E9A7A59BAB845E5D4AF6C09796FC9A0` |
 
 - Windows 10 / 11 x64，解压即用，**不需要安装**
 - 解压后双击 `format-converter.exe`
@@ -36,7 +36,7 @@
 
 ### 可选外部工具包（单独下载）
 
-主包**不含**有分发限制或体积较大的可选编码器，需要时另下 `ToneBox-1.5.0-extras-win64.zip`：
+主包**不含**有分发限制或体积较大的可选编码器，需要时另下 `ToneBox-1.6.0-extras-win64.zip`：
 
 | 工具 | 包内形式 | 许可 | 用途 |
 |---|---|---|---|
@@ -54,31 +54,30 @@ OptimFROG 双击一次 `install-ofr.cmd` 即可。装完回程序里点
 
 ---
 
-## 1.5 有什么新东西
+## 1.6 有什么新东西
 
-- **可输出格式 73 → 95**
-  - 老游戏语音：Westwood AUD、APM（Rayman 2）、ALP ADPCM、SMAF（MMF）
-  - 容器：SoX、IRCAM；视频：DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV
-  - 设备：PS1 XA-ADPCM、PS2 VAG（psxavenc）；BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli）
-  - 有损：QOA（qoaconv）
-- **主机芯片音乐当输入**：随包 ffmpeg 用 libgme 渲染 NSF / SPC / GBS / VGM / PSF 等，
-  默认只取前 3 分钟（芯片音乐没有固定时长）
-- 固定规格容器会强制参数：DV 锁 720×576/25fps/48k 立体声，GXF 锁 PAL/NTSC + 48k 单声道
+- **可输出格式 95 → 106**
+  - 光盘标准：**VCD**（MPEG-1 + MP2，352×288）、**SVCD**（MPEG-2 + MP2，480×576）
+  - 设备变体：**PSP**、**iPod (M4V)**
+  - 纯视频裸流：**H.264 / H.265 / MPEG-2 / MPEG-4 / IVF / AVIF**（没有音轨）
+  - 老游戏语音：**KVAG**（IMA ADPCM，22.05k 单声道）
+- 1.5 的能力全部保留：主机芯片音乐输入、PS1/PS2、任天堂容器、QOA、8 个视频容器
+- 纯视频容器不会再被自动补一条音轨（补了 ffmpeg 会直接报错）
 
 ---
 
 ## 支持的格式
 
-当前**可输出格式 95 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
+当前**可输出格式 106 个**，另有 47 个只读参考格式（能识别、能解释，但本程序不提供编码器）。
 
 | 类别 | 可输出 |
 |---|---|
 | 无损 | FLAC、WAV、ALAC、AIFF、WavPack、TTA、CAF、W64、裸 PCM、TrueHD、MLP、Ogg FLAC、OptimFROG（需 ofr.exe） |
-| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、ALP、APM、Westwood AUD、QOA |
+| 有损 | MP3、Opus、Vorbis、MP2、AAC、WMA v1/v2、Musepack、aptX / aptX HD / SBC、ADX、Nellymoser、WavPack 有损、ALP、APM、Westwood AUD、QOA、KVAG |
 | 空间音频 | AC-3、E-AC-3、AC-4（直通）、DTS、AAC 5.1 |
 | 语音/电话 | G.711 A/μ、G.722、G.723.1、G.726、GSM 06.10、AMR-NB、AMR-WB、iLBC、LC3、Codec2、Speex、ADPCM 系列、DFPWM、RealAudio 1.0 |
 | 音频容器 | WAV、AU / SND、AIFF、CAF、W64、IEC 61937、RF64、BWF、VOC、AAC-LATM、SMAF（MMF）、SoX、IRCAM |
-| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV |
+| 视频容器 | MKV、MP4、WebM、MOV、TS、M2TS、FLV、AVI、MPEG-PS、VOB、OGV、WMV、3GP、MXF、DV、GXF、NUT、MXF OPAtom、3G2、F4V、ISMV、WTV、VCD、SVCD、PSP、iPod (M4V)、IVF、H.264 / H.265 / MPEG-2 / MPEG-4 裸流、AVIF |
 | 设备专用 | ATRAC1 / ATRAC3 / ATRAC3+（atracdenc）、PS1 XA / PS2 VAG（psxavenc）、BRSTM / BCSTM / BFSTM / DSP / IDSP（VGAudioCli） |
 
 视频容器支持：保留第一条画面 + 全部音轨，画面可复制或转
@@ -204,6 +203,12 @@ powershell -ExecutionPolicy Bypass -File tools\package-extras.ps1
 ---
 
 ## 更新日志
+
+### 1.6.0（2026-11）
+- 可输出格式 **95 → 106**
+- 新增 VCD / SVCD / PSP / iPod (M4V)、IVF、H.264 / H.265 / MPEG-2 / MPEG-4 裸流、AVIF、KVAG
+- 纯视频容器不再被自动补音轨；VCD/SVCD 会强制 352×288 / 480×576、MP2 224k
+- 1.5 的主机音乐输入、PS1/PS2、任天堂容器、QOA 全部保留
 
 ### 1.5.0（2026-11）
 - 可输出格式 **73 → 95**

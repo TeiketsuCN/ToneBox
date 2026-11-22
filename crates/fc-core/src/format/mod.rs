@@ -147,6 +147,11 @@ pub fn is_video(spec: &FormatSpec) -> bool {
     spec.group == Group::Video
 }
 
+/// 纯视频容器：没有音轨（裸流 / 图片），参数里不能映射音频
+pub fn video_only(id: &str) -> bool {
+    matches!(id, "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif")
+}
+
 /// 侧栏里展示的格式：能编码的那些
 pub fn browsable() -> impl Iterator<Item = &'static FormatSpec> {
     all().filter(|f| f.can_encode)
@@ -303,6 +308,7 @@ fn video_estimate_kbps(info: &MediaInfo, o: &ConvertOptions, vc: VideoCodec) -> 
         // 老编码器效率低，按更高码率估
         VideoCodec::Mpeg2 => 0.20,
         VideoCodec::Mpeg4 => 0.16,
+        VideoCodec::Mpeg1 => 0.25,
         VideoCodec::Theora => 0.15,
         VideoCodec::Wmv2 => 0.17,
         // DV 是固定 25Mbps 的帧内编码，bpp 反推出来的值就很大
@@ -659,6 +665,13 @@ pub fn effective_video_codec(
         "mpg" => VideoCodec::Mpeg2,
         "3gp" => VideoCodec::Mpeg4,
         "3g2" => VideoCodec::Mpeg4,
+        "vcd" => VideoCodec::Mpeg1,
+        "svcd" => VideoCodec::Mpeg2,
+        "hevc" => VideoCodec::Hevc,
+        "m2v" => VideoCodec::Mpeg2,
+        "m4v" => VideoCodec::Mpeg4,
+        "ivf" => VideoCodec::Vp9,
+        "avif" => VideoCodec::Av1,
         "dv" => VideoCodec::Dv,
         "gxf" | "mxf_opatom" => VideoCodec::Mpeg2,
         _ => VideoCodec::H264,
@@ -761,6 +774,8 @@ pub enum VideoCodec {
     Mpeg2,
     /// MPEG-4 Part 2（divx 那一代，3GP 也用）
     Mpeg4,
+    /// MPEG-1（VCD 专用）
+    Mpeg1,
     /// Theora（Ogg 视频）
     Theora,
     /// WMV2（ASF 容器的老画面）
@@ -779,6 +794,7 @@ impl VideoCodec {
             VideoCodec::Av1 => "AV1",
             VideoCodec::Mpeg2 => "MPEG-2",
             VideoCodec::Mpeg4 => "MPEG-4",
+            VideoCodec::Mpeg1 => "MPEG-1",
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
             VideoCodec::Dv => "DV",
@@ -794,6 +810,7 @@ impl VideoCodec {
             VideoCodec::Av1 => "AV1",
             VideoCodec::Mpeg2 => "MPEG-2",
             VideoCodec::Mpeg4 => "MPEG-4",
+            VideoCodec::Mpeg1 => "MPEG-1",
             VideoCodec::Theora => "Theora",
             VideoCodec::Wmv2 => "WMV2",
             VideoCodec::Dv => "DV",
@@ -809,6 +826,7 @@ impl VideoCodec {
             VideoCodec::Av1 => "libsvtav1",
             VideoCodec::Mpeg2 => "mpeg2video",
             VideoCodec::Mpeg4 => "mpeg4",
+            VideoCodec::Mpeg1 => "mpeg1video",
             VideoCodec::Theora => "libtheora",
             VideoCodec::Wmv2 => "wmv2",
             VideoCodec::Dv => "dvvideo",
@@ -830,6 +848,7 @@ impl VideoCodec {
             // 这几个都是 ffmpeg 自带的内置编码器，任何构建都有
             VideoCodec::Mpeg2 => &["mpeg2video"],
             VideoCodec::Mpeg4 => &["mpeg4"],
+            VideoCodec::Mpeg1 => &["mpeg1video"],
             VideoCodec::Theora => &["libtheora"],
             VideoCodec::Wmv2 => &["wmv2"],
             VideoCodec::Dv => &["dvvideo"],
@@ -902,6 +921,18 @@ pub fn video_codecs_for(container: &str) -> &'static [VideoCodec] {
         "f4v" | "ismv" => &[VideoCodec::Copy, VideoCodec::H264],
         // WTV：电视录制，MPEG-2/H.264 都行
         "wtv" => &[VideoCodec::Copy, VideoCodec::Mpeg2, VideoCodec::H264],
+        // VCD / SVCD：老光盘标准，画面固定
+        "vcd" => &[VideoCodec::Copy, VideoCodec::Mpeg1],
+        "svcd" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        // PSP / iPod：H.264 的 MP4 变体
+        "psp" | "ipod" => &[VideoCodec::Copy, VideoCodec::H264],
+        // 裸流与实验容器
+        "ivf" => &[VideoCodec::Copy, VideoCodec::Vp9, VideoCodec::Av1],
+        "h264" => &[VideoCodec::Copy, VideoCodec::H264],
+        "hevc" => &[VideoCodec::Copy, VideoCodec::Hevc],
+        "m2v" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
+        "m4v" => &[VideoCodec::Copy, VideoCodec::Mpeg4],
+        "avif" => &[VideoCodec::Copy, VideoCodec::Av1],
         // MXF：广播封装，画面 MPEG-2
         "mxf" => &[VideoCodec::Copy, VideoCodec::Mpeg2],
         // MXF OPAtom：Avid 流程，画面 MPEG-2
@@ -951,6 +982,18 @@ pub fn copy_video_ok(container: &str, codec: &str) -> bool {
         "f4v" | "ismv" => matches!(c.as_str(), "h264"),
         // WTV 是录制容器，MPEG-2 / H.264 / MPEG-4 / VC-1 都能装
         "wtv" => matches!(c.as_str(), "mpeg2video" | "h264" | "mpeg4" | "vc1"),
+        // VCD 只收 MPEG-1，SVCD 只收 MPEG-2
+        "vcd" => matches!(c.as_str(), "mpeg1video"),
+        "svcd" => matches!(c.as_str(), "mpeg2video"),
+        // PSP / iPod 收 H.264
+        "psp" | "ipod" => matches!(c.as_str(), "h264"),
+        // 裸流/实验容器：各自只收本家编码
+        "ivf" => matches!(c.as_str(), "vp8" | "vp9" | "av1"),
+        "h264" => matches!(c.as_str(), "h264"),
+        "hevc" => matches!(c.as_str(), "hevc"),
+        "m2v" => matches!(c.as_str(), "mpeg2video"),
+        "m4v" => matches!(c.as_str(), "mpeg4"),
+        "avif" => matches!(c.as_str(), "av1"),
         // MXF 只收 MPEG-2（以及 D-10 的变体）
         "mxf" => matches!(c.as_str(), "mpeg2video"),
         // MXF OPAtom 同样只收 MPEG-2
@@ -1024,6 +1067,13 @@ fn audio_copy_ok(container: &str, codec: &str) -> bool {
         "wtv" => {
             matches!(c.as_str(), "aac" | "mp3" | "ac3" | "eac3") || c.starts_with("pcm_")
         }
+        // VCD/SVCD 音频必须是 MP2，统一重编码
+        "vcd" | "svcd" => false,
+        // PSP / iPod：AAC / MP3（iPod 还认 ALAC）
+        "psp" => matches!(c.as_str(), "aac" | "mp3"),
+        "ipod" => matches!(c.as_str(), "aac" | "mp3" | "alac"),
+        // 纯视频裸流没有音轨
+        "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => false,
         // MXF 只收未压缩 PCM，且必须 48kHz —— 这里一律不复制，交给 audio_plan 重编
         "mxf" => false, // MXF 只收 48kHz，源多半 44.1k，统一走重编码
         // MXF OPAtom 同样只收 PCM 48kHz
@@ -1126,6 +1176,16 @@ pub fn audio_plan(container: &str, src_codec: &str) -> AudioPlan {
             kbps: 448,
             label: "AC-3",
         },
+        "vcd" | "svcd" => AudioPlan::Encode {
+            codec: "mp2",
+            kbps: 224,
+            label: "MP2",
+        },
+        "psp" | "ipod" => AudioPlan::Encode {
+            codec: "aac",
+            kbps: 128,
+            label: "AAC",
+        },
         // MXF 要未压缩 PCM，48kHz
         "mxf" => AudioPlan::Encode {
             codec: "pcm_s24le",
@@ -1179,6 +1239,16 @@ pub fn container_note(container: &str) -> &'static str {
         "f4v" => "Flash 的 MP4 变体：H.264 + AAC，Flash 已停更，只留给老课件。",
         "ismv" => "IIS Smooth Streaming 分片 MP4：H.264 + AAC，配合老流媒体服务。",
         "wtv" => "Windows Media Center 录制：MPEG-2/H.264 + AC-3，Win10 后基本没人用。",
+        "vcd" => "VCD：MPEG-1 + MP2，固定 352×288/25fps，老影碟机和车载屏认。",
+        "svcd" => "SVCD：MPEG-2 + MP2，固定 480×576/25fps，比 VCD 清楚但设备支持更少。",
+        "psp" => "PSP 的 MP4：H.264 + AAC，480×272 最稳。",
+        "ipod" => "iPod 的 M4V：H.264 + AAC，给老 iTunes 同步用。",
+        "ivf" => "IVF 裸流：VP9/AV1，给编码器/测试工具用，没有音轨。",
+        "h264" => "H.264 裸流：没有容器头，剪辑/硬件工具常见。",
+        "hevc" => "H.265 裸流：同上，设备兼容性看解码器。",
+        "m2v" => "MPEG-2 裸流：老广播/光盘工具用。",
+        "m4v" => "MPEG-4 Part 2 裸流：老 divx 工具链用。",
+        "avif" => "AVIF 动图：AV1 编码的图片序列，没有音轨。",
         "mxf" => "广播封装：画面 MPEG-2、声音 PCM 24bit/48kHz，电视台/后期流程用。",
         "mxf_opatom" => "MXF OPAtom（Avid）：画面 MPEG-2、声音 PCM 24bit/48kHz，一个文件一条流。",
         "gxf" => "GXF 广播交换：画面 MPEG-2、声音 PCM 16bit/48kHz **单声道**。",
@@ -1204,6 +1274,11 @@ pub fn video_knob_note(container: &str) -> &'static str {
         "f4v" => "F4V 给已经停更的 Flash；新项目别选。",
         "ismv" => "ISMV 是给 IIS Smooth Streaming 的分片文件，普通播放器能放但不是通用格式。",
         "wtv" => "WTV 是 Media Center 录制格式，Win10 之后基本没人维护。",
+        "vcd" => "VCD 是固定规格：352×288、25fps、1150k、MP2 224k；参数会被强制。",
+        "svcd" => "SVCD 是固定规格：480×576、25fps、2500k、MP2 224k；参数会被强制。",
+        "psp" => "PSP 认 480×272，其它尺寸可能放不了。",
+        "ipod" => "iPod 只认 H.264/AAC，老设备别用 H.265。",
+        "ivf" | "h264" | "hevc" | "m2v" | "m4v" | "avif" => "这是纯视频裸流：没有音轨，也不会做封装。",
         _ => "「直接复制」最快且不掉画质；要改分辨率/帧率才需要重编码。",
     }
 }
@@ -1583,7 +1658,8 @@ pub fn knobs_for(spec: &FormatSpec) -> &'static [Knob] {
         // 视频容器：画面参数 + 音频跟容器走（不给音频旋钮，免得和容器打架）
         "mkv" | "mp4" | "webm" | "mov" | "ts" | "m2ts" | "flv" | "avi" | "mpg" | "vob"
         | "ogv" | "wmv" | "3gp" | "mxf" | "mxf_opatom" | "gxf" | "nut" | "3g2" | "f4v" | "ismv"
-        | "wtv" => &[
+        | "wtv" | "vcd" | "svcd" | "psp" | "ipod" | "ivf" | "h264" | "hevc" | "m2v" | "m4v"
+        | "avif" => &[
             Knob::VideoCodec,
             Knob::VideoQuality,
             Knob::VideoScale,
@@ -1864,13 +1940,16 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
     let s = |v: &str| v.to_string();
     let tracks = src.map(|i| i.audio_tracks.as_slice()).unwrap_or(&[]);
     let mut a = vec![s("-map"), s("0:v:0?")];
-    if tracks.is_empty() {
-        // 老调用/纯视频：保持原来的可选单音轨映射
-        a.extend([s("-map"), s("0:a:0?")]);
-    } else {
-        // 多音轨全部保留：第 i 条 -> -map 0:a:i
-        for i in 0..tracks.len() {
-            a.extend([s("-map"), format!("0:a:{i}")]);
+    // 纯视频容器（裸流/图片）不能有音轨，映射了 ffmpeg 会直接报错
+    if !video_only(spec.id) {
+        if tracks.is_empty() {
+            // 老调用/纯视频：保持原来的可选单音轨映射
+            a.extend([s("-map"), s("0:a:0?")]);
+        } else {
+            // 多音轨全部保留：第 i 条 -> -map 0:a:i
+            for i in 0..tracks.len() {
+                a.extend([s("-map"), format!("0:a:{i}")]);
+            }
         }
     }
     let src_v = src.and_then(|i| i.video_codec.clone()).unwrap_or_default();
@@ -1929,8 +2008,12 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
             a.extend([s("-c:v"), s(enc)]);
             quality(&mut a, vc);
         }
-        // MPEG-2 / MPEG-4 / Theora / WMV2：都是码率型编码器，走 quality 的兜底分支
-        VideoCodec::Mpeg2 | VideoCodec::Mpeg4 | VideoCodec::Theora | VideoCodec::Wmv2 => {
+        // MPEG-2 / MPEG-1 / MPEG-4 / Theora / WMV2：都是码率型编码器，走 quality 的兜底分支
+        VideoCodec::Mpeg2
+        | VideoCodec::Mpeg1
+        | VideoCodec::Mpeg4
+        | VideoCodec::Theora
+        | VideoCodec::Wmv2 => {
             a.extend([s("-c:v"), s(enc)]);
             quality(&mut a, vc);
         }
@@ -1965,18 +2048,52 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
                 a.extend([s("-vf"), s("scale=720:576"), s("-r"), s("25")]);
             }
         }
+        "vcd" | "svcd" => {
+            // VCD/SVCD 是固定规格的光盘标准：44.1kHz 立体声 MP2 + PAL 尺寸
+            a.extend([s("-ac"), s("2"), s("-ar"), s("44100")]);
+            if vc != VideoCodec::Copy {
+                let scale = if spec.id == "vcd" { "scale=352:288" } else { "scale=480:576" };
+                a.extend([s("-vf"), s(scale), s("-r"), s("25")]);
+                // 固定码率：VCD 1150k / SVCD 2500k（覆盖 quality 的估算）
+                let kbps = if spec.id == "vcd" { "1150k" } else { "2500k" };
+                a.extend([s("-b:v"), s(kbps)]);
+            }
+        }
         _ => {}
     }
 
+    // 裸流/图片容器的封装器名不是靠后缀猜得出来的，显式指定
+    let mux = match spec.id {
+        "vcd" => "vcd",
+        "svcd" => "svcd",
+        "psp" => "psp",
+        "ipod" => "ipod",
+        "ivf" => "ivf",
+        "h264" => "h264",
+        "hevc" => "hevc",
+        "m2v" => "mpeg2video",
+        "m4v" => "m4v",
+        "avif" => "avif",
+        _ => "",
+    };
+    if !mux.is_empty() {
+        a.extend([s("-f"), s(mux)]);
+    }
+
     // copy 不能缩放/改帧率（effective_video_codec 已经保证这里不会是 copy）
-    // DV / GXF 的尺寸/帧率在上面固定死了，别让用户旋钮覆盖
-    if vc != VideoCodec::Copy && !matches!(spec.id, "dv" | "gxf") {
+    // DV / GXF / VCD / SVCD 的尺寸/帧率在上面固定死了，别让用户旋钮覆盖
+    if vc != VideoCodec::Copy && !matches!(spec.id, "dv" | "gxf" | "vcd" | "svcd") {
         if o.video_height > 0 {
             a.extend([s("-vf"), format!("scale=-2:{}", o.video_height)]);
         }
         if o.video_fps > 0 {
             a.extend([s("-r"), o.video_fps.to_string()]);
         }
+    }
+
+    // 纯视频容器到这里就结束：没有音轨
+    if video_only(spec.id) {
+        return a;
     }
 
     // 音轨：逐条决定 copy / 重编码。容器收就原样保留，不收的单独转，
@@ -2632,7 +2749,8 @@ mod tests {
     fn video_containers_are_selectable_targets() {
         for id in [
             "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob", "ogv", "wmv",
-            "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv", "wtv",
+            "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv", "wtv", "vcd", "svcd",
+            "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v", "avif",
         ] {
             let s = spec(id);
             assert!(s.can_encode, "{id} 应该能当输出");
@@ -2650,7 +2768,8 @@ mod tests {
             vec![
                 "mxf", "mkv", "mp4", "webm", "mov", "ts", "m2ts", "flv", "avi", "mpg", "vob",
                 "ogv", "wmv", "3gp", "dv", "gxf", "nut", "mxf_opatom", "3g2", "f4v", "ismv",
-                "wtv"
+                "wtv", "vcd", "svcd", "psp", "ipod", "ivf", "h264", "hevc", "m2v", "m4v",
+                "avif"
             ]
         );
     }

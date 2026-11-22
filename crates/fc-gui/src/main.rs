@@ -134,7 +134,7 @@ pub(crate) const INPUT_EXTS: &[&str] = &[
 /// （配置目录还叫 FormatConverter，改了会丢用户数据，等真换名再一起迁）。
 pub const APP_NAME: &str = "声箱ToneBox";
 /// 版本号只写这一处：关于页、启动过场都读它，别再多抄几份
-pub(crate) const VERSION: &str = "1.5.0";
+pub(crate) const VERSION: &str = "1.6.0";
 
 /// 界面基准缩放：旧版 120% 现在就是 100%。所有倍率都乘在它上面
 pub const BASE_ZOOM: f32 = 1.2;

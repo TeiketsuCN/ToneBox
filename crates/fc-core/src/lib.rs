@@ -59,7 +59,7 @@ pub use format::{
     effective_video_codec, estimate_size, output_channels, ChannelMode,
     estimate_video_size, external_encoder, is_video, knob_note, knobs_for, output_dims, output_rate,
     quality_warnings, rate_choices, rate_note, resolve_video_encoder, split_group, targets_for,
-    video_codecs_for, video_containers, video_encoder_name, video_knob_note, AudioPlan, BitDepth,
+    video_codecs_for, video_containers, video_encoder_name, video_knob_note, video_only, AudioPlan, BitDepth,
     Choice, ConvertOptions, FormatSpec, Group, Kind, Knob, Patent, Preset, QualityWarning, VideoCodec,
     WarningKind, PRESETS, encoder_for,
 };

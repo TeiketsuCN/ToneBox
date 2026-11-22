@@ -574,8 +574,9 @@ pub fn convert_with_inputs(
     for p in &inputs {
         cmd.arg("-i").arg(p);
     }
-    // 如果 args 里已经有 -map 0:a，别再补一条，避免输出两条音轨。
-    if !has_audio_map(&rest) {
+    // 如果 args 里已经有 -map，就完全按调用方的映射来（视频容器/纯视频裸流都是这样）；
+    // 音频格式没有 -map，才补一条「第一条音轨」。
+    if !rest.iter().any(|a| a == "-map") {
         cmd.args(["-map", "0:a:0"]);
     }
     cmd.args(&rest)
