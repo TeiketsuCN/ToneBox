@@ -1492,6 +1492,13 @@ impl App {
         egui::Window::new(crate::tr2!("控制台", "Console"))
             .id(egui::Id::new("console_window"))
             .open(&mut open)
+            .order(egui::Order::Tooltip)
+            .frame(
+                egui::Frame::window(&ctx.style())
+                    .fill(tint(BG, 246))
+                    .stroke(Stroke::new(1.0, tint(Color32::WHITE, 30)))
+                    .rounding(Rounding::same(12.0)),
+            )
             .default_pos(egui::pos2(win_x, win_y))
             .default_size([win_w, win_h])
             .min_size([(win_w * 0.6).max(320.0), (win_h * 0.6).max(200.0)])
