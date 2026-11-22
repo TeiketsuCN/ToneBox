@@ -28,6 +28,7 @@ impl App {
 
         let title = match self.lib_tab {
             LibTab::Songs => crate::tr!("歌曲"),
+            LibTab::Playlists => crate::tr!("歌单"),
             LibTab::Albums => crate::tr!("专辑"),
             LibTab::Genres => crate::tr!("风格"),
             LibTab::Artists => crate::tr!("艺术家"),
@@ -270,6 +271,79 @@ impl App {
                             ));
                             if row.clicked() {
                                 clicked = Some(i);
+                            }
+                        }
+                    }
+                    LibTab::Playlists => {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(egui::Button::new(RichText::new(crate::tr!("+ 新建歌单")).size(10.0)).fill(tint(Color32::WHITE, 10)).stroke(line(Color32::WHITE, 20)).rounding(Rounding::same(7.0)))
+                                .clicked()
+                            {
+                                let n = self.cfg.playlists.len() + 1;
+                                self.cfg.playlists.push(settings::Playlist {
+                                    name: crate::fmt2!("歌单 {n}", "Playlist {n}"),
+                                    paths: Vec::new(),
+                                });
+                                self.pl_sel = Some(self.cfg.playlists.len() - 1);
+                                self.cfg.save();
+                            }
+                            if let Some(idx) = self.pl_sel {
+                                if idx < self.cfg.playlists.len()
+                                    && ui
+                                        .add(egui::Button::new(RichText::new(crate::tr!("删除")).size(9.0).color(DANGER)).fill(Color32::TRANSPARENT).stroke(line(Color32::WHITE, 18)).rounding(Rounding::same(7.0)))
+                                        .clicked()
+                                {
+                                    self.cfg.playlists.remove(idx);
+                                    self.pl_sel = None;
+                                    self.cfg.save();
+                                }
+                            }
+                        });
+                        ui.add_space(6.0);
+                        let mut pick = None;
+                        for (i, pl) in self.cfg.playlists.iter().enumerate() {
+                            let on = self.pl_sel == Some(i);
+                            let label = format!("{}  ·  {}", pl.name, pl.paths.len());
+                            let b = egui::Button::new(
+                                RichText::new(label).size(10.0).color(if on { accent() } else { MUTED }),
+                            )
+                            .fill(if on { tint(accent(), 24) } else { Color32::TRANSPARENT })
+                            .stroke(line(Color32::WHITE, 14))
+                            .rounding(Rounding::same(7.0));
+                            if ui.add_sized([ui.available_width(), 24.0], b).clicked() {
+                                pick = Some(i);
+                            }
+                        }
+                        if let Some(i) = pick {
+                            self.pl_sel = Some(i);
+                        }
+                        if let Some(idx) = self.pl_sel {
+                            if let Some(pl) = self.cfg.playlists.get(idx) {
+                                ui.add_space(8.0);
+                                let mut songs: Vec<usize> = ids
+                                    .iter()
+                                    .copied()
+                                    .filter(|&i| {
+                                        let p = self.lib_entries[i].path.to_string_lossy();
+                                        pl.paths.iter().any(|s| s == p.as_ref())
+                                    })
+                                    .collect();
+                                songs.sort_by(|&a, &b| {
+                                    self.lib_entries[a].title.to_lowercase().cmp(&self.lib_entries[b].title.to_lowercase())
+                                });
+                                if songs.is_empty() {
+                                    para(ui, crate::tr!("歌单还是空的：在「歌曲」里选中歌，点上方「加入歌单」。"), 9.5, DIM);
+                                }
+                                for i in songs {
+                                    let e = &self.lib_entries[i];
+                                    let sel = self.lib_selected.as_deref() == Some(e.path.as_path());
+                                    let pl_playing = playing_path.as_deref() == Some(e.path.as_path());
+                                    let tex = self.lib_covers.get(&e.path).and_then(|o| o.as_ref());
+                                    if lib_row(ui, e, pl_playing, sel, tex).clicked() {
+                                        clicked = Some(i);
+                                    }
+                                }
                             }
                         }
                     }

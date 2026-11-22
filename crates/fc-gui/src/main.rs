@@ -77,6 +77,7 @@ pub(crate) enum Page {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LibTab {
     Songs,
+    Playlists,
     Albums,
     Genres,
     Artists,
@@ -377,6 +378,12 @@ pub(crate) struct App {
     ext_sel: &'static str,
     /// 当前打开的场景建议（只影响输出栏的推荐卡片，不进配置）
     scenario: Option<&'static str>,
+    /// 音乐库-歌单页当前选中的歌单
+    pl_sel: Option<usize>,
+    /// 设置页子菜单（默认「关于」）
+    settings_tab: overlays::SettingsTab,
+    qr_wechat: Option<egui::TextureHandle>,
+    qr_alipay: Option<egui::TextureHandle>,
     expanded: Option<&'static str>,
     rx: Option<Receiver<Msg>>,
     running: bool,
@@ -696,6 +703,10 @@ impl App {
             target,
             ext_sel: target.ext,
             scenario: None,
+            pl_sel: None,
+            settings_tab: overlays::SettingsTab::About,
+            qr_wechat: None,
+            qr_alipay: None,
             expanded: Some(target.id),
             rx: None,
             running: false,

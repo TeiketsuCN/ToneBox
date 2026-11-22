@@ -32,6 +32,25 @@ pub(crate) const SOLIDS: [[u8; 3]; 10] = [
     [18, 22, 26],
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingsTab {
+    Display,
+    Behavior,
+    Tools,
+    About,
+}
+
+impl SettingsTab {
+    fn label(self) -> &'static str {
+        match self {
+            SettingsTab::Display => crate::tr!("显示"),
+            SettingsTab::Behavior => crate::tr!("行为"),
+            SettingsTab::Tools => crate::tr!("依赖 / 工具"),
+            SettingsTab::About => crate::tr!("关于"),
+        }
+    }
+}
+
 impl App {
 
     /// 格式百科：左边列表，右边长文。B 写的 29 条长文案就展示在这里。
@@ -314,7 +333,34 @@ impl App {
 
                         // 顶栏：不要返回键了，点齿轮或 Esc 退出
                         ui.label(RichText::new(crate::tr!("设置")).size(15.0).color(TEXT).strong());
-                        ui.add_space(18.0);
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            for tab in [
+                                SettingsTab::Display,
+                                SettingsTab::Behavior,
+                                SettingsTab::Tools,
+                                SettingsTab::About,
+                            ] {
+                                let on = self.settings_tab == tab;
+                                let b = egui::Button::new(
+                                    RichText::new(tab.label())
+                                        .size(10.0)
+                                        .color(if on { on_accent() } else { MUTED }),
+                                )
+                                .fill(if on { accent() } else { Color32::TRANSPARENT })
+                                .stroke(line(Color32::WHITE, 16))
+                                .rounding(Rounding::same(8.0));
+                                if ui.add(b).clicked() {
+                                    self.settings_tab = tab;
+                                }
+                            }
+                        });
+                        ui.add_space(14.0);
+
+                        if self.settings_tab == SettingsTab::About {
+                            self.about_tab(ui);
+                            return;
+                        }
 
                         egui::ScrollArea::vertical()
                             .id_salt("settings_scroll")
@@ -1320,4 +1366,79 @@ fn stat_row(ui: &mut egui::Ui, name: &str, value: &str, sub: &str, frac: f32) {
         });
     });
 }
+}
+fn qr_texture(ctx: &egui::Context, bytes: &[u8], key: &str) -> Option<egui::TextureHandle> {
+    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let size = [img.width() as usize, img.height() as usize];
+    let pixels = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+    Some(ctx.load_texture(key, pixels, egui::TextureOptions::LINEAR))
+}
+
+impl App {
+    /// 设置页「关于」：版本、GitHub、两个赞赏二维码。
+    fn about_tab(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        if self.qr_wechat.is_none() {
+            self.qr_wechat = qr_texture(&ctx, include_bytes!("../assets/donate-wechat.png"), "qr_wechat");
+        }
+        if self.qr_alipay.is_none() {
+            self.qr_alipay = qr_texture(&ctx, include_bytes!("../assets/donate-alipay.png"), "qr_alipay");
+        }
+
+        ui.label(RichText::new(crate::APP_NAME).size(20.0).color(TEXT).strong());
+        ui.label(RichText::new(format!("v{}", crate::VERSION)).size(11.0).color(accent()));
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(crate::tr!("音频格式顾问与转换器 · 本地处理，不上传音频"))
+                .size(10.0)
+                .color(MUTED),
+        );
+        ui.add_space(14.0);
+        ui.horizontal(|ui| {
+            let gh = egui::Button::new(RichText::new(crate::tr!("GitHub 仓库")).size(9.5).color(on_accent()))
+                .fill(accent())
+                .stroke(Stroke::NONE)
+                .rounding(Rounding::same(8.0))
+                .min_size(egui::vec2(96.0, 26.0));
+            if ui.add(gh).clicked() {
+                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneBox"));
+            }
+            if ui
+                .add(
+                    egui::Button::new(RichText::new(crate::tr!("问题反馈")).size(9.5).color(MUTED))
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(line(Color32::WHITE, 20))
+                        .rounding(Rounding::same(8.0))
+                        .min_size(egui::vec2(86.0, 26.0)),
+                )
+                .clicked()
+            {
+                ctx.open_url(egui::OpenUrl::new_tab("https://github.com/TeiketsuCN/ToneBox/issues"));
+            }
+        });
+        ui.add_space(16.0);
+
+        ui.label(RichText::new(crate::tr!("支持开发")).size(10.5).color(MUTED).strong());
+        ui.add_space(8.0);
+        ui.horizontal_top(|ui| {
+            for (tex, label) in [
+                (&self.qr_wechat, crate::tr2!("微信赞赏", "WeChat tip")),
+                (&self.qr_alipay, crate::tr2!("支付宝赞赏", "Alipay tip")),
+            ] {
+                ui.vertical(|ui| {
+                    if let Some(t) = tex {
+                        ui.add(egui::Image::new((t.id(), egui::vec2(132.0, 132.0))));
+                    }
+                    ui.label(RichText::new(label).size(9.0).color(DIM));
+                });
+                ui.add_space(18.0);
+            }
+        });
+        ui.add_space(16.0);
+        ui.label(
+            RichText::new(crate::tr!("主程序 MIT；FFmpeg 按 LGPL 构建；第三方工具单独标注许可。"))
+                .size(8.5)
+                .color(DIM),
+        );
+    }
 }

@@ -135,6 +135,14 @@ pub enum ExistingPolicy {
     Skip,
 }
 
+/// 用户自建歌单：只存路径，歌曲信息实时从音乐库取。
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+pub struct Playlist {
+    pub name: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+}
+
 /// 用户自设的预设：一套格式 + 参数，可以改名。跟着「配置 1/2/3」走。
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct UserPreset {
@@ -284,6 +292,9 @@ pub struct Settings {
     /// 目标已存在：改名 / 覆盖 / 跳过
     #[serde(default)]
     pub existing: ExistingPolicy,
+    /// 自建歌单（持久化在配置里）
+    #[serde(default)]
+    pub playlists: Vec<Playlist>,
     /// 指定目录（output_mode = Custom 时用）
     #[serde(default)]
     pub output_dir: String,
@@ -351,6 +362,7 @@ impl Default for Settings {
             opts: fc_core::ConvertOptions::default(),
             output_mode: OutputMode::Source,
             existing: ExistingPolicy::Rename,
+            playlists: Vec::new(),
             output_dir: String::new(),
             meta_artist: String::new(),
             meta_album: String::new(),
