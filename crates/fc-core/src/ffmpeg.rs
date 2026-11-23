@@ -562,7 +562,15 @@ pub fn convert_with_inputs(
     total_s: f64,
     mut on_progress: ProgressFn,
 ) -> Result<u64> {
-    let (inputs, rest) = prepare_inputs(input, args, extra_inputs);
+    // 原生解码优先：DSF/DFF（以及以后的自由格式）先用我们自己的解码器解成 WAV。
+    // 解不出来就原样退回 ffmpeg —— 新解码器有 bug 也不该把用户能转的文件转坏。
+    let native_tmp = crate::native::decode_to_temp(input);
+    let _native_guard = crate::native::TempGuard(native_tmp.clone());
+    let effective_input: &Path = match &native_tmp {
+        Some(p) => p.as_path(),
+        None => input,
+    };
+    let (inputs, rest) = prepare_inputs(effective_input, args, extra_inputs);
     // 先写同目录的 .part.<ext>，成功后再改名：失败/中断不会留下半成品，
     // 也不会覆盖掉已存在的目标文件（除非调用方本来就要覆盖）。
     let tmp = part_path(output);

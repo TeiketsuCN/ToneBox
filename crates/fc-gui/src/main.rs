@@ -302,6 +302,8 @@ pub(crate) enum Job {
         out: PathBuf,
         dur: f64,
         kbps: u32,
+        /// true = 有损 hybrid（要 `-b`），false = 官方 CLI 的纯无损
+        hybrid: bool,
     },
     /// 外部 ofr.exe：OptimFROG 无损
     Ofr {
@@ -310,6 +312,41 @@ pub(crate) enum Job {
         out: PathBuf,
         dur: f64,
         preset: u8,
+    },
+    /// 内置 DSD 编码：PCM → 1-bit → DSF / DFF
+    Dsd {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        tier: u32,
+        dff: bool,
+    },
+    /// 外部 MAC.exe：APE 无损
+    Ape {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        level: u8,
+    },
+    /// 外部 takc.exe：TAK 无损
+    Tak {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        preset: u8,
+    },
+    /// 外部 fdkaac.exe：HE-AAC（也可以编 AAC-LC，由 profile 决定）
+    Heaac {
+        idx: usize,
+        input: PathBuf,
+        out: PathBuf,
+        dur: f64,
+        kbps: u32,
+        /// 0 = 按码率自动选 HE/HEv2；2/5/29 = 强制 AOT
+        profile: u8,
     },
     /// 随包 mpcenc：Musepack 有损
     Mpc {
@@ -393,6 +430,8 @@ pub(crate) struct App {
     pub(crate) console: Vec<String>,
     pub(crate) console_open: bool,
     pub(crate) console_input: String,
+    /// 控制台开机屏：先出 ASCII logo + 数字选语言，选完才进控制台
+    pub(crate) console_boot: bool,
     pub(crate) notices_pinned: bool,
     pub(crate) console_rect: egui::Rect,
     pub(crate) log_path: PathBuf,
@@ -535,6 +574,12 @@ pub(crate) struct App {
     wavpack: Option<PathBuf>,
     /// 外部 OptimFROG CLI（ofr.exe，官方不随包，用户自装）
     ofr: Option<PathBuf>,
+    /// 外部 Monkey's Audio CLI（MAC.exe，APE 输出用；官方许可不允许随包）
+    mac: Option<PathBuf>,
+    /// 外部 TAK 编码器（takc.exe，闭源免费；不随包）
+    takc: Option<PathBuf>,
+    /// 外部 fdkaac（libfdk_aac 的前端，HE-AAC 输出用）
+    fdkaac: Option<PathBuf>,
     /// 随包的 Musepack 编码器（vendor\musepack\mpcenc.exe，LGPL）
     mpcenc: Option<PathBuf>,
     /// PS1/PS2 编码器 psxavenc（Zlib，可选外部工具）
@@ -626,6 +671,9 @@ impl App {
         match name {
             "wavpack" => self.wavpack.is_some(),
             "ofr" => self.ofr.is_some(),
+            "mac" => self.mac.is_some(),
+            "takc" => self.takc.is_some(),
+            "fdkaac" => self.fdkaac.is_some(),
             "mpcenc" => self.mpcenc.is_some(),
             "psxavenc" => self.psxavenc.is_some(),
             "qoaconv" => self.qoaconv.is_some(),
@@ -737,6 +785,7 @@ impl App {
             console: Vec::new(),
             console_open: false,
             console_input: String::new(),
+            console_boot: false,
             notices_pinned: false,
             console_rect: egui::Rect::NOTHING,
             lyr_search: String::new(),
@@ -839,6 +888,9 @@ impl App {
             speexenc: fc_core::find_speexenc(),
             wavpack: fc_core::find_wavpack(),
             ofr: fc_core::find_ofr(),
+            mac: fc_core::find_mac(),
+            takc: fc_core::find_takc(),
+            fdkaac: fc_core::find_fdkaac(),
             mpcenc: fc_core::find_mpcenc(),
             psxavenc: fc_core::find_psxavenc(),
             qoaconv: fc_core::find_qoaconv(),
@@ -1026,6 +1078,9 @@ impl App {
         let speexenc = self.speexenc.clone();
         let wavpack = self.wavpack.clone();
         let ofr = self.ofr.clone();
+        let mac = self.mac.clone();
+        let takc = self.takc.clone();
+        let fdkaac = self.fdkaac.clone();
         let mpcenc = self.mpcenc.clone();
         let psxavenc = self.psxavenc.clone();
         let qoaconv = self.qoaconv.clone();
@@ -1072,6 +1127,54 @@ impl App {
                 continue;
             }
 
+            // AAC：用户可以在「编码器」里选 fdkaac（外挂 libfdk_aac）
+            if spec.id == "aac" && self.cfg.opts.backend == "fdkaac" {
+                if self.fdkaac.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        crate::tr2!(
+                            "找不到 fdkaac.exe，AAC 后端请改回内置 ffmpeg",
+                            "fdkaac.exe not found; switch the AAC backend back to built-in"
+                        )
+                        .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Heaac {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    kbps: self.tasks[i].opts.aac_bitrate,
+                    profile: 2, // AAC-LC
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // WavPack 无损：用户选了官方 CLI 就让 wavpack.exe 来编
+            if spec.id == "wavpack" && self.cfg.opts.backend == "cli" {
+                if self.wavpack.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        crate::tr2!(
+                            "找不到 wavpack.exe，请改回内置 ffmpeg",
+                            "wavpack.exe not found; switch back to built-in"
+                        )
+                        .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Wavpack {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    kbps: 0,
+                    hybrid: false,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
             // WavPack 有损走官方 CLI：ffmpeg 的 wavpack 编码器没有 hybrid 模式
             if spec.id == "wavpack_lossy" {
                 if self.wavpack.is_none() {
@@ -1086,6 +1189,7 @@ impl App {
                     out,
                     dur,
                     kbps: self.tasks[i].opts.wavpack_bitrate,
+                    hybrid: true,
                 });
                 self.tasks[i].state = State::Running(0.0);
                 continue;
@@ -1106,6 +1210,90 @@ impl App {
                     out,
                     dur,
                     preset: self.tasks[i].opts.ofr_preset,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // APE 走官方 MAC.exe（Monkey's Audio 的许可不允许随包）
+            if spec.id == "ape" {
+                if self.mac.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        crate::tr2!(
+                            "找不到 MAC.exe，APE 输出不可用（装 Monkey's Audio 后把 MAC.exe 放进 monkeys\\ 目录）",
+                            "MAC.exe not found; install Monkey's Audio and drop MAC.exe into monkeys\\"
+                        )
+                        .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Ape {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    level: self.tasks[i].opts.ape_level,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // TAK 走官方 takc.exe（闭源免费，不随包）
+            if spec.id == "tak" {
+                if self.takc.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        crate::tr2!(
+                            "找不到 takc.exe，TAK 输出不可用（装 TAK 后把 takc.exe 放进 tak\\ 目录）",
+                            "takc.exe not found; install TAK and drop takc.exe into tak\\"
+                        )
+                        .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Tak {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    preset: self.tasks[i].opts.tak_preset,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // HE-AAC 走外挂 fdkaac.exe（ffmpeg 的 aac 编码器只有 LC）
+            if spec.id == "he_aac" {
+                if self.fdkaac.is_none() {
+                    self.tasks[i].state = State::Failed(
+                        crate::tr2!(
+                            "找不到 fdkaac.exe，HE-AAC 输出不可用（下载 fdkaac 放进 fdkaac\\ 目录）",
+                            "fdkaac.exe not found; drop fdkaac.exe into the fdkaac\\ folder"
+                        )
+                        .to_string(),
+                    );
+                    continue;
+                }
+                jobs.push(Job::Heaac {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    kbps: self.tasks[i].opts.aac_bitrate,
+                    profile: 0,
+                });
+                self.tasks[i].state = State::Running(0.0);
+                continue;
+            }
+
+            // DSD（DSF / DFF）走内置调制器，ffmpeg 只负责解 PCM
+            if spec.id == "dsf" || spec.id == "dff" {
+                jobs.push(Job::Dsd {
+                    idx: i,
+                    input: self.tasks[i].src.clone(),
+                    out,
+                    dur,
+                    tier: self.tasks[i].opts.dsd_tier,
+                    dff: spec.id == "dff",
                 });
                 self.tasks[i].state = State::Running(0.0);
                 continue;
@@ -1335,6 +1523,10 @@ impl App {
                     Job::Speex { idx, out, .. } => (*idx, out.clone()),
                     Job::Wavpack { idx, out, .. } => (*idx, out.clone()),
                     Job::Ofr { idx, out, .. } => (*idx, out.clone()),
+                    Job::Dsd { idx, out, .. } => (*idx, out.clone()),
+                    Job::Ape { idx, out, .. } => (*idx, out.clone()),
+                    Job::Tak { idx, out, .. } => (*idx, out.clone()),
+                    Job::Heaac { idx, out, .. } => (*idx, out.clone()),
                     Job::Mpc { idx, out, .. } => (*idx, out.clone()),
                     Job::Psx { idx, out, .. } => (*idx, out.clone()),
                     Job::Qoa { idx, out, .. } => (*idx, out.clone()),
@@ -1348,6 +1540,10 @@ impl App {
                     | Job::Speex { dur, .. }
                     | Job::Wavpack { dur, .. }
                     | Job::Ofr { dur, .. }
+                    | Job::Dsd { dur, .. }
+                    | Job::Ape { dur, .. }
+                    | Job::Tak { dur, .. }
+                    | Job::Heaac { dur, .. }
                     | Job::Mpc { dur, .. }
                     | Job::Psx { dur, .. }
                     | Job::Qoa { dur, .. }
@@ -1361,6 +1557,10 @@ impl App {
                     Job::Speex { .. } => "speex",
                     Job::Wavpack { .. } => "wavpack_lossy",
                     Job::Ofr { .. } => "optimfrog",
+                    Job::Dsd { dff, .. } => if *dff { "dff" } else { "dsf" },
+                    Job::Ape { .. } => "ape",
+                    Job::Tak { .. } => "tak",
+                    Job::Heaac { .. } => "he_aac",
                     Job::Mpc { .. } => "musepack",
                     Job::Psx { kind, .. } => *kind,
                     Job::Qoa { .. } => "qoa",
@@ -1601,28 +1801,141 @@ impl App {
                             None => Err(anyhow::anyhow!(crate::tr!("找不到 ofr.exe"))),
                         }
                     }
-                    Job::Wavpack {
+                    Job::Dsd {
                         idx,
                         input,
                         out,
                         dur,
-                        kbps,
+                        tier,
+                        dff,
                     } => {
                         let tx_p = tx.clone();
                         let ctx_p = ctx2.clone();
-                        match wavpack.as_ref() {
-                            Some(exe) => fc_core::external::wavpack_convert(
+                        let tier = fc_core::dsdout::Tier::from_u32(tier)
+                            .unwrap_or(fc_core::dsdout::Tier::D64);
+                        let container = if dff {
+                            fc_core::dsdout::Container::Dff
+                        } else {
+                            fc_core::dsdout::Container::Dsf
+                        };
+                        fc_core::dsdconv::dsd_convert(
+                            &tools,
+                            &input,
+                            &out,
+                            tier,
+                            container,
+                            dur,
+                            Box::new(move |p| {
+                                let _ = tx_p.send(Msg::Progress(idx, p));
+                                ctx_p.request_repaint();
+                            }),
+                        )
+                    }
+                    Job::Ape {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        level,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match mac.as_ref() {
+                            Some(exe) => fc_core::external::ape_convert(
                                 &tools,
                                 exe,
                                 &input,
                                 &out,
-                                kbps,
+                                level,
                                 dur,
                                 Box::new(move |p| {
                                     let _ = tx_p.send(Msg::Progress(idx, p));
                                     ctx_p.request_repaint();
                                 }),
                             ),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 MAC.exe"))),
+                        }
+                    }
+                    Job::Tak {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        preset,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match takc.as_ref() {
+                            Some(exe) => fc_core::external::tak_convert(
+                                &tools,
+                                exe,
+                                &input,
+                                &out,
+                                preset,
+                                dur,
+                                Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                }),
+                            ),
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 takc.exe"))),
+                        }
+                    }
+                    Job::Heaac {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        kbps,
+                        profile,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match fdkaac.as_ref() {
+                            Some(exe) => {
+                                let progress = Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                });
+                                if profile == 0 {
+                                    fc_core::external::heaac_convert(
+                                        &tools, exe, &input, &out, kbps, dur, progress,
+                                    )
+                                } else {
+                                    fc_core::external::fdkaac_convert(
+                                        &tools, exe, &input, &out, profile, kbps, dur, progress,
+                                    )
+                                }
+                            }
+                            None => Err(anyhow::anyhow!(crate::tr!("找不到 fdkaac.exe"))),
+                        }
+                    }
+                    Job::Wavpack {
+                        idx,
+                        input,
+                        out,
+                        dur,
+                        kbps,
+                        hybrid,
+                    } => {
+                        let tx_p = tx.clone();
+                        let ctx_p = ctx2.clone();
+                        match wavpack.as_ref() {
+                            Some(exe) => {
+                                let progress = Box::new(move |p| {
+                                    let _ = tx_p.send(Msg::Progress(idx, p));
+                                    ctx_p.request_repaint();
+                                });
+                                if hybrid {
+                                    fc_core::external::wavpack_convert(
+                                        &tools, exe, &input, &out, kbps, dur, progress,
+                                    )
+                                } else {
+                                    fc_core::external::wavpack_lossless_convert(
+                                        &tools, exe, &input, &out, dur, progress,
+                                    )
+                                }
+                            }
                             None => Err(anyhow::anyhow!(crate::tr!("找不到 wavpack.exe"))),
                         }
                     }
@@ -2585,6 +2898,13 @@ pub(crate) fn install_fonts(ctx: &egui::Context) {
             list.push("fallback".to_owned());
         }
     }
+
+    // 字符画专用族：只挂内置的 Hack（纯等宽、全 ASCII），
+    // 界面字体是比例字宽的，用它拼 ASCII 字标会歪。
+    fonts.families.insert(
+        egui::FontFamily::Name("art".into()),
+        vec!["Hack".to_owned()],
+    );
     ctx.set_fonts(fonts);
 }
 
@@ -2783,6 +3103,9 @@ fn main() -> eframe::Result<()> {
         show("speexenc", fc_core::find_speexenc());
         show("wavpack", fc_core::find_wavpack());
         show("ofr", fc_core::find_ofr());
+        show("mac", fc_core::find_mac());
+        show("takc", fc_core::find_takc());
+        show("fdkaac", fc_core::find_fdkaac());
         show("mpcenc", fc_core::find_mpcenc());
         show("psxavenc", fc_core::find_psxavenc());
         show("qoaconv", fc_core::find_qoaconv());
@@ -3001,6 +3324,140 @@ fn main() -> eframe::Result<()> {
                 },
                 None => {
                     crate::err2!("找不到 ofr.exe（OptimFROG 输出需要它）", "ofr.exe not found (required for OptimFROG output)");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "aac" && opts.backend == "fdkaac" {
+            // 命令行也要认「编码器」选择：AAC 走外挂 fdkaac
+            match fc_core::find_fdkaac() {
+                Some(exe) => match fc_core::external::fdkaac_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    2,
+                    opts.aac_bitrate,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    crate::err2!("找不到 fdkaac.exe", "fdkaac.exe not found");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "wavpack" && opts.backend == "cli" {
+            match fc_core::find_wavpack() {
+                Some(exe) => match fc_core::external::wavpack_lossless_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    crate::err2!("找不到 wavpack.exe", "wavpack.exe not found");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "dsf" || target.id == "dff" {
+            let tier = fc_core::dsdout::Tier::from_u32(opts.dsd_tier)
+                .unwrap_or(fc_core::dsdout::Tier::D64);
+            let container = if target.id == "dff" {
+                fc_core::dsdout::Container::Dff
+            } else {
+                fc_core::dsdout::Container::Dsf
+            };
+            match fc_core::dsdconv::dsd_convert(
+                &tools,
+                Path::new(input),
+                Path::new(output),
+                tier,
+                container,
+                info.duration_s,
+                Box::new(|_| {}),
+            ) {
+                Ok(_) => external_done = true,
+                Err(e) => {
+                    crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "ape" {
+            match fc_core::find_mac() {
+                Some(exe) => match fc_core::external::ape_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.ape_level,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    crate::err2!("找不到 MAC.exe（APE 输出需要 Monkey's Audio）", "MAC.exe not found (install Monkey's Audio)");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "tak" {
+            match fc_core::find_takc() {
+                Some(exe) => match fc_core::external::tak_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.tak_preset,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    crate::err2!("找不到 takc.exe（TAK 输出需要 TAK）", "takc.exe not found (install TAK)");
+                    std::process::exit(1);
+                }
+            }
+        } else if target.id == "he_aac" {
+            match fc_core::find_fdkaac() {
+                Some(exe) => match fc_core::external::heaac_convert(
+                    &tools,
+                    &exe,
+                    Path::new(input),
+                    Path::new(output),
+                    opts.aac_bitrate,
+                    info.duration_s,
+                    Box::new(|_| {}),
+                ) {
+                    Ok(_) => external_done = true,
+                    Err(e) => {
+                        crate::err2!("转换失败: {e:#}", "Conversion failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    crate::err2!("找不到 fdkaac.exe（HE-AAC 输出需要 libfdk_aac）", "fdkaac.exe not found (libfdk_aac required)");
                     std::process::exit(1);
                 }
             }

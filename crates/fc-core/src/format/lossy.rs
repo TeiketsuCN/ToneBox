@@ -213,9 +213,10 @@ pub static LOSSY: &[FormatSpec] = &[
         kind: Kind::Lossy,
         group: Group::Lossy,
         patent: Patent::Expiring,
-        can_encode: false,
+        // ffmpeg 的 aac 编码器只会 LC；HE-AAC 走外挂 fdkaac.exe（libfdk_aac）
+        can_encode: true,
         primary: false,
-        blurb: "AAC + SBR，低码率靠频带复制保留高频。\n频谱截止法对它失效，只解码。",
+        blurb: "AAC + SBR，低码率靠频带复制保留高频。\n频谱截止法对它失效。\n编码走外挂 fdkaac.exe（libfdk_aac），64k 左右最划算。",
         args: &[],
         size_ratio: 0.05,
     },

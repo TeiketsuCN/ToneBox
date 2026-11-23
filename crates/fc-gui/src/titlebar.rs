@@ -196,6 +196,11 @@ impl App {
         rect = rect.translate(egui::vec2(-TITLEBAR_H, 0.0));
         if title_button(ui, rect, TitleBtn::Console, self.console_open) {
             self.console_open = !self.console_open;
+            // 打开就先走开机屏：logo + 选语言，选完才进控制台
+            if self.console_open {
+                self.console_boot = true;
+                self.console_input.clear();
+            }
         }
 
         // 转换进度小圆环：在控制台左边，尺寸小一点

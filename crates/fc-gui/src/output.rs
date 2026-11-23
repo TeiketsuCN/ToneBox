@@ -85,13 +85,6 @@ fn scenario_plans(id: &str) -> &'static [Plan] {
 impl App {
 
     /// 最右一列：输出设置。不属于某个文件，是全局的。
-    /// 场景推荐：归档 / 手机 / 车载 / 语音（默认套用主方案）。
-    fn apply_scenario(&mut self, id: &str) {
-        if let Some(p) = scenario_plans(id).first().copied() {
-            self.apply_plan(p.fmt, p.tag);
-        }
-    }
-
     fn apply_plan(&mut self, fmt: &str, tag: &str) {
         if let Some(spec) = fc_core::by_id(fmt) {
             self.target = spec;
@@ -122,6 +115,21 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// 当前格式选中的后端：没选过就用第一条（内置优先）
+    pub(crate) fn backend_id(&self) -> &'static str {
+        let backs = fc_core::backends_for(self.target.id);
+        let first = backs.first().map(|b| b.id).unwrap_or("builtin");
+        let cur = self.cfg.opts.backend.as_str();
+        if cur.is_empty() {
+            return first;
+        }
+        backs
+            .iter()
+            .find(|b| b.id == cur)
+            .map(|b| b.id)
+            .unwrap_or(first)
     }
 
     pub(crate) fn output_panel(&mut self, ui: &mut egui::Ui) -> bool {
@@ -176,6 +184,62 @@ impl App {
             hint_below(ui, crate::tr!("只改后缀和封装，编码参数不变"), DIM);
         }
 
+        // 编码器：同一格式可能有多个后端。规则是「内置优先」——
+        // 有内置就默认内置，只有外部实现的格式（APE/TAK/DSD…）直接显示具体工具名。
+        {
+            let backs = fc_core::backends_for(self.target.id);
+            if !backs.is_empty() {
+                let cur = self.backend_id();
+                let mut pick: Option<&'static str> = None;
+                field_row(ui, crate::tr!("编码器"), |ui| {
+                    for b in backs {
+                        let avail = fc_core::backend_tool(self.target.id, b.id)
+                            .map(|tool| self.external_ok(tool))
+                            .unwrap_or(true);
+                        if backs.len() == 1 {
+                            // 只有一条路：不用选，直接说是哪个
+                            ui.label(
+                                RichText::new(b.name)
+                                    .size(9.5)
+                                    .color(if avail { MUTED } else { DIM }),
+                            )
+                            .on_hover_text(b.note);
+                        } else {
+                            ui.add_enabled_ui(avail, |ui| {
+                                if seg_button(ui, b.name, cur == b.id) {
+                                    pick = Some(b.id);
+                                }
+                            })
+                            .response
+                            .on_hover_text(if avail {
+                                b.note
+                            } else {
+                                crate::tr2!(
+                                    "这个后端需要的外部工具还没装",
+                                    "This backend needs an external tool that is not installed"
+                                )
+                            });
+                            ui.add_space(2.0);
+                        }
+                    }
+                });
+                if let Some(id) = pick {
+                    self.cfg.opts.backend = id.to_string();
+                    changed = true;
+                }
+                if backs.len() == 1 {
+                    hint_below(
+                        ui,
+                        crate::tr2!(
+                            "这个格式只有这一种编码方式",
+                            "This format has only one encoder"
+                        ),
+                        DIM,
+                    );
+                }
+            }
+        }
+
         // 视频容器：先把「这个容器收什么」说一句，再看下面具体旋钮
         if fc_core::is_video(self.target) {
             out_hint(ui, fc_core::container_note(self.target.id), DIM);
@@ -206,36 +270,11 @@ impl App {
 
         ui.add_space(6.0);
 
-        // 场景：先问“拿去干嘛”，再落到格式，而不是让用户先猜格式
-        ui.label(RichText::new(crate::tr!("场景")).size(9.0).color(DIM));
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
-            for (id, label) in [
-                ("archive", crate::tr2!("归档", "Archive")),
-                ("phone", crate::tr2!("手机", "Phone")),
-                ("car", crate::tr2!("车载", "Car")),
-                ("voice", crate::tr2!("语音", "Voice")),
-            ] {
-                if seg_button(ui, label, false) {
-                    self.scenario = Some(id);
-                    self.apply_scenario(id);
-                    changed = true;
-                }
-            }
-        });
-        hint_below(
-            ui,
-            crate::tr2!(
-                "场景会套用推荐格式和参数；设备兼容性仍需自己确认。",
-                "Scenarios apply a recommended format and settings; verify device support yourself."
-            ),
-            DIM,
-        );
-
-        // 场景建议卡：主方案已套用，下面给备选和代价
+        // 场景按钮已经从面板里删掉：它和「预设」是同一件事的两个入口，
+        // 同一屏里并排放只会让人犹豫。预设负责"一键套用"，
+        // 下面这张卡保留"同场景备选 + 代价"的信息，跟随当前预设出现。
         if let Some(id) = self.scenario {
-            ui.add_space(6.0);
+            ui.add_space(2.0);
             egui::Frame::none()
                 .fill(tint(Color32::WHITE, 6))
                 .stroke(line(Color32::WHITE, 16))
@@ -302,11 +341,18 @@ impl App {
                         self.set_target(f);
                     }
                     (p.apply)(&mut self.cfg.opts);
+                    // 预设 id 和场景 id 对齐（archive/phone/car），
+                    // 让上面的"同场景备选"卡换成这一档的建议
+                    self.scenario = match p.id {
+                        "archive" | "phone" | "car" => Some(p.id),
+                        _ => None,
+                    };
                     changed = true;
                 }
             }
 
-            // ── 用户自设预设（跟着配置 1/2/3 走）──
+
+        // ── 用户自设预设（跟着配置 1/2/3 走）──
             let mut apply_preset: Option<usize> = None;
             let mut rename_preset: Option<usize> = None;
             let mut delete_preset: Option<usize> = None;
@@ -415,6 +461,16 @@ impl App {
         });
 
         ui.add_space(8.0);
+
+        // 预设会改格式和参数，兼容性提醒别丢
+        hint_below(
+            ui,
+            crate::tr2!(
+                "预设会套用格式和参数；设备兼容性仍需自己确认。",
+                "Presets apply a format and settings; verify device support yourself."
+            ),
+            DIM,
+        );
 
         // 参数
         // 整列的行距和按钮内边距统一，别让每行看起来高度不一样

@@ -421,6 +421,65 @@ pub fn ofr_convert(
     on_progress(1.0);
     Ok(size)
 }
+/// 用官方 wavpack.exe 做**纯无损**编码（不带 `-b` 就是无损）。
+///
+/// 内置 ffmpeg 也能编 WavPack 无损，但官方 CLI 的压缩率略好；
+/// 这里给"编码器"选择用，默认仍然是内置。
+pub fn wavpack_lossless_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_wvl_{tag}.wav"));
+    let tmp_wv = std::env::temp_dir().join(format!("fc_wvl_{tag}.wv"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（WavPack 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg("-y")
+        .arg("-hh")
+        .arg(&tmp_wav)
+        .arg("-o")
+        .arg(&tmp_wv)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 wavpack.exe 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_wv);
+        return Err(anyhow!("wavpack 编码失败"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_wv, output).context("复制 WavPack 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_wv);
+    let _ = std::fs::remove_file(output.with_extension("wvc"));
+    on_progress(1.0);
+    Ok(size)
+}
+
 /// 找 Musepack 官方编码器（mpcenc.exe，MSYS2 的 libmpcdec 包里带的）。
 ///
 /// 许可 LGPL-2.1，可以随包；和 speex / wavpack 一样按"程序目录 → 子目录 → PATH"找。
@@ -975,6 +1034,272 @@ pub fn vadpcm_convert(
     Ok(size)
 }
 
+// ── APE（Monkey's Audio）────────────────────────────────────────────
+//
+// 官方许可写得很死：只允许原样分发安装包，从别的程序里用它的组件要遵守 SDK 协议。
+// 所以和 ofr 一样**不随包**，只找用户自己装的 MAC.exe（官方安装包带的那个 Console 前端）。
+
+/// 找 Monkey's Audio 的命令行前端（MAC.exe）。
+pub fn find_mac() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "MAC.exe" } else { "mac" };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("monkeys").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 MAC.exe 编 APE：ffmpeg 先解成 24bit WAV，再交给它压。
+///
+/// `level` 是官方的 1~5（对应 `-c1000` 最快 … `-c5000` 最狠），2 是 normal。
+pub fn ape_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    level: u8,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_ape_{tag}.wav"));
+    let tmp_ape = std::env::temp_dir().join(format!("fc_ape_{tag}.ape"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    // 声道数不动：APE 支持多声道，下混成 2 声道反而是有损的
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（APE 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let lv = level.clamp(1, 5);
+    let mut enc = Command::new(exe);
+    enc.arg(&tmp_wav)
+        .arg(&tmp_ape)
+        .arg(format!("-c{}000", lv))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 MAC.exe 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_ape);
+        return Err(anyhow!("Monkey's Audio 编码失败（检查输入 WAV 是否合法）"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_ape, output).context("复制 APE 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_ape);
+    on_progress(1.0);
+    Ok(size)
+}
+
+// ── TAK ─────────────────────────────────────────────────────────────
+//
+// TAK 的编码器是闭源免费软件（takc.exe），分发条款同样不适合随包，按"找用户自装"处理。
+
+/// 找 TAK 的命令行编码器（takc.exe）。
+pub fn find_takc() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "takc.exe" } else { "takc" };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("tak").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 takc.exe 编 TAK。`preset` 是官方的 0~4（0 最快、4 最强，2 是默认）。
+pub fn tak_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    preset: u8,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_tak_{tag}.wav"));
+    let tmp_tak = std::env::temp_dir().join(format!("fc_tak_{tag}.tak"));
+    on_progress(0.02);
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s24le"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（TAK 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg("-e")
+        .arg(format!("-p{}", preset.min(4)))
+        .arg("-overwrite")
+        .arg("-silent")
+        .arg(&tmp_wav)
+        .arg(&tmp_tak)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let st = enc.status().context("启动 takc.exe 失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_tak);
+        return Err(anyhow!("TAK 编码失败（检查输入 WAV 与 preset）"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_tak, output).context("复制 TAK 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_tak);
+    on_progress(1.0);
+    Ok(size)
+}
+
+// ── HE-AAC（libfdk_aac）─────────────────────────────────────────────
+//
+// ffmpeg 自带 aac 编码器只会 LC；HE-AAC / HE-AACv2 只有 libfdk_aac 有。
+// 我们的 ffmpeg 是 LGPL 构建（不带 fdk），所以走外挂 fdkaac.exe：
+// 独立进程调用，本项目 MIT 不受影响；fdk 的许可是 BSD 风格（保留声明 + 无专利授权）。
+
+/// 找 fdkaac 命令行前端（fdkaac.exe）。
+pub fn find_fdkaac() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "fdkaac.exe" } else { "fdkaac" };
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(dir) = cur.parent() {
+            cands.push(dir.join("fdkaac").join(exe));
+            cands.push(dir.join(exe));
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for d in std::env::split_paths(&path) {
+            cands.push(d.join(exe));
+        }
+    }
+    cands.into_iter().find(|p| p.is_file())
+}
+
+/// 用 fdkaac.exe 编 HE-AAC。
+///
+/// 码率 <= 96k 用 HE-AACv2（`-m 5`，立体声、参数化立体声），否则用 HE-AACv1（`-m 2`）。
+pub fn heaac_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    kbps: u32,
+    total_s: f64,
+    on_progress: ProgressFn,
+) -> Result<u64> {
+    // 码率低用 HE-AACv2（AOT 29），否则 HE-AAC（AOT 5）
+    let profile = if kbps <= 64 { 29 } else { 5 };
+    fdkaac_convert(tools, exe, input, output, profile, kbps, total_s, on_progress)
+}
+
+/// 用 fdkaac.exe 按指定 AOT 编码。
+///
+/// `profile`：2 = AAC-LC，5 = HE-AAC（SBR），29 = HE-AACv2（SBR+PS）。
+/// 注意 fdkaac 的坑：`-p` 才是档次（AOT），`-m` 是码率模式，别搞混。
+pub fn fdkaac_convert(
+    tools: &Tools,
+    exe: &Path,
+    input: &Path,
+    output: &Path,
+    profile: u8,
+    kbps: u32,
+    _total_s: f64,
+    mut on_progress: ProgressFn,
+) -> Result<u64> {
+    let tag = temp_tag();
+    let tmp_wav = std::env::temp_dir().join(format!("fc_heaac_{tag}.wav"));
+    let tmp_m4a = std::env::temp_dir().join(format!("fc_heaac_{tag}.m4a"));
+    on_progress(0.02);
+
+
+    let mut dec = Command::new(&tools.ffmpeg);
+    dec.args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(input)
+        .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le", "-ac", "2"])
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    dec.creation_flags(CREATE_NO_WINDOW);
+    let st = dec.status().context("启动 ffmpeg（HE-AAC 解码）失败")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&tmp_wav);
+        return Err(anyhow!("ffmpeg 解码成 WAV 失败"));
+    }
+    on_progress(0.45);
+
+    let mut enc = Command::new(exe);
+    enc.arg("-p")
+        .arg(profile.min(29).to_string())
+        .arg("-b")
+        .arg((kbps.max(16) * 1000).to_string())
+        .arg("-o")
+        .arg(&tmp_m4a)
+        .arg(&tmp_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    enc.creation_flags(CREATE_NO_WINDOW);
+    let out = enc.output().context("启动 fdkaac.exe 失败")?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("fdkaac 编码失败");
+        let _ = std::fs::remove_file(&tmp_wav);
+        let _ = std::fs::remove_file(&tmp_m4a);
+        return Err(anyhow!("HE-AAC 编码失败：{why}"));
+    }
+    on_progress(0.95);
+    std::fs::copy(&tmp_m4a, output).context("复制 HE-AAC 输出失败")?;
+    let size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let _ = std::fs::remove_file(&tmp_wav);
+    let _ = std::fs::remove_file(&tmp_m4a);
+    on_progress(1.0);
+    Ok(size)
+}
+
 /// 外部编码器的输出自检。ffmpeg 读不了 `.xa/.dsp/.idsp/VADPCM .aifc/.ofr`，
 /// 所以分别用扇区结构 / VGAudioCli / vadpcm / ofr 回读；其余格式直接用 ffmpeg 解 10 秒。
 ///
@@ -1065,6 +1390,47 @@ pub fn verify_output(id: &str, output: &Path, tools: &Tools, _expected_s: f64) -
                 Err(format!("vadpcm 回读失败：{why}"))
             }
             Err(e) => Err(format!("启动 vadpcm 失败：{e}")),
+        };
+    }
+
+    // APE：官方 CLI 自带 -v（校验解码）
+    if id == "ape" {
+        let exe = match find_mac() {
+            Some(p) => p,
+            None => return Ok("文件已写出，但找不到 MAC.exe 做回读校验".to_string()),
+        };
+        let out = Command::new(&exe)
+            .arg(output)
+            .arg("-v")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| format!("启动 MAC.exe 失败：{e}"))?;
+        return if out.success() {
+            Ok("MAC.exe -v 校验通过".to_string())
+        } else {
+            Err("APE 回读校验失败".to_string())
+        };
+    }
+
+    // TAK：takc -t 就是"测试解码"
+    if id == "tak" {
+        let exe = match find_takc() {
+            Some(p) => p,
+            None => return Ok("文件已写出，但找不到 takc.exe 做回读校验".to_string()),
+        };
+        let out = Command::new(&exe)
+            .arg("-t")
+            .arg("-silent")
+            .arg(output)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| format!("启动 takc.exe 失败：{e}"))?;
+        return if out.success() {
+            Ok("takc -t 测试解码通过".to_string())
+        } else {
+            Err("TAK 回读校验失败".to_string())
         };
     }
 

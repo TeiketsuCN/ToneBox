@@ -1533,6 +1533,16 @@ pub struct ConvertOptions {
     pub ofr_preset: u8,
     /// Musepack 质量档 0~4（2 = standard，默认）
     pub mpc_profile: u8,
+    /// APE 压缩档 1~5（对应 MAC.exe 的 -c1000 … -c5000，2 = normal）
+    pub ape_level: u8,
+    /// TAK 压缩档 0~4（0 最快、4 最强，2 = 默认）
+    pub tak_preset: u8,
+    /// DSD 输出档位：64 / 128 / 256
+    pub dsd_tier: u32,
+    /// DSD 用 DFF 容器（默认 false = DSF）
+    pub dsd_dff: bool,
+    /// 选中的编码后端 id（空 = 用该格式的默认后端：有内置就用内置）
+    pub backend: String,
     /// 输出采样率（Hz）。`None` = 自动：不传 `-ar`，跟着源文件走
     /// （Dolby 例外，自动按 48 kHz 规范）。
     pub sample_rate: Option<u32>,
@@ -1568,6 +1578,11 @@ impl Default for ConvertOptions {
             wavpack_bitrate: 384,
             ofr_preset: 8,
             mpc_profile: 2,
+            ape_level: 2,
+            tak_preset: 2,
+            dsd_tier: 64,
+            dsd_dff: false,
+            backend: String::new(),
             sample_rate: None,
             channels: ChannelMode::Auto,
             video_codec: VideoCodec::Copy,
@@ -1885,6 +1900,12 @@ pub fn external_encoder(id: &str) -> Option<&'static str> {
         "wavpack_lossy" => Some("wavpack"),
         // OptimFROG：ffmpeg 连解码器都不完整，编码只有官方 ofr.exe
         "optimfrog" => Some("ofr"),
+        // APE：ffmpeg 只有解码器，编码只有官方 MAC.exe（用户自装）
+        "ape" => Some("mac"),
+        // TAK：同上，编码只有官方 takc.exe
+        "tak" => Some("takc"),
+        // HE-AAC：ffmpeg 内置 aac 只会 LC，HE 走外挂 fdkaac.exe（libfdk_aac）
+        "he_aac" => Some("fdkaac"),
         // Musepack：ffmpeg 只有解码器
         "musepack" => Some("mpcenc"),
         // PS1 XA / PS2 VAG：ffmpeg 只有解码器，编码走 psxavenc
@@ -2363,6 +2384,140 @@ fn video_args(spec: &FormatSpec, o: &ConvertOptions, src: Option<&MediaInfo>) ->
         }
     }
     a
+}
+
+/// 一个可选的编码后端（同一格式可能有多个实现）。
+#[derive(Clone, Copy, Debug)]
+pub struct Backend {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub note: &'static str,
+}
+
+static B_BUILTIN: &[Backend] = &[Backend {
+    id: "builtin",
+    name: "内置 ffmpeg",
+    note: "随包 ffmpeg 自带，最省事",
+}];
+
+static B_AAC: &[Backend] = &[
+    Backend {
+        id: "builtin",
+        name: "内置 ffmpeg",
+        note: "AAC-LC，随包自带，兼容性最好",
+    },
+    Backend {
+        id: "fdkaac",
+        name: "fdkaac",
+        note: "外挂 libfdk_aac，可出 LC / HE，需要自己装 fdkaac.exe",
+    },
+];
+
+static B_WAVPACK: &[Backend] = &[
+    Backend {
+        id: "builtin",
+        name: "内置 ffmpeg",
+        note: "ffmpeg 的 wavpack 编码器，纯无损",
+    },
+    Backend {
+        id: "cli",
+        name: "wavpack.exe",
+        note: "官方 CLI，压缩率略好，需要自己装 wavpack.exe",
+    },
+];
+
+static B_MAC: &[Backend] = &[Backend {
+    id: "mac",
+    name: "MAC.exe",
+    note: "Monkey's Audio 官方 CLI（不随包，用户自装）",
+}];
+static B_TAKC: &[Backend] = &[Backend {
+    id: "takc",
+    name: "takc.exe",
+    note: "TAK 官方 CLI（闭源免费，不随包）",
+}];
+static B_FDKAAC: &[Backend] = &[Backend {
+    id: "fdkaac",
+    name: "fdkaac.exe",
+    note: "外挂 libfdk_aac（HE-AAC 只有它能编）",
+}];
+static B_DSD: &[Backend] = &[Backend {
+    id: "native",
+    name: "内置 DSD 调制器",
+    note: "ToneLore 自己的 sigma-delta 调制器，不需要外部工具",
+}];
+static B_OFR: &[Backend] = &[Backend {
+    id: "ofr",
+    name: "ofr.exe",
+    note: "OptimFROG 官方 CLI（许可要求不随包）",
+}];
+static B_MPCENC: &[Backend] = &[Backend {
+    id: "mpcenc",
+    name: "mpcenc.exe",
+    note: "随包提供的 Musepack 编码器",
+}];
+static B_QOA: &[Backend] = &[Backend {
+    id: "qoaconv",
+    name: "qoaconv.exe",
+    note: "随包提供的 QOA 参考编码器",
+}];
+static B_PSX: &[Backend] = &[Backend {
+    id: "psxavenc",
+    name: "psxavenc.exe",
+    note: "PS1/PS2 编码器（AIF/ADPCM）",
+}];
+static B_VGAUDIO: &[Backend] = &[Backend {
+    id: "vgaudio",
+    name: "VGAudioCli.exe",
+    note: "任天堂容器编码器",
+}];
+static B_VADPCM: &[Backend] = &[Backend {
+    id: "vadpcm",
+    name: "vadpcm.exe",
+    note: "N64 VADPCM 编码器",
+}];
+static B_WAVPACK_CLI: &[Backend] = &[Backend {
+    id: "cli",
+    name: "wavpack.exe",
+    note: "WavPack 有损（hybrid）只有官方 CLI 支持",
+}];
+
+/// 这个格式能用哪些编码后端。第一条就是默认选择。
+pub fn backends_for(id: &str) -> &'static [Backend] {
+    match id {
+        "aac" | "aac_multichannel" => B_AAC,
+        "wavpack" => B_WAVPACK,
+        "ape" => B_MAC,
+        "tak" => B_TAKC,
+        "he_aac" => B_FDKAAC,
+        "dsf" | "dff" => B_DSD,
+        "optimfrog" => B_OFR,
+        "musepack" => B_MPCENC,
+        "qoa" => B_QOA,
+        "xa" | "vag" => B_PSX,
+        "brstm" | "bcstm" | "bfstm" | "dsp" | "idsp" => B_VGAUDIO,
+        "vadpcm" => B_VADPCM,
+        "wavpack_lossy" => B_WAVPACK_CLI,
+        _ => B_BUILTIN,
+    }
+}
+
+/// 后端 id → 需要的外部工具名（`App::external_ok` 用）。`None` = 不需要外部工具。
+pub fn backend_tool(id: &str, backend: &str) -> Option<&'static str> {
+    match backend {
+        "builtin" | "native" => None,
+        "fdkaac" => Some("fdkaac"),
+        "cli" if id == "wavpack" || id == "wavpack_lossy" => Some("wavpack"),
+        "mac" => Some("mac"),
+        "takc" => Some("takc"),
+        "ofr" => Some("ofr"),
+        "mpcenc" => Some("mpcenc"),
+        "qoaconv" => Some("qoaconv"),
+        "psxavenc" => Some("psxavenc"),
+        "vgaudio" => Some("vgaudio"),
+        "vadpcm" => Some("vadpcm"),
+        _ => None,
+    }
 }
 
 /// 一把预设——比一屏滑杆有用得多

@@ -13,6 +13,9 @@ pub mod metadata;
 pub mod wiki;
 pub mod wiki_en;
 pub mod dsd;
+pub mod dsdout;
+pub mod dsdconv;
+pub mod native;
 pub mod loudness;
 pub mod ncm;
 pub mod qmc;
@@ -27,6 +30,9 @@ pub use external::find as find_atracdenc;
 pub use external::find_speexenc;
 pub use external::find_wavpack;
 pub use external::find_ofr;
+pub use external::find_mac;
+pub use external::find_takc;
+pub use external::find_fdkaac;
 pub use external::find_mpcenc;
 pub use external::find_psxavenc;
 pub use external::find_qoaconv;
@@ -58,7 +64,7 @@ pub fn is_chiptune(path: &std::path::Path) -> bool {
 /// 芯片音乐默认渲染时长（秒）。NSF/SPC 这类没有"曲目长度"字段。
 pub const CHIPTUNE_SECONDS: u32 = 180;
 pub use tags::{extract_cover, has_cover, read_tags, Tags};
-pub use format::{
+pub use format::{backend_tool, backends_for, Backend, 
     all, args_for, args_for_with, audio_plan, bit_depths_for, bitrate_choices, bitrate_of, browsable,
     by_id, channel_note, channels_for, container_note, copy_video_ok, default_target, ext_choices,
     effective_video_codec, estimate_size, output_channels, ChannelMode,

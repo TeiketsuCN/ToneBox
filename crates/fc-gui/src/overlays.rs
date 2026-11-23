@@ -815,6 +815,69 @@ ui.add_space(18.0);
                 });
             dep(ui, "ofr", ok, status, &path);
         }
+        // MAC.exe：APE 编码，Monkey's Audio 官方许可不允许随包
+        {
+            let ok = self.mac.is_some();
+            let status = if ok {
+                crate::tr2!("已找到 · APE 可输出", "Found · APE output available")
+            } else {
+                crate::tr2!("未安装（可选）· APE 不能输出", "Not installed (optional) · APE unavailable")
+            };
+            let path = self
+                .mac
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr2!(
+                        "装 Monkey's Audio 后把 MAC.exe 放进 monkeys 子目录",
+                        "Install Monkey's Audio and put MAC.exe into the monkeys folder"
+                    )
+                    .to_string()
+                });
+            dep(ui, "MAC.exe", ok, status, &path);
+        }
+        // takc.exe：TAK 编码（闭源免费，不随包）
+        {
+            let ok = self.takc.is_some();
+            let status = if ok {
+                crate::tr2!("已找到 · TAK 可输出", "Found · TAK output available")
+            } else {
+                crate::tr2!("未安装（可选）· TAK 不能输出", "Not installed (optional) · TAK unavailable")
+            };
+            let path = self
+                .takc
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr2!(
+                        "装 TAK 后把 takc.exe 放进 tak 子目录",
+                        "Install TAK and put takc.exe into the tak folder"
+                    )
+                    .to_string()
+                });
+            dep(ui, "takc.exe", ok, status, &path);
+        }
+        // fdkaac.exe：HE-AAC 编码（libfdk_aac）
+        {
+            let ok = self.fdkaac.is_some();
+            let status = if ok {
+                crate::tr2!("已找到 · HE-AAC 可输出", "Found · HE-AAC output available")
+            } else {
+                crate::tr2!("未安装（可选）· HE-AAC 不能输出", "Not installed (optional) · HE-AAC unavailable")
+            };
+            let path = self
+                .fdkaac
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    crate::tr2!(
+                        "把 fdkaac.exe（libfdk_aac 前端）放进 fdkaac 子目录",
+                        "Put fdkaac.exe (libfdk_aac frontend) into the fdkaac folder"
+                    )
+                    .to_string()
+                });
+            dep(ui, "fdkaac.exe", ok, status, &path);
+        }
         // mpcenc：随包，Musepack 用
         {
             let ok = self.mpcenc.is_some();
@@ -909,6 +972,9 @@ ui.add_space(18.0);
                 self.speexenc = fc_core::find_speexenc();
                 self.wavpack = fc_core::find_wavpack();
                 self.ofr = fc_core::find_ofr();
+                self.mac = fc_core::find_mac();
+                self.takc = fc_core::find_takc();
+                self.fdkaac = fc_core::find_fdkaac();
                 self.mpcenc = fc_core::find_mpcenc();
                 self.psxavenc = fc_core::find_psxavenc();
                 self.qoaconv = fc_core::find_qoaconv();
@@ -1388,6 +1454,8 @@ impl App {
         let mut clear = false;
         let mut open_dir = false;
         let mut submitted: Option<String> = None;
+        // 开机屏选了哪个：Some("1") 中文 / Some("2") English / Some("0") 保持当前
+        let mut pick: Option<&'static str> = None;
 
         let screen = ctx.screen_rect();
         let win_w = (screen.width() * 0.46).clamp(420.0, 720.0).min(screen.width() - 48.0);
@@ -1403,7 +1471,7 @@ impl App {
             .order(egui::Order::Tooltip)
             .frame(
                 egui::Frame::window(&ctx.style())
-                    .fill(tint(BG, 246))
+                    .fill(tint(BG, 252))
                     .stroke(Stroke::new(1.0, tint(Color32::WHITE, 30)))
                     .rounding(Rounding::same(12.0)),
             )
@@ -1416,6 +1484,10 @@ impl App {
             .resizable(true)
             .collapsible(false)
             .show(ctx, |ui| {
+                if self.console_boot {
+                    pick = self.console_boot_ui(ui);
+                    return;
+                }
                 ui.horizontal(|ui| {
                     let ghost = |label: &str| {
                         egui::Button::new(RichText::new(label).size(9.0).color(MUTED))
@@ -1506,6 +1578,147 @@ impl App {
         if let Some(line) = submitted {
             self.run_console_command(line);
         }
+        if let Some(p) = pick {
+            self.console_apply_lang(p);
+        }
+    }
+
+    /// 控制台开机屏的 ASCII 字标。全是 ASCII 字符：等宽字体下每格一样宽，才不会走形。
+    const CONSOLE_LOGO: [&'static str; 5] = [
+        "█████ .███. █...█ █████ █.... .███. ████. █████",
+        "..█.. █...█ ██..█ █.... █.... █...█ █...█ █....",
+        "..█.. █...█ █.█.█ ████. █.... █...█ ████. ████.",
+        "..█.. █...█ █..██ █.... █.... █...█ █.█.. █....",
+        "..█.. .███. █...█ █████ █████ .███. █..█. █████",
+    ];
+
+    /// 控制台开机屏：ASCII logo → 数字选语言 → 回车进控制台。
+    fn console_boot_ui(&mut self, ui: &mut egui::Ui) -> Option<&'static str> {
+        let mut pick: Option<&'static str> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("console_boot")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add_space(6.0);
+                // 行距压到 0：五个标签上下贴紧，方块才会连成整字
+                ui.vertical_centered(|ui| {
+                    ui.scope(|ui| {
+                        ui.spacing_mut().item_spacing.y = -2.0;
+                        for line in Self::CONSOLE_LOGO.iter() {
+                            ui.label(
+                                egui::RichText::new(*line)
+                                    .family(egui::FontFamily::Name("art".into()))
+                                    .size(11.0)
+                                    .color(accent()),
+                            );
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        RichText::new(crate::tr2!(
+                            "声识 ToneLore · 格式顾问 + 音乐库 + 播放/转码",
+                            "ToneLore — advisor + library + player"
+                        ))
+                        .size(10.0)
+                        .color(TEXT)
+                        .strong(),
+                    );
+                    let lang_name = if crate::i18n::is_en() { "English" } else { "中文" };
+                    ui.label(
+                        RichText::new(format!(
+                            "v{}  ·  Windows x64  ·  {}",
+                            crate::VERSION,
+                            lang_name
+                        ))
+                        .size(8.5)
+                        .color(DIM),
+                    );
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new(crate::tr2!(
+                            "请选择界面语言：点下面的按钮，或直接按数字键 1 / 2",
+                            "Select interface language: click a button, or press 1 / 2"
+                        ))
+                        .size(9.5)
+                        .color(MUTED),
+                    );
+                });
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(RichText::new("1)  中文").size(10.0)).clicked() {
+                        pick = Some("1");
+                    }
+                    if ui.button(RichText::new("2)  English").size(10.0)).clicked() {
+                        pick = Some("2");
+                    }
+                    if ui
+                        .button(
+                            RichText::new(crate::tr2!("0)  保持当前", "0)  Keep current"))
+                                .size(10.0),
+                        )
+                        .clicked()
+                    {
+                        pick = Some("0");
+                    }
+                });
+                ui.add_space(6.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        RichText::new(crate::tr2!(
+                            "选完直接进控制台；回车 = 保持当前语言。以后想换：在控制台输入 lang",
+                            "Pick one to enter the console. Enter = keep current. To switch later: type lang"
+                        ))
+                        .size(8.5)
+                        .color(DIM),
+                    );
+                });
+                let (k1, k2, k0, ke) = ui.input(|i| {
+                    (
+                        i.key_pressed(egui::Key::Num1),
+                        i.key_pressed(egui::Key::Num2),
+                        i.key_pressed(egui::Key::Num0),
+                        i.key_pressed(egui::Key::Enter),
+                    )
+                });
+                if k1 {
+                    pick = Some("1");
+                } else if k2 {
+                    pick = Some("2");
+                } else if k0 || ke {
+                    pick = Some("0");
+                }
+            });
+        pick
+    }
+
+    /// 开机屏选完语言：切界面语言（和设置页同一套），然后进控制台。
+    fn console_apply_lang(&mut self, pick: &str) {
+        match pick {
+            "1" => self.apply_lang("zh"),
+            "2" => self.apply_lang("en"),
+            _ => {}
+        }
+        self.console_boot = false;
+        self.console_input.clear();
+        self.console.clear();
+        self.log(format!("ToneLore {} · console", crate::VERSION));
+        self.log(crate::tr2!(
+            "控制台就绪。输入 help 看命令，lang 重新选语言。",
+            "Console ready. Type help for commands, lang to switch language."
+        ));
+    }
+
+    /// 切界面语言并写回配置（设置页和开机屏共用）。
+    pub(crate) fn apply_lang(&mut self, tag: &str) {
+        let en = tag == "en";
+        self.cfg.lang = if en { "en".to_string() } else { "zh".to_string() };
+        crate::i18n::set_lang(if en { "en" } else { "zh" });
+        fc_analyze::set_en(en);
+        fc_core::format::set_en(en);
+        fc_core::wiki::set_en(en);
+        self.cfg.save();
     }
 
     fn run_console_command(&mut self, line: String) {
@@ -1514,8 +1727,13 @@ impl App {
         match cmd.as_str() {
             "" => {}
             "clear" | "cls" => self.console.clear(),
+            // 重新打开开机屏：换界面语言
+            "lang" | "language" | "语言" => {
+                self.console_boot = true;
+                self.console_input.clear();
+            }
             "help" | "?" => self.log(
-                "commands: help, version, logs, clear".to_string(),
+                "commands: help, version, logs, clear, lang".to_string(),
             ),
             "version" => self.log(format!("ToneLore {}", crate::VERSION)),
             "logs" | "open" => {

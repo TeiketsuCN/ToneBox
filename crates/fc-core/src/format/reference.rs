@@ -27,10 +27,6 @@ pub static REFERENCE: &[FormatSpec] = &[
     // ── 无损/无损封装（只读）──
     ro!("wma_lossless", "WMA Lossless", "wma", Group::Lossless, Kind::Lossless, Patent::Active,
         "微软的无损 WMA。\n当前 ffmpeg 构建没有编码器，只读。"),
-    ro!("ape", "APE", "ape", Group::Lossless, Kind::Lossless, Patent::Free,
-        "Monkey's Audio，老无损格式。\n只读；没有可用编码器。"),
-    ro!("tak", "TAK", "tak", Group::Lossless, Kind::Lossless, Patent::Free,
-        "Tom's lossless Audio Kompressor。\n只读；没有可用编码器。"),
     ro!("shorten", "Shorten", "shn", Group::Lossless, Kind::Lossless, Patent::Free,
         "早期无损压缩，现场录音存档常见。\n只读；没有可用编码器。"),
     ro!("mpeg4_als", "MPEG-4 ALS", "mp4", Group::Lossless, Kind::Lossless, Patent::Expiring,
@@ -46,10 +42,6 @@ pub static REFERENCE: &[FormatSpec] = &[
     ro!("bonk", "Bonk", "bonk", Group::Lossless, Kind::Lossless, Patent::Free,
         "Bonk 有损/无损混合编码。\n只读；没有可用编码器。"),
     // ── DSD 容器 ──
-    ro!("dsdiff", "DSDIFF", "dff", Group::Container, Kind::Lossless, Patent::Free,
-        "DSD 的 DFF 容器（DSDIFF）。\n当前只能读/分析，不写 DSD。"),
-    ro!("dsf", "DSF", "dsf", Group::Container, Kind::Lossless, Patent::Free,
-        "DSD 的 DSF 容器（Sony）。\n当前只能读/分析，不写 DSD。"),
     ro!("dst", "DST", "dst", Group::Container, Kind::Lossless, Patent::Free,
         "DSD 的无损压缩（Direct Stream Transfer）。\n只读；没有编码器。"),
     // ── 语音/电话 ──
