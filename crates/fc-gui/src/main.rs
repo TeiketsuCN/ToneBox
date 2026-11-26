@@ -2718,12 +2718,12 @@ fn non_audio_hint(p: &Path) -> Option<String> {
              CD 上的 .cda 只有 44 字节，只记录「第几轨」，声音还在光盘里。\n\n\
              要转它：先用 Exact Audio Copy / Windows Media Player 的「翻录」/ foobar2000 \
              把 CD 抓成 WAV 或 FLAC，再把抓出来的文件拖进来；\n\
-             想按轨分，就抓成 CUE + WAV/FLAC，然后拖 .cue 进来（ToneLore 支持 CUE 分轨）。",
+             想按轨分，就抓成 CUE + WAV/FLAC，再用「设置 → 行为 → CUE 分轨」选中 .cue。",
             "This is a CD Audio track stub (.cda), not audio. A .cda file is only 44 bytes \
              and just points at a track on the disc.\n\n\
              Rip the CD to WAV/FLAC first (Exact Audio Copy, Windows Media Player, foobar2000), \
              then drag those files in.\n\
-             To keep tracks, rip to CUE + WAV/FLAC and drop the .cue here (ToneLore can split CUE)."
+             To keep tracks, rip to CUE + WAV/FLAC, then use Settings → Behavior → CUE split and pick the .cue."
         ),
         "lnk" | "url" => crate::tr2!(
             "这是 Windows 快捷方式，不是音频文件。请拖它指向的原文件。",
