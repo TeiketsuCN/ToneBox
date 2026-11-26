@@ -924,6 +924,31 @@ impl App {
             if self.items.iter().any(|i| i.path == p) {
                 continue;
             }
+            // 拖进来的东西明显不是音频（.cda / 快捷方式 / 压缩包…）：
+            // 先用人话说明它是什么、该怎么办，别让用户只看到 ffmpeg 的 Invalid data。
+            if let Some(hint) = non_audio_hint(&p) {
+                self.items.push(Item {
+                    path: p,
+                    media: None,
+                    info: None,
+                    error: Some(hint),
+                    state: State::Failed(crate::tr2!("不是音频文件", "Not an audio file").to_string()),
+                    override_id: None,
+                    hover_t: 0.0,
+                    sel_t: 0.0,
+                    hovered: false,
+                    progress_t: 0.0,
+                    analysis: Analysis::Idle,
+                    lufs: None,
+                    encrypted: None,
+                    health: None,
+                    tags: fc_core::Tags::default(),
+                    cover: None,
+                    title_ov: None,
+                    track_ov: None,
+                });
+                continue;
+            }
             let mut encrypted = None;
             // vgmstream 能读、ffmpeg 读不了的游戏音频：先解成临时 WAV 再 probe
             let mut media: Option<PathBuf> = None;
@@ -2678,6 +2703,63 @@ fn vgm_temp_path() -> PathBuf {
     ))
 }
 
+/// 用户拖进来的东西明显不是音频时，先给一句人话解释。
+///
+/// 只认「一眼能确定」的扩展名；真正的音频文件读不出来，还是走原来的 probe 错误。
+fn non_audio_hint(p: &Path) -> Option<String> {
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let msg = match ext.as_str() {
+        "cda" => crate::tr2!(
+            "这是 CD 音轨的索引文件（.cda），不是音频。\n\
+             CD 上的 .cda 只有 44 字节，只记录「第几轨」，声音还在光盘里。\n\n\
+             要转它：先用 Exact Audio Copy / Windows Media Player 的「翻录」/ foobar2000 \
+             把 CD 抓成 WAV 或 FLAC，再把抓出来的文件拖进来；\n\
+             想按轨分，就抓成 CUE + WAV/FLAC，然后拖 .cue 进来（ToneLore 支持 CUE 分轨）。",
+            "This is a CD Audio track stub (.cda), not audio. A .cda file is only 44 bytes \
+             and just points at a track on the disc.\n\n\
+             Rip the CD to WAV/FLAC first (Exact Audio Copy, Windows Media Player, foobar2000), \
+             then drag those files in.\n\
+             To keep tracks, rip to CUE + WAV/FLAC and drop the .cue here (ToneLore can split CUE)."
+        ),
+        "lnk" | "url" => crate::tr2!(
+            "这是 Windows 快捷方式，不是音频文件。请拖它指向的原文件。",
+            "This is a Windows shortcut, not an audio file. Drag the file it points to."
+        ),
+        "m3u" | "m3u8" | "pls" => crate::tr2!(
+            "这是播放列表，不是音频文件。请把列表里的歌直接拖进来；ToneLore 目前不导入播放列表。",
+            "This is a playlist, not an audio file. Drag the tracks themselves; ToneLore does not import playlists."
+        ),
+        "cue" => crate::tr2!(
+            "这是 CUE 分轨表，不是音频本身。\n\
+             它要和同名的 WAV/FLAC 放在一起；用「设置 → 行为 → CUE 分轨」选中它，就能按轨切分。",
+            "This is a CUE sheet, not audio itself.\n\
+             Keep it next to the matching WAV/FLAC, then use Settings → Behavior → CUE split to cut tracks."
+        ),
+        "iso" | "bin" | "img" | "nrg" | "mdf" | "mds" => crate::tr2!(
+            "这是光盘镜像，不是音频文件。先挂载/抓轨成 WAV 或 FLAC，再拖进来。",
+            "This is a disc image, not an audio file. Mount or rip it to WAV/FLAC first."
+        ),
+        "zip" | "rar" | "7z" | "tar" | "gz" => crate::tr2!(
+            "这是压缩包，先解压，再把里面的音频文件拖进来。",
+            "This is an archive. Unpack it first, then drag the audio files in."
+        ),
+        "txt" | "md" | "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" => crate::tr2!(
+            "这是文档，不是音频文件；ToneLore 读不了。",
+            "This is a document, not an audio file; ToneLore cannot read it."
+        ),
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => crate::tr2!(
+            "这是图片，不是音频文件。",
+            "This is an image, not an audio file."
+        ),
+        _ => return None,
+    };
+    Some(msg.to_string())
+}
+
 /// 命令行临时文件清理：离开作用域时删掉。
 struct TempCleanup(Option<PathBuf>);
 
@@ -2686,6 +2768,32 @@ impl Drop for TempCleanup {
         if let Some(p) = &self.0 {
             let _ = std::fs::remove_file(p);
         }
+    }
+}
+
+#[cfg(test)]
+mod non_audio_tests {
+    use super::non_audio_hint;
+    use std::path::Path;
+
+    #[test]
+    fn cda_gets_explained() {
+        let hint = non_audio_hint(Path::new("Track01.cda")).expect("cda 应该有解释");
+        assert!(hint.contains("CD"), "{hint}");
+        assert!(hint.contains("抓") || hint.contains("Rip"), "{hint}");
+    }
+
+    #[test]
+    fn real_audio_is_not_prejudged() {
+        for f in ["a.flac", "a.mp3", "a.wav", "a.dsf", "a.opus"] {
+            assert!(non_audio_hint(Path::new(f)).is_none(), "{f} 不该被判定成非音频");
+        }
+    }
+
+    #[test]
+    fn archive_and_shortcut_are_explained() {
+        assert!(non_audio_hint(Path::new("x.zip")).is_some());
+        assert!(non_audio_hint(Path::new("x.lnk")).is_some());
     }
 }
 
@@ -2873,6 +2981,11 @@ fn main() -> eframe::Result<()> {
             }
             None => fc_core::default_target(),
         };
+        // .cda / 快捷方式 / 压缩包这类「看着像文件、其实不是音频」的输入，先解释清楚
+        if let Some(hint) = non_audio_hint(Path::new(input)) {
+            crate::err2!("{}", "{}", hint);
+            std::process::exit(1);
+        }
         let tools = fc_core::locate().expect(crate::tr!("找不到 ffmpeg / ffprobe"));
         let info = match fc_core::probe(&tools, Path::new(input)) {
             Ok(i) => i,
